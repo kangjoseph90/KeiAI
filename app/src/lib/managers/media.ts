@@ -9,10 +9,27 @@ import { selectTTSHandler } from '$lib/tts';
 import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 import { AppError } from '$lib/types/errors';
 import { createTimestampedFileName } from '$lib/utils/file';
+import { listItems } from '$lib/utils/ordering';
 
 export interface MediaData {
     data: Uint8Array<ArrayBuffer>;
     mimeType: string;
+}
+
+export interface InlayInfo {
+    id: string;
+    name: string;
+    mimeType: string;
+}
+
+export interface InlayData extends InlayInfo {
+    data: Uint8Array<ArrayBuffer>;
+}
+
+export interface CreateInlayInput {
+    name: string;
+    mimeType: string;
+    data: Uint8Array<ArrayBuffer>;
 }
 
 export interface GenerateImageRequest {
@@ -27,6 +44,31 @@ export interface GenerateImageInlayRequest {
     negativePrompt?: string;
     referenceImageInlayIds: string[];
     styleImageInlayIds: string[];
+}
+
+export async function createInlay(chatId: string, input: CreateInlayInput): Promise<InlayInfo> {
+    const name = input.name.trim();
+    const mimeType = normalizeMimeType(input.mimeType);
+    if (!name) throw new AppError('INVALID_INPUT', 'Inlay name cannot be empty');
+    if (!mimeType) throw new AppError('INVALID_INPUT', 'Inlay media type cannot be empty');
+    if (!(input.data instanceof Uint8Array)) {
+        throw new AppError('INVALID_INPUT', 'Inlay data must be a Uint8Array');
+    }
+
+    const ref = await createChatInlay(
+        chatId,
+        new File([new Uint8Array(input.data)], name, { type: mimeType })
+    );
+    return toInlayInfo(ref);
+}
+
+export async function readInlay(chatId: string, inlayId: string): Promise<InlayData> {
+    return readChatInlay(await requireChat(chatId), inlayId);
+}
+
+export async function listInlays(chatId: string): Promise<InlayInfo[]> {
+    const chat = await requireChat(chatId);
+    return listItems(chat.inlays).map(toInlayInfo);
 }
 
 export async function generateImage(
@@ -173,39 +215,53 @@ async function loadInlays(
 ): Promise<MediaData[]> {
     return Promise.all(
         inlayIds.map(async (id) => {
-            const ref = chat.inlays.refs[id];
-            if (!ref) {
-                throw new AppError('NOT_FOUND', `Inlay not found: ${id}`);
-            }
-            if (getAssetMediaType(ref.mimeType) !== expectedType) {
+            const inlay = await readChatInlay(chat, id);
+            if (getAssetMediaType(inlay.mimeType) !== expectedType) {
                 throw new AppError('INVALID_INPUT', `Inlay ${id} is not ${expectedType} media`);
             }
-
-            const locator = {
-                scopeType: chat.scopeType,
-                scopeId: chat.scopeId,
-                ownerTable: 'chats',
-                ownerId: chat.id,
-                hash: ref.hash
-            } as const;
-            let data = await AssetService.readBytes(locator);
-            if (!data) {
-                await AssetService.load({
-                    ...locator,
-                    encKey: ref.encKey,
-                    mimeType: ref.mimeType
-                });
-                data = await AssetService.readBytes(locator);
-            }
-            if (!data) {
-                throw new AppError('ASSET_ERROR', `Inlay data is unavailable: ${id}`);
-            }
             return {
-                data: new Uint8Array(data),
-                mimeType: normalizeMimeType(ref.mimeType)
+                data: inlay.data,
+                mimeType: inlay.mimeType
             };
         })
     );
+}
+
+async function readChatInlay(chat: Chat, inlayId: string): Promise<InlayData> {
+    const ref = chat.inlays.refs[inlayId];
+    if (!ref) throw new AppError('NOT_FOUND', `Inlay not found: ${inlayId}`);
+
+    const locator = {
+        scopeType: chat.scopeType,
+        scopeId: chat.scopeId,
+        ownerTable: 'chats',
+        ownerId: chat.id,
+        hash: ref.hash
+    } as const;
+    let data = await AssetService.readBytes(locator);
+    if (!data) {
+        await AssetService.load({
+            ...locator,
+            encKey: ref.encKey,
+            mimeType: ref.mimeType
+        });
+        data = await AssetService.readBytes(locator);
+    }
+    if (!data) {
+        throw new AppError('ASSET_ERROR', `Inlay data is unavailable: ${inlayId}`);
+    }
+    return {
+        ...toInlayInfo(ref),
+        data: new Uint8Array(data)
+    };
+}
+
+function toInlayInfo(ref: { id: string; name: string; mimeType: string }): InlayInfo {
+    return {
+        id: ref.id,
+        name: ref.name,
+        mimeType: normalizeMimeType(ref.mimeType)
+    };
 }
 
 async function createGeneratedInlay(

@@ -301,6 +301,12 @@ export const guestSDK = String.raw`
             registrations.push(p);
         },
         emitEvent: (chatId, event, data) => broker.fire('core.emitEvent', [chatId, event, data]),
+        getRoom: (roomId) => broker.invoke('core.getRoom', [roomId]),
+        getChat: (chatId) => broker.invoke('core.getChat', [chatId]),
+        getMessage: (messageId) => broker.invoke('core.getMessage', [messageId]),
+        listInlays: (chatId) => broker.invoke('core.listInlays', [chatId]),
+        readInlay: (chatId, inlayId) => broker.invoke('core.readInlay', [chatId, inlayId]),
+        createInlay: (chatId, input) => broker.invoke('core.createInlay', [chatId, input]),
         addLLMProvider: (modelId, fn, opts = {}) => {
             const fnId = 'llm_' + Date.now() + '_' + Math.random();
             broker.expose(fnId, (messages, config, signal) => {

@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat } from '$lib/services';
 import {
+    createInlay,
     generateImage,
     generateImageInlay,
+    listInlays,
+    readInlay,
     synthesizeSpeechInlay,
     transcribeSpeechInlay
 } from '$lib/managers/media';
@@ -90,7 +93,14 @@ describe('media manager', () => {
         });
         mocks.getChat.mockResolvedValue(chat);
         mocks.readBytes.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
-        mocks.createChatInlay.mockResolvedValue({ id: 'generated-inlay' });
+        mocks.createChatInlay.mockResolvedValue({
+            id: 'generated-inlay',
+            sortOrder: 'c',
+            name: 'created.png',
+            hash: 'created-hash',
+            encKey: 'created-key',
+            mimeType: 'image/png'
+        });
         mocks.selectImage.mockReturnValue({ generate: mocks.generate });
         mocks.selectTTS.mockReturnValue({ synthesize: mocks.synthesize });
         mocks.selectSTT.mockReturnValue({ transcribe: mocks.transcribe });
@@ -113,6 +123,30 @@ describe('media manager', () => {
 
         expect(result.mimeType).toBe('image/png');
         expect([...result.data]).toEqual([1, 2, 3]);
+    });
+
+    it('creates, reads, and lists chat inlays without exposing storage metadata', async () => {
+        await expect(
+            createInlay(chat.id, {
+                name: 'created.png',
+                mimeType: 'image/png',
+                data: new Uint8Array([4, 5])
+            })
+        ).resolves.toEqual({
+            id: 'generated-inlay',
+            name: 'created.png',
+            mimeType: 'image/png'
+        });
+        await expect(readInlay(chat.id, 'image')).resolves.toEqual({
+            id: 'image',
+            name: 'reference.png',
+            mimeType: 'image/png',
+            data: new Uint8Array([1, 2, 3])
+        });
+        await expect(listInlays(chat.id)).resolves.toEqual([
+            { id: 'image', name: 'reference.png', mimeType: 'image/png' },
+            { id: 'audio', name: 'speech.wav', mimeType: 'audio/wav' }
+        ]);
     });
 
     it('resolves image inlays and stores the generated image in the same chat', async () => {
