@@ -7,10 +7,21 @@ const mocks = vi.hoisted(() => ({
     synthesizeSpeech: vi.fn(),
     synthesizeSpeechInlay: vi.fn(),
     transcribeSpeech: vi.fn(),
-    transcribeSpeechInlay: vi.fn()
+    transcribeSpeechInlay: vi.fn(),
+    createInlay: vi.fn(),
+    readInlay: vi.fn(),
+    listInlays: vi.fn(),
+    getRoom: vi.fn(),
+    getChat: vi.fn(),
+    getMessage: vi.fn()
 }));
 
 vi.mock('$lib/managers/media', () => mocks);
+vi.mock('$lib/stores', () => ({
+    getRoom: mocks.getRoom,
+    getChat: mocks.getChat,
+    getMessage: mocks.getMessage
+}));
 
 function createInstance(): PluginInstance {
     return {
@@ -155,5 +166,33 @@ describe('plugin media APIs', () => {
             },
             signal
         );
+    });
+
+    it('binds resource and raw inlay APIs', async () => {
+        const inlay = { id: 'inlay-1', name: 'image.png', mimeType: 'image/png' };
+        const inlayData = { ...inlay, data: new Uint8Array([1, 2]) };
+        mocks.getRoom.mockResolvedValue({ id: 'room-1' });
+        mocks.getChat.mockResolvedValue({ id: 'chat-1' });
+        mocks.getMessage.mockResolvedValue({ id: 'message-1' });
+        mocks.createInlay.mockResolvedValue(inlay);
+        mocks.readInlay.mockResolvedValue(inlayData);
+        mocks.listInlays.mockResolvedValue([inlay]);
+
+        await expect(exposed.get('core.getRoom')!('room-1')).resolves.toEqual({ id: 'room-1' });
+        await expect(exposed.get('core.getChat')!('chat-1')).resolves.toEqual({ id: 'chat-1' });
+        await expect(exposed.get('core.getMessage')!('message-1')).resolves.toEqual({
+            id: 'message-1'
+        });
+        await expect(
+            exposed.get('core.createInlay')!('chat-1', {
+                name: 'image.png',
+                mimeType: 'image/png',
+                data: new Uint8Array([1, 2])
+            })
+        ).resolves.toEqual(inlay);
+        await expect(exposed.get('core.readInlay')!('chat-1', 'inlay-1')).resolves.toEqual(
+            inlayData
+        );
+        await expect(exposed.get('core.listInlays')!('chat-1')).resolves.toEqual([inlay]);
     });
 });
