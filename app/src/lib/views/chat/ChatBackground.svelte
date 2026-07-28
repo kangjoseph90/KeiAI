@@ -21,7 +21,6 @@
     } from '$lib/utils/style';
     import { parseMarkdownAsync } from '$lib/markdown';
     import { hydrateAssets } from '$lib/components/hydrate';
-    import { AssetService } from '$lib/services/asset';
     import type { RuntimeContext } from '$lib/types/context';
 
     let {
@@ -94,8 +93,8 @@
 
     onDestroy(() => {
         version += 1;
-        for (const url of rawAssetUrlCache.values()) {
-            if (url) void AssetService.revokeUrl(url);
+        for (const lease of rawAssetUrlCache.values()) {
+            if (lease) void lease.release();
         }
         rawAssetUrlCache.clear();
     });

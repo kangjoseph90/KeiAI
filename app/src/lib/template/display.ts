@@ -1,11 +1,11 @@
 import type { Macro } from './types';
-import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+import { AssetService, type AssetReadLocator, type AssetUrlLease } from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
 import { ChatService } from '$lib/services';
 import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 
 export type AssetNameIndex = Map<string, Map<string, AssetReadLocator[]>>;
-export type RawAssetUrlCache = Map<string, string | null>;
+export type RawAssetUrlCache = Map<string, AssetUrlLease | null>;
 
 export function createBackgroundMacros(
     index: AssetNameIndex,
@@ -127,11 +127,11 @@ async function readAssetUrl(
     if (resolved) {
         const key = assetRegistryId(resolved);
         const cached = rawUrlCache.get(key);
-        if (cached !== undefined) return cached ?? '';
+        if (cached !== undefined) return cached?.url ?? '';
 
-        const url = await AssetService.read(resolved);
-        rawUrlCache.set(key, url);
-        return url ?? '';
+        const lease = await AssetService.acquireUrl(resolved);
+        rawUrlCache.set(key, lease);
+        return lease?.url ?? '';
     }
 
     return '';

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hydrateAssets } from '$lib/components/hydrate';
 import { AssetService } from '$lib/services/asset';
-import type { AssetReadLocator } from '$lib/services/asset';
+import type { AssetReadLocator, AssetUrlLease } from '$lib/services/asset';
 
 const observers: FakeIntersectionObserver[] = [];
 
@@ -72,10 +72,16 @@ const testLocator2: AssetReadLocator = {
 
 vi.mock('$lib/services/asset', () => ({
     AssetService: {
-        read: vi.fn(),
-        revokeUrl: vi.fn()
+        acquireUrl: vi.fn()
     }
 }));
+
+function createLease(url: string): AssetUrlLease {
+    return {
+        url,
+        release: vi.fn().mockResolvedValue(undefined)
+    };
+}
 
 describe('hydrateAssets', () => {
     beforeEach(() => {
@@ -90,7 +96,8 @@ describe('hydrateAssets', () => {
     });
 
     it('lazy loads asset urls and revokes them on destroy', async () => {
-        vi.mocked(AssetService.read).mockResolvedValue('blob:asset-1');
+        const lease = createLease('blob:asset-1');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
         node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
@@ -99,24 +106,24 @@ describe('hydrateAssets', () => {
         const action = hydrateAssets(node);
         const img = node.querySelector('img') as HTMLImageElement;
 
-        expect(AssetService.read).not.toHaveBeenCalled();
+        expect(AssetService.acquireUrl).not.toHaveBeenCalled();
         expect(observers).toHaveLength(1);
 
         observers[0].trigger(img);
-        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith(testLocator));
+        await vi.waitFor(() => expect(AssetService.acquireUrl).toHaveBeenCalledWith(testLocator));
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
 
         expect(img.src).toContain('blob:asset-1');
 
         action?.destroy?.();
 
-        expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-1');
+        expect(lease.release).toHaveBeenCalledOnce();
     });
 
     it('hydrates native audio and video elements', async () => {
-        vi.mocked(AssetService.read)
-            .mockResolvedValueOnce('blob:audio-1')
-            .mockResolvedValueOnce('blob:video-1');
+        vi.mocked(AssetService.acquireUrl)
+            .mockResolvedValueOnce(createLease('blob:audio-1'))
+            .mockResolvedValueOnce(createLease('blob:video-1'));
 
         const node = document.createElement('div');
         node.innerHTML = [
@@ -139,7 +146,8 @@ describe('hydrateAssets', () => {
     });
 
     it('revokes cached URLs when their images leave the hydrated DOM', async () => {
-        vi.mocked(AssetService.read).mockResolvedValue('blob:removed-asset');
+        const lease = createLease('blob:removed-asset');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
         node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
@@ -154,11 +162,12 @@ describe('hydrateAssets', () => {
         img.remove();
         action?.update?.(undefined);
 
-        expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:removed-asset');
+        expect(lease.release).toHaveBeenCalledOnce();
     });
 
     it('reuses cached URL on error retry and cleans up after MAX_RETRIES', async () => {
-        vi.mocked(AssetService.read).mockResolvedValue('blob:asset-2');
+        const lease = createLease('blob:asset-2');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
         node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator2)}' alt="" />`;
@@ -168,10 +177,10 @@ describe('hydrateAssets', () => {
         const img = node.querySelector('img') as HTMLImageElement;
 
         observers[0].trigger(img);
-        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith(testLocator2));
+        await vi.waitFor(() => expect(AssetService.acquireUrl).toHaveBeenCalledWith(testLocator2));
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
 
-        const originalLoadCount = vi.mocked(AssetService.read).mock.calls.length;
+        const originalLoadCount = vi.mocked(AssetService.acquireUrl).mock.calls.length;
 
         // Error retries reuse cached URL — no additional read() calls
         img.dispatchEvent(new Event('error'));
@@ -184,9 +193,9 @@ describe('hydrateAssets', () => {
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('error'));
 
         // read() was called only once (initial load, no retries via read)
-        expect(vi.mocked(AssetService.read).mock.calls.length).toBe(originalLoadCount);
+        expect(vi.mocked(AssetService.acquireUrl).mock.calls.length).toBe(originalLoadCount);
 
         // Evicted URL is revoked
-        expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-2');
+        expect(lease.release).toHaveBeenCalledOnce();
     });
 });

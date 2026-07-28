@@ -1,6 +1,6 @@
 <script lang="ts">
     import { assetRegistryId } from '$lib/adapters/asset';
-    import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+    import { AssetService, type AssetReadLocator, type AssetUrlLease } from '$lib/services/asset';
     import { AudioLines, FileQuestion, Film, Loader2 } from 'lucide-svelte';
     import { cn } from '$lib/utils';
     import type { Action } from 'svelte/action';
@@ -30,7 +30,7 @@
     let error = $state(false);
     let visible = $state(false);
     let retryCount = 0;
-    let ownedUrl: string | null = null;
+    let ownedLease: AssetUrlLease | null = null;
     let requestedAssetKey: string | null = null;
     let requestGeneration = 0;
     let destroyed = false;
@@ -63,25 +63,25 @@
         loading = true;
         error = false;
 
-        AssetService.read(locator)
-            .then((res) => {
+        AssetService.acquireUrl(locator)
+            .then((lease) => {
                 if (destroyed || generation !== requestGeneration || currentAssetKey() !== key) {
-                    if (res) void AssetService.revokeUrl(res);
+                    if (lease) void lease.release();
                     return;
                 }
-                if (res) {
-                    setUrl(res);
+                if (lease) {
+                    setLease(lease);
                     error = false;
                     retryCount = 0;
                 } else {
-                    setUrl(null);
+                    setLease(null);
                     error = true;
                 }
             })
             .catch(() => {
                 if (destroyed || generation !== requestGeneration || currentAssetKey() !== key)
                     return;
-                setUrl(null);
+                setLease(null);
                 error = true;
             })
             .finally(() => {
@@ -119,7 +119,7 @@
 
     // Recovery: img onerror fires when a revoked URL breaks
     function handleMediaError() {
-        setUrl(null);
+        setLease(null);
         if (!asset || retryCount >= MAX_RETRIES) {
             error = true;
             return;
@@ -132,17 +132,17 @@
         return asset ? assetRegistryId(asset) : null;
     }
 
-    function setUrl(nextUrl: string | null): void {
-        if (ownedUrl && ownedUrl !== nextUrl) {
-            void AssetService.revokeUrl(ownedUrl);
+    function setLease(nextLease: AssetUrlLease | null): void {
+        if (ownedLease && ownedLease !== nextLease) {
+            void ownedLease.release();
         }
-        ownedUrl = nextUrl;
-        url = nextUrl;
+        ownedLease = nextLease;
+        url = nextLease?.url ?? null;
     }
 
     function resetAssetState(): void {
         requestGeneration += 1;
-        setUrl(null);
+        setLease(null);
         loading = false;
         error = false;
         retryCount = 0;
@@ -151,7 +151,7 @@
     onDestroy(() => {
         destroyed = true;
         requestGeneration += 1;
-        setUrl(null);
+        setLease(null);
     });
 </script>
 
