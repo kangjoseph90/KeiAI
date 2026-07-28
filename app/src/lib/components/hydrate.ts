@@ -1,5 +1,5 @@
 import type { Action } from 'svelte/action';
-import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+import { AssetService, type AssetReadLocator, type AssetUrlLease } from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
 
 const ASSET_SELECTOR = 'img[data-keiai-asset],audio[data-keiai-asset],video[data-keiai-asset]';
@@ -16,11 +16,11 @@ function parseAssetLocator(raw: string | undefined): AssetReadLocator | null {
 }
 
 export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => {
-    const loaded = new WeakMap<AssetElement, { key: string; url: string }>();
-    const urlCache = new Map<string, string>();
+    const loaded = new WeakMap<AssetElement, { key: string; lease: AssetUrlLease }>();
+    const leaseCache = new Map<string, AssetUrlLease>();
     const loading = new Set<AssetElement>();
     const retryCounts = new WeakMap<AssetElement, number>();
-    const ownedUrls = new Set<string>();
+    const ownedLeases = new Set<AssetUrlLease>();
     const boundRecovery = new WeakSet<AssetElement>();
     const observed = new Set<AssetElement>();
     let destroyed = false;
@@ -49,27 +49,27 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         const cached = loaded.get(element);
         if (cached && cached.key !== key) {
             loaded.delete(element);
-            if (!urlCache.has(cached.key)) {
-                releaseUrl(cached.url);
+            if (!leaseCache.has(cached.key)) {
+                releaseLease(cached.lease);
             }
             element.removeAttribute('src');
         }
 
         if (cached?.key === key) {
-            if (element.getAttribute('src') !== cached.url) {
-                element.src = cached.url;
+            if (element.getAttribute('src') !== cached.lease.url) {
+                element.src = cached.lease.url;
             }
             stopObserving(element);
             return;
         }
 
-        const cachedUrl = urlCache.get(key);
-        if (cachedUrl) {
+        const cachedLease = leaseCache.get(key);
+        if (cachedLease) {
             bindRecovery(element);
-            element.src = cachedUrl;
+            element.src = cachedLease.url;
             element.dataset.keiaiAssetState = 'loaded';
-            loaded.set(element, { key, url: cachedUrl });
-            ownedUrls.add(cachedUrl);
+            loaded.set(element, { key, lease: cachedLease });
+            ownedLeases.add(cachedLease);
             stopObserving(element);
             return;
         }
@@ -78,23 +78,23 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         element.dataset.keiaiAssetState = 'loading';
 
         try {
-            const url = await AssetService.read(locator);
+            const lease = await AssetService.acquireUrl(locator);
             if (destroyed || !element.isConnected || element.dataset.keiaiAsset !== asset) {
-                if (url) void AssetService.revokeUrl(url);
+                if (lease) void lease.release();
                 return;
             }
 
-            if (!url) {
+            if (!lease) {
                 element.dataset.keiaiAssetState = 'error';
                 return;
             }
 
             bindRecovery(element);
-            element.src = url;
+            element.src = lease.url;
             element.dataset.keiaiAssetState = 'loaded';
-            ownedUrls.add(url);
-            loaded.set(element, { key, url });
-            urlCache.set(key, url);
+            ownedLeases.add(lease);
+            loaded.set(element, { key, lease });
+            leaseCache.set(key, lease);
             stopObserving(element);
         } catch {
             if (!destroyed && element.isConnected && element.dataset.keiaiAsset === asset) {
@@ -121,8 +121,8 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
                 const stale = loaded.get(element);
                 loaded.delete(element);
                 if (stale) {
-                    urlCache.delete(stale.key);
-                    releaseUrl(stale.url);
+                    leaseCache.delete(stale.key);
+                    releaseLease(stale.lease);
                 }
                 element.removeAttribute('src');
                 element.dataset.keiaiAssetState = 'error';
@@ -153,8 +153,8 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
 
             const cached = loaded.get(element);
             if (cached?.key === key) {
-                if (element.getAttribute('src') !== cached.url) {
-                    element.src = cached.url;
+                if (element.getAttribute('src') !== cached.lease.url) {
+                    element.src = cached.lease.url;
                 }
                 return;
             }
@@ -167,10 +167,10 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             if (!activeElements.has(element)) stopObserving(element);
         }
 
-        for (const [key, url] of urlCache) {
+        for (const [key, lease] of leaseCache) {
             if (activeKeys.has(key)) continue;
-            urlCache.delete(key);
-            releaseUrl(url);
+            leaseCache.delete(key);
+            releaseLease(lease);
         }
     }
 
@@ -184,17 +184,17 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             destroyed = true;
             observer.disconnect();
             observed.clear();
-            for (const url of ownedUrls) {
-                void AssetService.revokeUrl(url);
+            for (const lease of ownedLeases) {
+                void lease.release();
             }
-            ownedUrls.clear();
-            urlCache.clear();
+            ownedLeases.clear();
+            leaseCache.clear();
         }
     };
 
-    function releaseUrl(url: string): void {
-        if (!ownedUrls.delete(url)) return;
-        void AssetService.revokeUrl(url);
+    function releaseLease(lease: AssetUrlLease): void {
+        if (!ownedLeases.delete(lease)) return;
+        void lease.release();
     }
 
     function stopObserving(element: AssetElement): void {

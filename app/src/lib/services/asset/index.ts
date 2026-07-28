@@ -39,6 +39,18 @@ export type { AssetLocator, AssetOwner, AssetReadLocator, AssetRegistryRecord } 
 
 const SUPPORTED_MEDIA_TYPES: readonly AssetMediaType[] = ['image', 'audio', 'video'];
 
+export interface AssetUrlLease {
+    readonly url: string;
+    release(): Promise<void>;
+}
+
+interface AssetUrlCacheEntry {
+    locator: AssetReadLocator;
+    refs: number;
+    url?: string;
+    promise?: Promise<void>;
+}
+
 async function updateOwnerEntryStatus(locator: AssetLocator, status: AssetStatus): Promise<void> {
     const record = await localDB.getRecord<DataRecord>(locator.ownerTable, locator.ownerId);
     if (!record || record.isDeleted || !canAccessScope(record)) return;
@@ -64,24 +76,14 @@ export class AssetService {
     private static evictionTimer: ReturnType<typeof setTimeout> | null = null;
     private static readonly EVICTION_DEBOUNCE_MS = 5_000;
 
-    private static readonly urlCache = new Map<
-        string,
-        {
-            locator: AssetLocator;
-            url?: string;
-            refs: number;
-            promise?: Promise<string | null>;
-        }
-    >();
-    private static readonly assetKeyByUrl = new Map<string, string>();
+    private static readonly urlCache = new Map<string, AssetUrlCacheEntry>();
 
     private static async evictUrlCacheForKey(key: string): Promise<void> {
         const entry = AssetService.urlCache.get(key);
+        AssetService.urlCache.delete(key);
         if (entry?.url) {
             await appAsset.revokeRenderUrl(entry.url);
-            AssetService.assetKeyByUrl.delete(entry.url);
         }
-        AssetService.urlCache.delete(key);
     }
 
     private static async evictUrlCacheWhere(
@@ -168,54 +170,74 @@ export class AssetService {
         return promise;
     }
 
-    static async read(locator: AssetReadLocator): Promise<string | null> {
+    static async acquireUrl(locator: AssetReadLocator): Promise<AssetUrlLease | null> {
         const key = assetRegistryId(locator);
         let entry = AssetService.urlCache.get(key);
 
-        if (entry) {
-            if (entry.url) {
-                entry.refs++;
-                return entry.url;
-            }
-            if (entry.promise) {
-                const url = await entry.promise;
-                if (AssetService.urlCache.get(key) !== entry) {
-                    if (url) await appAsset.revokeRenderUrl(url);
-                    return null;
-                }
-                if (url) entry.refs++;
-                return url;
-            }
+        if (!entry) {
+            entry = {
+                locator,
+                refs: 0
+            };
+            AssetService.urlCache.set(key, entry);
+            entry.promise = AssetService.initializeUrlEntry(key, entry);
         }
 
-        const promise = (async () => {
-            const success = await AssetService.load(locator);
-            if (!success) return null;
-            return appAsset.getRenderUrl(locator);
-        })();
+        if (entry.promise) {
+            await entry.promise;
+        }
+        if (AssetService.urlCache.get(key) !== entry || !entry.url) {
+            return null;
+        }
 
-        entry = { locator, refs: 0, promise };
-        AssetService.urlCache.set(key, entry);
+        return AssetService.createUrlLease(key, entry);
+    }
 
+    private static async initializeUrlEntry(key: string, entry: AssetUrlCacheEntry): Promise<void> {
         try {
-            const url = await promise;
+            const success = await AssetService.load(entry.locator);
+            const url = success ? await appAsset.getRenderUrl(entry.locator) : null;
             if (AssetService.urlCache.get(key) !== entry) {
                 if (url) await appAsset.revokeRenderUrl(url);
-                return null;
+                return;
             }
             if (url) {
                 entry.url = url;
-                entry.refs++;
-                AssetService.assetKeyByUrl.set(url, key);
             } else {
                 AssetService.urlCache.delete(key);
             }
-            entry.promise = undefined;
-            return url;
         } catch (error) {
-            AssetService.urlCache.delete(key);
+            if (AssetService.urlCache.get(key) === entry) {
+                AssetService.urlCache.delete(key);
+            }
             throw error;
+        } finally {
+            entry.promise = undefined;
         }
+    }
+
+    private static createUrlLease(key: string, entry: AssetUrlCacheEntry): AssetUrlLease {
+        const url = entry.url;
+        if (!url) {
+            throw new AppError('ASSET_ERROR', 'Cannot lease an unavailable asset URL.');
+        }
+
+        entry.refs++;
+        let released = false;
+
+        return {
+            url,
+            release: async () => {
+                if (released) return;
+                released = true;
+                entry.refs--;
+                if (entry.refs > 0) return;
+                if (AssetService.urlCache.get(key) !== entry) return;
+
+                AssetService.urlCache.delete(key);
+                await appAsset.revokeRenderUrl(url);
+            }
+        };
     }
 
     private static async loadImpl(locator: AssetReadLocator): Promise<boolean> {
@@ -297,30 +319,11 @@ export class AssetService {
         return appAsset.getAllRemoteAssets(scope);
     }
 
-    static async revokeUrl(url: string): Promise<void> {
-        const key = AssetService.assetKeyByUrl.get(url);
-        if (!key) {
-            await appAsset.revokeRenderUrl(url);
-            return;
-        }
-
-        const entry = AssetService.urlCache.get(key);
-        if (!entry) return;
-
-        entry.refs--;
-        if (entry.refs <= 0) {
-            AssetService.urlCache.delete(key);
-            AssetService.assetKeyByUrl.delete(url);
-            await appAsset.revokeRenderUrl(url);
-        }
-    }
-
     static clear(): void {
         for (const entry of AssetService.urlCache.values()) {
             if (entry.url) void appAsset.revokeRenderUrl(entry.url);
         }
         AssetService.urlCache.clear();
-        AssetService.assetKeyByUrl.clear();
         AssetService.pendingLoads.clear();
     }
 

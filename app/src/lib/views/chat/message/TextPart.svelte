@@ -18,7 +18,6 @@
     } from '$lib/utils/style';
     import { hydrateAssets } from '$lib/components/hydrate';
     import { SvelteMap } from 'svelte/reactivity';
-    import { AssetService } from '$lib/services/asset';
     import type { RuntimeContext } from '$lib/types/context';
     import { eventButtons, externalLinks } from '$lib/ui';
 
@@ -212,8 +211,8 @@
         destroyed = true;
         pendingRequest = null;
         clearRenderTimeout();
-        for (const url of rawAssetUrlCache.values()) {
-            if (url) void AssetService.revokeUrl(url);
+        for (const lease of rawAssetUrlCache.values()) {
+            if (lease) void lease.release();
         }
         rawAssetUrlCache.clear();
     });

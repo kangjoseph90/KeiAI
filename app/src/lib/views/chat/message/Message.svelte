@@ -23,7 +23,7 @@
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
-    import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+    import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
@@ -426,8 +426,8 @@
 
     onDestroy(() => {
         messageStyleVersion++;
-        for (const url of cssRawAssetUrlCache.values()) {
-            if (url) void AssetService.revokeUrl(url);
+        for (const lease of cssRawAssetUrlCache.values()) {
+            if (lease) void lease.release();
         }
         cssRawAssetUrlCache.clear();
     });

@@ -265,7 +265,7 @@ describe('AssetService', () => {
         expect(appAsset.deleteAsset).toHaveBeenCalledWith(locator);
     });
 
-    it('returns cached render URL and refreshes registry index when local bytes exist', async () => {
+    it('shares one render URL across independent leases', async () => {
         const locator: AssetReadLocator = {
             scopeType: 'user',
             scopeId: mockUserId,
@@ -274,12 +274,25 @@ describe('AssetService', () => {
             hash: 'hash-123',
             encKey: 'enc-key'
         };
-        vi.mocked(appAsset.getRenderUrl).mockResolvedValue('blob:asset-123');
+        vi.mocked(appAsset.getRenderUrl)
+            .mockResolvedValueOnce('blob:probe')
+            .mockResolvedValueOnce('blob:asset-123');
 
-        const url = await AssetService.read(locator);
+        const first = await AssetService.acquireUrl(locator);
+        const second = await AssetService.acquireUrl(locator);
 
-        expect(url).toBe('blob:asset-123');
-        expect(appAsset.getRenderUrl).toHaveBeenCalledWith(locator);
+        expect(first?.url).toBe('blob:asset-123');
+        expect(second?.url).toBe('blob:asset-123');
+        expect(first).not.toBe(second);
+
+        await first?.release();
+        expect(appAsset.revokeRenderUrl).not.toHaveBeenCalledWith('blob:asset-123');
+
+        await first?.release();
+        expect(appAsset.revokeRenderUrl).not.toHaveBeenCalledWith('blob:asset-123');
+
+        await second?.release();
+        expect(appAsset.revokeRenderUrl).toHaveBeenCalledWith('blob:asset-123');
     });
 
     it('revokes cached render URLs when service state is cleared', async () => {
@@ -291,9 +304,11 @@ describe('AssetService', () => {
             hash: 'hash-123',
             encKey: 'enc-key'
         };
-        vi.mocked(appAsset.getRenderUrl).mockResolvedValue('blob:asset-123');
+        vi.mocked(appAsset.getRenderUrl)
+            .mockResolvedValueOnce('blob:probe')
+            .mockResolvedValueOnce('blob:asset-123');
 
-        await AssetService.read(locator);
+        await AssetService.acquireUrl(locator);
         AssetService.clear();
 
         expect(appAsset.revokeRenderUrl).toHaveBeenCalledWith('blob:asset-123');
@@ -312,9 +327,9 @@ describe('AssetService', () => {
             .mockResolvedValueOnce(null)
             .mockResolvedValueOnce('blob:asset-123');
 
-        const url = await AssetService.read(locator);
+        const lease = await AssetService.acquireUrl(locator);
 
-        expect(url).toBe('blob:asset-123');
+        expect(lease?.url).toBe('blob:asset-123');
         expect(fetchAssetCiphertext).toHaveBeenCalledWith('hash-123');
         expect(sha256).toHaveBeenCalledWith(mockCiphertext);
         expect(decryptConvergentAsset).toHaveBeenCalledWith(mockCiphertext, 'enc-key');
@@ -328,5 +343,32 @@ describe('AssetService', () => {
                 bytes: mockBytes
             })
         );
+    });
+
+    it('does not publish a render URL completed after service state is cleared', async () => {
+        const locator: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: mockUserId,
+            ownerTable: 'characters',
+            ownerId: 'char-123',
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        };
+        let resolveRenderUrl: (url: string | null) => void = () => undefined;
+        const renderUrl = new Promise<string | null>((resolve) => {
+            resolveRenderUrl = resolve;
+        });
+        vi.mocked(appAsset.getRenderUrl)
+            .mockResolvedValueOnce(null)
+            .mockImplementationOnce(() => renderUrl);
+
+        const pendingLease = AssetService.acquireUrl(locator);
+        await vi.waitFor(() => expect(appAsset.getRenderUrl).toHaveBeenCalledTimes(2));
+
+        AssetService.clear();
+        resolveRenderUrl('blob:late');
+
+        await expect(pendingLease).resolves.toBeNull();
+        expect(appAsset.revokeRenderUrl).toHaveBeenCalledWith('blob:late');
     });
 });
