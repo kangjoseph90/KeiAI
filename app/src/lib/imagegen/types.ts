@@ -6,6 +6,8 @@
  */
 
 export interface ImageGenImage {
+    /** Generated image bytes */
+    data?: Uint8Array<ArrayBuffer>;
     /** Base64-encoded image data (PNG/JPEG) */
     base64?: string;
     /** URL to the generated image */

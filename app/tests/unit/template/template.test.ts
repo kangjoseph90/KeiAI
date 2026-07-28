@@ -95,6 +95,9 @@ function createPluginInstance(): PluginInstance {
         eventListeners: new Map(),
         macroHandlers: new Map([['char', { fnId: 'plugin-char' }]]),
         llmProviders: new Map(),
+        imageGenProviders: new Map(),
+        ttsProviders: new Map(),
+        sttProviders: new Map(),
         llmTypes: new Map(),
         unloadHandlers: []
     };

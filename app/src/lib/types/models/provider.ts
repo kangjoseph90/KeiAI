@@ -215,3 +215,15 @@ export interface CustomProviderConfig {
         apiKey?: string;
     };
 }
+
+export interface PluginProviderConfig {
+    imagegen: {
+        modelId: string;
+    };
+    tts: {
+        modelId: string;
+    };
+    stt: {
+        modelId: string;
+    };
+}

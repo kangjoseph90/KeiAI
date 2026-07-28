@@ -24,7 +24,8 @@ import type {
     CohereProviderConfig,
     JinaProviderConfig,
     ComfyUIProviderConfig,
-    MockProviderConfig
+    MockProviderConfig,
+    PluginProviderConfig
 } from '$lib/types/models/provider';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import type { TTSProvider } from '$lib/types/models/tts';
@@ -73,6 +74,7 @@ export interface AppSettingsContent {
     cohere: CohereProviderConfig;
     jina: JinaProviderConfig;
     custom: CustomProviderConfig;
+    plugin: PluginProviderConfig;
     embeddingProvider: EmbeddingProvider;
     ttsProvider: TTSProvider;
     imagegenProvider: ImageGenProvider;
@@ -265,6 +267,17 @@ export const defaultSettings: AppSettings = {
             modelId: '',
             baseUrl: '',
             apiKey: ''
+        }
+    },
+    plugin: {
+        imagegen: {
+            modelId: ''
+        },
+        tts: {
+            modelId: ''
+        },
+        stt: {
+            modelId: ''
         }
     },
     embeddingProvider: 'openai',

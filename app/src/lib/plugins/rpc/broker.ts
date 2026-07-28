@@ -73,8 +73,18 @@ export class RPCBroker {
     // ─── Invocation (Calling the other side) ─────────────────────────────
 
     /** Invokes a remote function and waits for a single return value. */
-    async invoke<T = unknown>(functionId: string, args: unknown[]): Promise<T> {
+    async invoke<T = unknown>(
+        functionId: string,
+        args: unknown[],
+        signal?: AbortSignal
+    ): Promise<T> {
+        signal?.throwIfAborted();
         const channel = this.transport.open();
+
+        const onAbort = () => channel.abort(signal?.reason);
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
 
         try {
             channel.send({ type: 'rpc_invoke', functionId, args });
@@ -98,6 +108,7 @@ export class RPCBroker {
 
             throw new Error(`Expected rpc_return but got ${result.type}`);
         } finally {
+            signal?.removeEventListener('abort', onAbort);
             channel.close();
         }
     }

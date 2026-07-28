@@ -5,7 +5,21 @@
  * in provider config (no model registry needed for built-ins).
  */
 
-export type ImageGenProvider = 'openai' | 'stability' | 'google' | 'novelai' | 'comfyui' | 'mock';
+export type BuiltInImageGenProvider =
+    | 'openai'
+    | 'stability'
+    | 'google'
+    | 'novelai'
+    | 'comfyui'
+    | 'mock';
+export type ImageGenProvider = BuiltInImageGenProvider | 'plugin';
+
+export interface PluginImageGenModel {
+    id: string;
+    name: string;
+    modelId: string;
+    provider: 'plugin';
+}
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
@@ -15,9 +29,10 @@ const providerNames: Record<ImageGenProvider, string> = {
     google: 'Google',
     novelai: 'NovelAI',
     comfyui: 'ComfyUI',
-    mock: 'Mock'
+    mock: 'Mock',
+    plugin: 'Plugin'
 };
 
 export function getImageGenProviderName(provider: ImageGenProvider): string {
-    return providerNames[provider] || provider;
+    return providerNames[provider];
 }
