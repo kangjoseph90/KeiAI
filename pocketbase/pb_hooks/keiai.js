@@ -991,6 +991,94 @@ function newR2Filesystem() {
   );
 }
 
+function parseR2AssetObject(object) {
+  if (!object || object.isDir) return null;
+
+  var match = /^assets\/([0-9a-f]{64})\.bin$/i.exec(
+    String(object.key || ""),
+  );
+  var size = Number(object.size || 0);
+  if (
+    !match ||
+    !Number.isFinite(size) ||
+    size <= 0 ||
+    size > 10 * 1024 * 1024
+  ) {
+    return null;
+  }
+
+  return {
+    hash: match[1].toLowerCase(),
+    size: size,
+  };
+}
+
+function recoverR2AssetCatalog() {
+  if (!getR2Config()) {
+    return {
+      configured: false,
+      scanned: 0,
+      recovered: 0,
+      existing: 0,
+      skipped: 0,
+      failed: 0,
+    };
+  }
+
+  var fsys = newR2Filesystem();
+  if (!fsys) {
+    throw new Error("Failed to initialize R2 filesystem.");
+  }
+
+  var result = {
+    configured: true,
+    scanned: 0,
+    recovered: 0,
+    existing: 0,
+    skipped: 0,
+    failed: 0,
+  };
+
+  try {
+    var objects = fsys.list("assets/");
+    result.scanned = objects.length;
+
+    for (var i = 0; i < objects.length; i++) {
+      var asset = parseR2AssetObject(objects[i]);
+      if (!asset) {
+        result.skipped++;
+        continue;
+      }
+      if (findAssetCatalogWith($app, asset.hash)) {
+        result.existing++;
+        continue;
+      }
+
+      try {
+        var collection = $app.findCollectionByNameOrId("asset_catalog");
+        var record = new Record(collection);
+        record.set("hash", asset.hash);
+        record.set("size", asset.size);
+        record.set("createdAt", Date.now());
+        $app.save(record);
+        reconcilePendingAssetUsage(asset.hash);
+        result.recovered++;
+      } catch (err) {
+        // A concurrent writer may have restored the same hash after our lookup.
+        if (findAssetCatalogWith($app, asset.hash)) {
+          result.existing++;
+        } else {
+          result.failed++;
+        }
+      }
+    }
+  } finally {
+    fsys.close();
+  }
+
+  return result;
+}
+
 function getLegacyAssetFileKey(record) {
   if (!record) return "";
   var filename = record.getString("data");
@@ -1267,6 +1355,7 @@ module.exports = {
   normalizeUsername: normalizeUsername,
   rejectDisallowedAuth: rejectDisallowedAuth,
   rejectDisallowedUsername: rejectDisallowedUsername,
+  recoverR2AssetCatalog: recoverR2AssetCatalog,
   reconcilePendingAssetUsage: reconcilePendingAssetUsage,
   searchPublicMultiRooms: searchPublicMultiRooms,
   serveAsset: serveAsset,
