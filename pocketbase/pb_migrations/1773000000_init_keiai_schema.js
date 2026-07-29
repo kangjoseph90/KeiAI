@@ -339,6 +339,9 @@ migrate(
       }),
     );
     catalog.fields.add(
+      new Field({ name: "recoveryProtected", type: "bool" }),
+    );
+    catalog.fields.add(
       new Field({ name: "createdAt", type: "number", required: true }),
     );
 
