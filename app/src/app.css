@@ -193,15 +193,15 @@
     max-width: 100%;
 }
 
-.app-dialog-content.app-dialog-fullscreen {
+.app-dialog-content.workflow-editor-dialog {
     inset: 0;
+    margin: 0;
+    translate: none;
     width: 100%;
     max-width: none;
     height: 100vh;
     height: 100dvh;
     max-height: none;
-    translate: none;
-    transform: none;
     border-radius: 0;
     padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom)
         var(--safe-area-left);
@@ -216,22 +216,19 @@
 }
 
 @media (min-width: 768px) {
-    .app-dialog-content.app-dialog-fullscreen {
-        inset: auto;
-        top: 50%;
-        left: 50%;
+    .app-dialog-content.workflow-editor-dialog {
+        inset: 0;
+        margin: auto;
         width: var(--overlay-available-width);
         height: 90vh;
         height: 90dvh;
-        translate: -50% -50%;
-        transform: none;
         border-radius: var(--radius);
         padding: 1.5rem;
     }
 }
 
 @media (min-width: 1024px) {
-    .app-dialog-content.app-dialog-fullscreen {
+    .app-dialog-content.workflow-editor-dialog {
         width: min(92vw, var(--overlay-available-width));
     }
 }
