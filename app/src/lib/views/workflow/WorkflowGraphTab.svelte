@@ -334,21 +334,21 @@
 
     {#if selectedNode}
         <div
-            class="absolute right-3 top-14 z-10 flex items-center gap-2 rounded-lg border bg-background/95 px-2 py-1 shadow-sm backdrop-blur md:top-3"
+            class="absolute right-3 top-14 z-10 flex h-9 max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full border bg-background/95 px-4 text-xs font-medium shadow-sm backdrop-blur md:top-3"
         >
-            <span class="max-w-40 truncate text-xs font-medium">{selectedNode.name}</span>
+            <span class="min-w-0 max-w-40 truncate">{selectedNode.name}</span>
             {#if selectedNode.class === 'Output'}
                 <span class="text-[10px] text-muted-foreground">Required</span>
             {:else}
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    class="size-7 text-muted-foreground hover:text-destructive"
+                <button
+                    type="button"
+                    class="-mr-2 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
                     title="Delete selected node"
+                    aria-label="Delete selected node"
                     onclick={deleteSelectedNode}
                 >
                     <Trash2 class="size-3.5" />
-                </Button>
+                </button>
             {/if}
         </div>
     {/if}
@@ -413,9 +413,9 @@
     <div class="absolute inset-x-0 bottom-0 z-20 md:hidden">
         {#if mobileNodePanelOpen}
             <div
-                class="flex max-h-[60vh] flex-col gap-1 overflow-y-auto rounded-t-xl border-x border-t bg-background/95 p-2 shadow-lg backdrop-blur"
+                class="flex max-h-[60vh] flex-col overflow-hidden rounded-t-xl border-x border-t bg-background/95 shadow-lg backdrop-blur"
             >
-                <div class="flex items-center justify-between px-1 pb-1">
+                <div class="flex shrink-0 items-center justify-between px-3 py-2">
                     <span class="text-xs font-semibold text-muted-foreground">Add node</span>
                     <button
                         type="button"
@@ -426,7 +426,9 @@
                         <ChevronDown class="size-4" />
                     </button>
                 </div>
-                {@render nodeAddList()}
+                <div class="min-h-0 overflow-y-auto px-2 pb-2">
+                    {@render nodeAddList()}
+                </div>
             </div>
         {:else}
             <button
