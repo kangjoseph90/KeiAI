@@ -17,6 +17,36 @@ if (!DUMMY_SALT_SECRET) {
 var PAIRING_TTL_SECONDS = 300;
 var PAIRING_BLOB_MAX_CHARS = 65536;
 
+// Restore catalog rows for durable R2 objects after migrations have completed.
+
+$app.onServe().bind((e) => {
+  try {
+    var result = require(`${__hooks}/keiai.js`).recoverR2AssetCatalog();
+    if (result.configured) {
+      $app.logger().info(
+        "R2 asset catalog recovery completed.",
+        "scanned",
+        result.scanned,
+        "recovered",
+        result.recovered,
+        "existing",
+        result.existing,
+        "skipped",
+        result.skipped,
+        "failed",
+        result.failed,
+      );
+    }
+  } catch (err) {
+    $app.logger().error(
+      "R2 asset catalog recovery failed.",
+      "error",
+      err,
+    );
+  }
+  e.next();
+});
+
 // Username whitelist
 
 onRecordCreateRequest((e) => {
