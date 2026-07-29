@@ -19,7 +19,7 @@ var PAIRING_BLOB_MAX_CHARS = 65536;
 
 // Restore catalog rows for durable R2 objects after migrations have completed.
 
-$app.onServe().bind((e) => {
+$app.onServe().bindFunc((e) => {
   try {
     var result = require(`${__hooks}/keiai.js`).recoverR2AssetCatalog();
     if (result.configured) {
