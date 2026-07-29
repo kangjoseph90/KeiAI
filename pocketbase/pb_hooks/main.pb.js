@@ -741,6 +741,7 @@ cronAdd("asset-gc", "0 * * * *", () => {
       .newQuery(
         "SELECT c.id, c.hash FROM asset_catalog c WHERE NOT EXISTS " +
           "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
+          "AND c.recoveryProtected = false " +
           "AND c.createdAt < (unixepoch() - 3600) * 1000 LIMIT {:limit}",
       )
       .bind({ limit: pageSize })
