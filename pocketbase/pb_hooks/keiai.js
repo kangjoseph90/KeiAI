@@ -1059,6 +1059,7 @@ function recoverR2AssetCatalog() {
         var record = new Record(collection);
         record.set("hash", asset.hash);
         record.set("size", asset.size);
+        record.set("recoveryProtected", true);
         record.set("createdAt", Date.now());
         $app.save(record);
         reconcilePendingAssetUsage(asset.hash);
