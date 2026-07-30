@@ -5,7 +5,15 @@
  * in provider config (no model registry needed for built-ins).
  */
 
-export type RerankerProvider = 'cohere' | 'jina' | 'voyageai' | 'transformers';
+export type BuiltInRerankerProvider = 'cohere' | 'jina' | 'voyageai' | 'transformers';
+export type RerankerProvider = BuiltInRerankerProvider | 'plugin';
+
+export interface PluginRerankerModel {
+    id: string;
+    name: string;
+    modelId: string;
+    provider: 'plugin';
+}
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
@@ -13,7 +21,8 @@ const providerNames: Record<RerankerProvider, string> = {
     cohere: 'Cohere',
     jina: 'Jina AI',
     voyageai: 'VoyageAI',
-    transformers: 'Transformers'
+    transformers: 'Transformers',
+    plugin: 'Plugin'
 };
 
 export function getRerankerProviderName(provider: RerankerProvider): string {

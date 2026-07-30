@@ -13,6 +13,7 @@ vi.mock('$lib/stores/content/plugin', () => ({
 function createInstance(pluginId: string): PluginInstance {
     return {
         pluginId,
+        pluginName: `Plugin ${pluginId}`,
         iframe: { remove: vi.fn() } as unknown as HTMLIFrameElement,
         transport: { destroy: vi.fn() } as unknown as PluginInstance['transport'],
         broker: {
@@ -26,6 +27,8 @@ function createInstance(pluginId: string): PluginInstance {
         imageGenProviders: new Map(),
         ttsProviders: new Map(),
         sttProviders: new Map(),
+        embeddingProviders: new Map(),
+        rerankerProviders: new Map(),
         llmTypes: new Map(),
         unloadHandlers: []
     };

@@ -26,6 +26,7 @@ vi.mock('$lib/stores', () => ({
 function createInstance(): PluginInstance {
     return {
         pluginId: 'plugin-1',
+        pluginName: 'Example Plugin',
         iframe: { remove: vi.fn() } as unknown as HTMLIFrameElement,
         transport: { destroy: vi.fn() } as unknown as PluginInstance['transport'],
         broker: {
@@ -40,6 +41,8 @@ function createInstance(): PluginInstance {
         imageGenProviders: new Map(),
         ttsProviders: new Map(),
         sttProviders: new Map(),
+        embeddingProviders: new Map(),
+        rerankerProviders: new Map(),
         llmTypes: new Map(),
         unloadHandlers: []
     };
@@ -65,6 +68,9 @@ describe('plugin media APIs', () => {
     });
 
     it('registers and removes media providers', () => {
+        exposed.get('core.addLLMProvider')!('chat', 'llm-fn', {
+            name: 'Plugin Chat'
+        });
         exposed.get('core.addImageGenProvider')!('images', 'image-fn', {
             name: 'Plugin Images'
         });
@@ -72,28 +78,59 @@ describe('plugin media APIs', () => {
         exposed.get('core.addSTTProvider')!('transcription', 'stt-fn', {
             name: 'Plugin Transcription'
         });
+        exposed.get('core.addEmbeddingProvider')!('embeddings', 'embedding-fn', {
+            name: 'Plugin Embeddings'
+        });
+        exposed.get('core.addRerankerProvider')!('reranker', 'reranker-fn', {
+            name: 'Plugin Reranker'
+        });
 
-        expect(instance.imageGenProviders.get('images')).toEqual({
+        expect(instance.llmProviders.get('plugin::Example Plugin::chat')?.model.id).toBe(
+            'plugin::Example Plugin::chat'
+        );
+        expect(instance.imageGenProviders.get('plugin::Example Plugin::images')).toEqual({
             fnId: 'image-fn',
             model: {
-                id: 'plugin::images',
+                id: 'plugin::Example Plugin::images',
                 modelId: 'images',
                 name: 'Plugin Images',
                 provider: 'plugin'
             }
         });
-        expect(instance.ttsProviders.get('speech')?.model.id).toBe('plugin::speech');
-        expect(instance.sttProviders.get('transcription')?.model.id).toBe('plugin::transcription');
+        expect(instance.ttsProviders.get('plugin::Example Plugin::speech')?.model.id).toBe(
+            'plugin::Example Plugin::speech'
+        );
+        expect(instance.sttProviders.get('plugin::Example Plugin::transcription')?.model.id).toBe(
+            'plugin::Example Plugin::transcription'
+        );
+        expect(instance.embeddingProviders.get('plugin::Example Plugin::embeddings')).toEqual({
+            fnId: 'embedding-fn',
+            model: {
+                id: 'plugin::Example Plugin::embeddings',
+                modelId: 'embeddings',
+                name: 'Plugin Embeddings',
+                provider: 'plugin'
+            }
+        });
+        expect(instance.rerankerProviders.get('plugin::Example Plugin::reranker')?.model.id).toBe(
+            'plugin::Example Plugin::reranker'
+        );
 
         exposed.get('core.removeImageGenProvider')!('images', 'other-fn');
-        expect(instance.imageGenProviders.has('images')).toBe(true);
+        expect(instance.imageGenProviders.has('plugin::Example Plugin::images')).toBe(true);
 
         exposed.get('core.removeImageGenProvider')!('images', 'image-fn');
+        exposed.get('core.removeLLMProvider')!('chat', 'llm-fn');
         exposed.get('core.removeTTSProvider')!('speech', 'tts-fn');
         exposed.get('core.removeSTTProvider')!('transcription', 'stt-fn');
+        exposed.get('core.removeEmbeddingProvider')!('embeddings', 'embedding-fn');
+        exposed.get('core.removeRerankerProvider')!('reranker', 'reranker-fn');
         expect(instance.imageGenProviders.size).toBe(0);
+        expect(instance.llmProviders.size).toBe(0);
         expect(instance.ttsProviders.size).toBe(0);
         expect(instance.sttProviders.size).toBe(0);
+        expect(instance.embeddingProviders.size).toBe(0);
+        expect(instance.rerankerProviders.size).toBe(0);
     });
 
     it('passes raw media and cancellation to the configured handlers', async () => {

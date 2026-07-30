@@ -11,7 +11,9 @@ import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import { OpenAIEmbeddingHandler } from './handlers/openai';
 import { GoogleEmbeddingHandler } from './handlers/google';
 import { TransformersEmbeddingHandler } from './handlers/transformers';
+import { PluginEmbeddingHandler } from './handlers/plugin';
 import { createLogger } from '$lib/adapters/logger';
+import { pluginManager } from '$lib/plugins';
 
 const logger = createLogger('embedding:handler');
 
@@ -67,5 +69,19 @@ export function selectEmbeddingHandler(
                 modelId: settings.custom.embedding.modelId
             });
         }
+
+        case 'plugin': {
+            return selectPluginHandler(settings.plugin.embedding.modelId);
+        }
     }
+}
+
+function selectPluginHandler(modelId: string): EmbeddingHandlerType | null {
+    for (const instance of pluginManager.getInstances()) {
+        const definition = instance.embeddingProviders.get(modelId);
+        if (definition) {
+            return new PluginEmbeddingHandler(instance, definition.fnId);
+        }
+    }
+    return null;
 }

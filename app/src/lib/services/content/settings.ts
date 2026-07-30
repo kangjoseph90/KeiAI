@@ -278,6 +278,12 @@ export const defaultSettings: AppSettings = {
         },
         stt: {
             modelId: ''
+        },
+        embedding: {
+            modelId: ''
+        },
+        reranker: {
+            modelId: ''
         }
     },
     embeddingProvider: 'openai',

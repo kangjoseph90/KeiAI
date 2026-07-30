@@ -14,6 +14,8 @@ import type {
 import type { PluginImageGenModel } from '$lib/types/models/imagegen';
 import type { PluginTTSModel } from '$lib/types/models/tts';
 import type { PluginSTTModel } from '$lib/types/models/stt';
+import type { PluginEmbeddingModel } from '$lib/types/models/embedding';
+import type { PluginRerankerModel } from '$lib/types/models/reranker';
 import type { LLMMessage } from '$lib/llm/types';
 import { callLLM, streamLLM } from '$lib/managers/llm';
 import {
@@ -37,6 +39,7 @@ const DEFAULT_AUX_LLM_TYPE = 'aux';
 
 export interface PluginInstance {
     pluginId: string;
+    pluginName: string;
     iframe: HTMLIFrameElement;
     transport: HostTransport;
     broker: RPCBroker;
@@ -47,6 +50,8 @@ export interface PluginInstance {
     imageGenProviders: Map<string, { fnId: string; model: PluginImageGenModel }>;
     ttsProviders: Map<string, { fnId: string; model: PluginTTSModel }>;
     sttProviders: Map<string, { fnId: string; model: PluginSTTModel }>;
+    embeddingProviders: Map<string, { fnId: string; model: PluginEmbeddingModel }>;
+    rerankerProviders: Map<string, { fnId: string; model: PluginRerankerModel }>;
     llmTypes: Map<string, LLMTypeDefinition>;
     unloadHandlers: string[];
 }
@@ -135,6 +140,7 @@ export class PluginManager {
 
             const instance: PluginInstance = {
                 pluginId: plugin.id,
+                pluginName: plugin.name,
                 iframe,
                 transport,
                 broker,
@@ -145,6 +151,8 @@ export class PluginManager {
                 imageGenProviders: new Map(),
                 ttsProviders: new Map(),
                 sttProviders: new Map(),
+                embeddingProviders: new Map(),
+                rerankerProviders: new Map(),
                 llmTypes: new Map(),
                 unloadHandlers: []
             };
@@ -196,6 +204,7 @@ export class PluginManager {
         const {
             broker,
             pluginId,
+            pluginName,
             pipelineHandlers,
             eventListeners,
             macroHandlers,
@@ -205,7 +214,7 @@ export class PluginManager {
         broker.expose('core.log', (...args: unknown[]) => {
             const logArgs =
                 args.at(-1) instanceof AbortSignal ? args.slice(0, args.length - 1) : args;
-            createLogger(`plugin:${pluginId}`).info(...logArgs);
+            createLogger(`plugin:${pluginName}`).info(...logArgs);
         });
 
         broker.expose('core.getArg', async (key: unknown) => {
@@ -307,7 +316,7 @@ export class PluginManager {
                 : undefined;
 
             const model: PluginLLMModel = {
-                id: `plugin::${mId}`,
+                id: buildPluginModelId(pluginName, mId),
                 name: options.name || mId,
                 modelId: mId,
                 provider: 'plugin',
@@ -315,14 +324,15 @@ export class PluginManager {
                 unsupported
             };
 
-            instance.llmProviders.set(mId, { fnId: fId, model });
+            instance.llmProviders.set(model.id, { fnId: fId, model });
         });
 
         broker.expose('core.removeLLMProvider', (modelId: unknown, fnId: unknown) => {
             const mId = String(modelId);
-            const current = instance.llmProviders.get(mId);
+            const key = buildPluginModelId(pluginName, mId);
+            const current = instance.llmProviders.get(key);
             if (current && current.fnId === String(fnId)) {
-                instance.llmProviders.delete(mId);
+                instance.llmProviders.delete(key);
             }
         });
 
@@ -331,64 +341,122 @@ export class PluginManager {
             (modelId: unknown, fnId: unknown, opts: unknown) => {
                 const id = String(modelId);
                 const options = (opts || {}) as { name?: string };
-                instance.imageGenProviders.set(id, {
+                const model: PluginImageGenModel = {
+                    id: buildPluginModelId(pluginName, id),
+                    modelId: id,
+                    name: options.name || id,
+                    provider: 'plugin'
+                };
+                instance.imageGenProviders.set(model.id, {
                     fnId: String(fnId),
-                    model: {
-                        id: `plugin::${id}`,
-                        modelId: id,
-                        name: options.name || id,
-                        provider: 'plugin'
-                    }
+                    model
                 });
             }
         );
 
         broker.expose('core.removeImageGenProvider', (modelId: unknown, fnId: unknown) => {
             const id = String(modelId);
-            if (instance.imageGenProviders.get(id)?.fnId === String(fnId)) {
-                instance.imageGenProviders.delete(id);
+            const key = buildPluginModelId(pluginName, id);
+            if (instance.imageGenProviders.get(key)?.fnId === String(fnId)) {
+                instance.imageGenProviders.delete(key);
             }
         });
 
         broker.expose('core.addTTSProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
             const id = String(modelId);
             const options = (opts || {}) as { name?: string };
-            instance.ttsProviders.set(id, {
+            const model: PluginTTSModel = {
+                id: buildPluginModelId(pluginName, id),
+                modelId: id,
+                name: options.name || id,
+                provider: 'plugin'
+            };
+            instance.ttsProviders.set(model.id, {
                 fnId: String(fnId),
-                model: {
-                    id: `plugin::${id}`,
-                    modelId: id,
-                    name: options.name || id,
-                    provider: 'plugin'
-                }
+                model
             });
         });
 
         broker.expose('core.removeTTSProvider', (modelId: unknown, fnId: unknown) => {
             const id = String(modelId);
-            if (instance.ttsProviders.get(id)?.fnId === String(fnId)) {
-                instance.ttsProviders.delete(id);
+            const key = buildPluginModelId(pluginName, id);
+            if (instance.ttsProviders.get(key)?.fnId === String(fnId)) {
+                instance.ttsProviders.delete(key);
             }
         });
 
         broker.expose('core.addSTTProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
             const id = String(modelId);
             const options = (opts || {}) as { name?: string };
-            instance.sttProviders.set(id, {
+            const model: PluginSTTModel = {
+                id: buildPluginModelId(pluginName, id),
+                modelId: id,
+                name: options.name || id,
+                provider: 'plugin'
+            };
+            instance.sttProviders.set(model.id, {
                 fnId: String(fnId),
-                model: {
-                    id: `plugin::${id}`,
-                    modelId: id,
-                    name: options.name || id,
-                    provider: 'plugin'
-                }
+                model
             });
         });
 
         broker.expose('core.removeSTTProvider', (modelId: unknown, fnId: unknown) => {
             const id = String(modelId);
-            if (instance.sttProviders.get(id)?.fnId === String(fnId)) {
-                instance.sttProviders.delete(id);
+            const key = buildPluginModelId(pluginName, id);
+            if (instance.sttProviders.get(key)?.fnId === String(fnId)) {
+                instance.sttProviders.delete(key);
+            }
+        });
+
+        broker.expose(
+            'core.addEmbeddingProvider',
+            (modelId: unknown, fnId: unknown, opts: unknown) => {
+                const id = String(modelId);
+                const options = (opts || {}) as { name?: string };
+                const model: PluginEmbeddingModel = {
+                    id: buildPluginModelId(pluginName, id),
+                    modelId: id,
+                    name: options.name || id,
+                    provider: 'plugin'
+                };
+                instance.embeddingProviders.set(model.id, {
+                    fnId: String(fnId),
+                    model
+                });
+            }
+        );
+
+        broker.expose('core.removeEmbeddingProvider', (modelId: unknown, fnId: unknown) => {
+            const id = String(modelId);
+            const key = buildPluginModelId(pluginName, id);
+            if (instance.embeddingProviders.get(key)?.fnId === String(fnId)) {
+                instance.embeddingProviders.delete(key);
+            }
+        });
+
+        broker.expose(
+            'core.addRerankerProvider',
+            (modelId: unknown, fnId: unknown, opts: unknown) => {
+                const id = String(modelId);
+                const options = (opts || {}) as { name?: string };
+                const model: PluginRerankerModel = {
+                    id: buildPluginModelId(pluginName, id),
+                    modelId: id,
+                    name: options.name || id,
+                    provider: 'plugin'
+                };
+                instance.rerankerProviders.set(model.id, {
+                    fnId: String(fnId),
+                    model
+                });
+            }
+        );
+
+        broker.expose('core.removeRerankerProvider', (modelId: unknown, fnId: unknown) => {
+            const id = String(modelId);
+            const key = buildPluginModelId(pluginName, id);
+            if (instance.rerankerProviders.get(key)?.fnId === String(fnId)) {
+                instance.rerankerProviders.delete(key);
             }
         });
 
@@ -556,6 +624,10 @@ export class PluginManager {
 }
 
 export const pluginManager = new PluginManager();
+
+function buildPluginModelId(pluginName: string, modelId: string): string {
+    return `plugin::${pluginName}::${modelId}`;
+}
 
 function readAbortSignal(value: unknown): AbortSignal {
     return value instanceof AbortSignal ? value : new AbortController().signal;

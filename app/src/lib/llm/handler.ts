@@ -61,7 +61,7 @@ export function selectLLMHandler(
 
 function selectPluginHandler(model: PluginLLMModel): LLMStreamHandler | null {
     for (const instance of pluginManager.getInstances()) {
-        const providerDef = instance.llmProviders.get(model.modelId);
+        const providerDef = instance.llmProviders.get(model.id);
         if (providerDef) {
             return new PluginLLMStreamHandler(
                 {
@@ -186,7 +186,7 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
         return pluginManager
             .getInstances()
             .flatMap((instance) => [...instance.llmProviders.values()].map((p) => p.model))
-            .find((m) => m.id === config.id);
+            .find((model) => model.id === config.id);
     }
 
     // Dynamic models

@@ -85,6 +85,7 @@ vi.mock('$lib/managers/toggle', () => ({
 function createPluginInstance(): PluginInstance {
     return {
         pluginId: 'plugin-1',
+        pluginName: 'Test Plugin',
         iframe: {} as HTMLIFrameElement,
         transport: {} as PluginInstance['transport'],
         broker: {
@@ -98,6 +99,8 @@ function createPluginInstance(): PluginInstance {
         imageGenProviders: new Map(),
         ttsProviders: new Map(),
         sttProviders: new Map(),
+        embeddingProviders: new Map(),
+        rerankerProviders: new Map(),
         llmTypes: new Map(),
         unloadHandlers: []
     };

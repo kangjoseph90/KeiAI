@@ -17,9 +17,9 @@ vi.mock('$lib/plugins', () => ({
 
 const settings = {
     plugin: {
-        imagegen: { modelId: 'images' },
-        tts: { modelId: 'speech' },
-        stt: { modelId: 'transcription' }
+        imagegen: { modelId: 'plugin::Media Plugin::images' },
+        tts: { modelId: 'plugin::Media Plugin::speech' },
+        stt: { modelId: 'plugin::Media Plugin::transcription' }
     }
 } as Parameters<typeof selectImageGenHandler>[1];
 
@@ -38,11 +38,22 @@ describe('plugin media provider handlers', () => {
         mocks.instances = [
             {
                 imageGenProviders: new Map([
-                    ['images', provider('plugin::images', 'images', 'image-fn')]
+                    [
+                        'plugin::Media Plugin::images',
+                        provider('plugin::Media Plugin::images', 'images', 'image-fn')
+                    ]
                 ]),
-                ttsProviders: new Map([['speech', provider('plugin::speech', 'speech', 'tts-fn')]]),
+                ttsProviders: new Map([
+                    [
+                        'plugin::Media Plugin::speech',
+                        provider('plugin::Media Plugin::speech', 'speech', 'tts-fn')
+                    ]
+                ]),
                 sttProviders: new Map([
-                    ['transcription', provider('plugin::transcription', 'transcription', 'stt-fn')]
+                    [
+                        'plugin::Media Plugin::transcription',
+                        provider('plugin::Media Plugin::transcription', 'transcription', 'stt-fn')
+                    ]
                 ]),
                 broker: {
                     invoke: mocks.invoke
