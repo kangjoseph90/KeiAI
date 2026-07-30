@@ -454,6 +454,12 @@ export const guestSDK = String.raw`
         transcribeSpeech: (audio, signal) => {
             return broker.invoke('core.transcribeSpeech', [audio], signal);
         },
+        similarity: (query, documents, signal) => {
+            return broker.invoke('core.similarity', [query, documents], signal);
+        },
+        rerank: (query, documents, signal) => {
+            return broker.invoke('core.rerank', [query, documents], signal);
+        },
         generateImageInlay: (
             chatId,
             prompt,

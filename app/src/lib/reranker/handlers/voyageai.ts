@@ -4,7 +4,7 @@
  * Implements RerankerHandler for Voyage AI's /v1/rerank endpoint.
  */
 
-import type { RerankerResult, RerankerHandler } from '../types';
+import type { RankedResult, RerankerHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
@@ -27,12 +27,8 @@ export class VoyageAIRerankerHandler implements RerankerHandler {
         this.config = config;
     }
 
-    async rerank(
-        query: string,
-        documents: string[],
-        signal?: AbortSignal
-    ): Promise<RerankerResult> {
-        if (documents.length === 0) return { results: [] };
+    async rerank(query: string, documents: string[], signal: AbortSignal): Promise<RankedResult[]> {
+        if (documents.length === 0) return [];
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json'
@@ -58,14 +54,9 @@ export class VoyageAIRerankerHandler implements RerankerHandler {
         }
 
         const json = await response.json();
-        const results = json.data.map(
-            (r: { index: number; relevance_score: number; document?: { text: string } }) => ({
-                index: r.index,
-                score: r.relevance_score,
-                text: r.document?.text
-            })
-        );
-
-        return { results };
+        return json.data.map((r: { index: number; relevance_score: number }) => ({
+            index: r.index,
+            score: r.relevance_score
+        }));
     }
 }

@@ -1,5 +1,5 @@
 import type { PluginInstance } from '$lib/plugins';
-import type { RerankerHandler, RerankerItem, RerankerResult } from '../types';
+import type { RankedResult, RerankerHandler } from '../types';
 
 export class PluginRerankerHandler implements RerankerHandler {
     constructor(
@@ -7,35 +7,28 @@ export class PluginRerankerHandler implements RerankerHandler {
         private readonly fnId: string
     ) {}
 
-    async rerank(
-        query: string,
-        documents: string[],
-        signal?: AbortSignal
-    ): Promise<RerankerResult> {
+    async rerank(query: string, documents: string[], signal: AbortSignal): Promise<RankedResult[]> {
         const result = await this.instance.broker.invoke<unknown>(
             this.fnId,
             [query, documents],
             signal
         );
-        if (!isRerankerResult(result)) {
+        if (!isRankedResults(result)) {
             throw new Error('Plugin reranker provider returned an invalid result');
         }
-        return {
-            results: result.results.map((item) => ({ ...item }))
-        };
+        return result.map((item) => ({ ...item }));
     }
 }
 
-function isRerankerResult(value: unknown): value is RerankerResult {
-    if (!value || typeof value !== 'object' || !('results' in value)) return false;
-    return Array.isArray(value.results) && value.results.every(isRerankerItem);
+function isRankedResults(value: unknown): value is RankedResult[] {
+    return Array.isArray(value) && value.every(isRankedResult);
 }
 
-function isRerankerItem(value: unknown): value is RerankerItem {
+function isRankedResult(value: unknown): value is RankedResult {
     if (!value || typeof value !== 'object') return false;
     if (!('index' in value) || !Number.isInteger(value.index)) return false;
     if (!('score' in value) || typeof value.score !== 'number' || !Number.isFinite(value.score)) {
         return false;
     }
-    return !('text' in value) || value.text === undefined || typeof value.text === 'string';
+    return true;
 }

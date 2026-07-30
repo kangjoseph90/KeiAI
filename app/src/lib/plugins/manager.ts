@@ -18,6 +18,7 @@ import type { PluginEmbeddingModel } from '$lib/types/models/embedding';
 import type { PluginRerankerModel } from '$lib/types/models/reranker';
 import type { LLMMessage } from '$lib/llm/types';
 import { callLLM, streamLLM } from '$lib/managers/llm';
+import { rerank, similarity } from '$lib/managers/retrieval';
 import {
     createInlay,
     generateImage,
@@ -531,6 +532,18 @@ export class PluginManager {
             async (audio: unknown, signal: unknown) =>
                 (await transcribeSpeech(readMediaData(audio, 'audio'), readAbortSignal(signal)))
                     .text
+        );
+
+        broker.expose('core.similarity', (query: unknown, documents: unknown, signal: unknown) =>
+            similarity(
+                String(query),
+                readStringArray(documents, 'documents'),
+                readAbortSignal(signal)
+            )
+        );
+
+        broker.expose('core.rerank', (query: unknown, documents: unknown, signal: unknown) =>
+            rerank(String(query), readStringArray(documents, 'documents'), readAbortSignal(signal))
         );
 
         broker.expose(
