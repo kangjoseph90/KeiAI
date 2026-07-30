@@ -1,8 +1,9 @@
 /**
  * Cache Adapter — KeiAI
  *
- * Generic local-only LRU cache backed by IndexedDB.
- * Reuses LRUCache from utils/cache.ts for in-memory eviction.
+ * Local-only caches backed by IndexedDB or SQLite.
+ * createCache() eagerly hydrates an in-memory LRU for synchronous access.
+ * createAsyncCache() reads and writes requested keys directly in persistent storage.
  * Separate Dexie instance (KeiCacheDB) so cache data never
  * mixes with domain records and is never synced.
  */
@@ -11,11 +12,45 @@ import { isTauri } from '@tauri-apps/api/core';
 import { LRUCache } from '$lib/utils/cache';
 import { WebCacheBackend } from './web';
 import { TauriCacheBackend } from './tauri';
-import type { CacheBackend, CacheEntry, CacheStore } from './types';
+import type { AsyncCacheStore, CacheBackend, CacheEntry, CacheStore } from './types';
 
-export type { CacheStore } from './types';
+export type { AsyncCacheStore, CacheStore } from './types';
 
 const backend: CacheBackend = isTauri() ? new TauriCacheBackend() : new WebCacheBackend();
+
+export function createAsyncCache<T>(namespace: string, capacity: number): AsyncCacheStore<T> {
+    return {
+        async get(key: string): Promise<T | undefined> {
+            const entries = await backend.getMany(namespace, [key]);
+            return entries[0]?.value as T | undefined;
+        },
+
+        async getMany(keys: string[]): Promise<Map<string, T>> {
+            const entries = await backend.getMany(namespace, keys);
+            return new Map(entries.map(({ key, value }) => [key, value as T]));
+        },
+
+        async set(key: string, value: T): Promise<void> {
+            await backend.setMany(namespace, [{ key, value }], capacity);
+        },
+
+        async setMany(entries: ReadonlyArray<readonly [string, T]>): Promise<void> {
+            await backend.setMany(
+                namespace,
+                entries.map(([key, value]) => ({ key, value })),
+                capacity
+            );
+        },
+
+        async delete(key: string): Promise<void> {
+            await backend.deleteMany(namespace, [key]);
+        },
+
+        async deleteMany(keys: string[]): Promise<void> {
+            await backend.deleteMany(namespace, keys);
+        }
+    };
+}
 
 export function createCache<T>(namespace: string, capacity: number): CacheStore<T> {
     const lru = new LRUCache<string, T>(capacity);
@@ -27,10 +62,18 @@ export function createCache<T>(namespace: string, capacity: number): CacheStore<
         const entries = await backend.loadAll(namespace);
         for (const { key, value } of entries) {
             if (!lru.has(key)) {
+                trackNextEviction(key);
                 lru.set(key, value as T);
             }
         }
+        if (pendingWrites.size > 0) scheduleFlush();
     })();
+
+    function trackNextEviction(key: string): void {
+        if (lru.has(key) || lru.size < capacity) return;
+        const oldestKey = lru.keys().next().value;
+        if (oldestKey !== undefined) pendingWrites.add(oldestKey);
+    }
 
     function scheduleFlush(): void {
         if (flushTimer !== null) return;
@@ -66,6 +109,7 @@ export function createCache<T>(namespace: string, capacity: number): CacheStore<
         },
 
         set(key: string, value: T): void {
+            trackNextEviction(key);
             lru.set(key, value);
             pendingWrites.add(key);
             scheduleFlush();
