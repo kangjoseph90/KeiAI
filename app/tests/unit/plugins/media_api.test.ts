@@ -103,14 +103,12 @@ describe('plugin media APIs', () => {
             data: new Uint8Array([2]),
             mimeType: 'image/png'
         });
-        const speech = (async function* () {
-            yield { data: new Uint8Array([4]), mimeType: 'audio/wav' };
-        })();
-        mocks.synthesizeSpeech.mockReturnValue(speech);
+        const speech = { data: new Uint8Array([4]), mimeType: 'audio/wav' };
+        mocks.synthesizeSpeech.mockResolvedValue(speech);
         mocks.transcribeSpeech.mockResolvedValue({ text: 'spoken text' });
 
         await exposed.get('core.generateImage')!('prompt', 'negative', [reference], [], signal);
-        expect(exposed.get('core.synthesizeSpeech')!('hello', signal)).toBe(speech);
+        await expect(exposed.get('core.synthesizeSpeech')!('hello', signal)).resolves.toBe(speech);
         await expect(
             exposed.get('core.transcribeSpeech')!(
                 { data: new Uint8Array([3]), mimeType: 'audio/wav' },

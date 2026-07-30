@@ -116,10 +116,7 @@ export async function generateImageInlay(
     return createGeneratedInlay(chat.id, image, 'Image');
 }
 
-export async function* synthesizeSpeech(
-    text: string,
-    signal: AbortSignal
-): AsyncIterable<MediaData> {
+export async function synthesizeSpeech(text: string, signal: AbortSignal): Promise<MediaData> {
     if (!text.trim()) {
         throw new AppError('INVALID_INPUT', 'Text to speech text cannot be empty');
     }
@@ -130,22 +127,19 @@ export async function* synthesizeSpeech(
         throw new AppError('INVALID_INPUT', 'Failed to create text to speech handler');
     }
 
-    let mimeType: string | undefined;
-    for await (const chunk of handler.synthesize(text, signal)) {
-        signal.throwIfAborted();
-        const nextMimeType = normalizeMimeType(chunk.mimeType);
-        if (getAssetMediaType(nextMimeType) !== 'audio') {
-            throw new AppError(
-                'NETWORK_ERROR',
-                `Text to speech returned invalid media type: ${nextMimeType}`
-            );
-        }
-        if (mimeType && mimeType !== nextMimeType) {
-            throw new AppError('NETWORK_ERROR', 'Text to speech returned mixed audio formats');
-        }
-        mimeType = nextMimeType;
-        yield { data: chunk.data, mimeType };
+    const audio = await handler.synthesize(text, signal);
+    signal.throwIfAborted();
+    const mimeType = normalizeMimeType(audio.mimeType);
+    if (getAssetMediaType(mimeType) !== 'audio') {
+        throw new AppError(
+            'NETWORK_ERROR',
+            `Text to speech returned invalid media type: ${mimeType}`
+        );
     }
+    if (audio.data.length === 0) {
+        throw new AppError('NETWORK_ERROR', 'Text to speech returned no audio data');
+    }
+    return { data: audio.data, mimeType };
 }
 
 export async function synthesizeSpeechInlay(
@@ -154,24 +148,7 @@ export async function synthesizeSpeechInlay(
     signal: AbortSignal
 ): Promise<string> {
     await requireChat(chatId);
-    const chunks: Uint8Array<ArrayBuffer>[] = [];
-    let mimeType: string | undefined;
-    for await (const chunk of synthesizeSpeech(text, signal)) {
-        mimeType = chunk.mimeType;
-        chunks.push(chunk.data);
-    }
-    if (!mimeType || chunks.length === 0) {
-        throw new AppError('NETWORK_ERROR', 'Text to speech returned no audio data');
-    }
-
-    return createGeneratedInlay(
-        chatId,
-        {
-            data: concatenateBytes(chunks),
-            mimeType
-        },
-        'Audio'
-    );
+    return createGeneratedInlay(chatId, await synthesizeSpeech(text, signal), 'Audio');
 }
 
 export async function transcribeSpeech(audio: MediaData, signal: AbortSignal): Promise<STTResult> {
@@ -341,16 +318,6 @@ function validateMediaType(mimeType: string, expectedType: AssetMediaType, label
 
 function normalizeMimeType(mimeType: string): string {
     return mimeType.trim().toLowerCase().split(';', 1)[0];
-}
-
-function concatenateBytes(chunks: Uint8Array<ArrayBuffer>[]): Uint8Array<ArrayBuffer> {
-    const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-    }
-    return result;
 }
 
 function mediaExtension(mimeType: string): string {

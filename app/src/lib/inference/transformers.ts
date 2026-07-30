@@ -1,15 +1,14 @@
 /**
- * Web Inference Adapter — KeiAI
+ * Transformers Inference Runtime — KeiAI
  *
  * Local model execution via @huggingface/transformers (ONNX WASM / WebGPU).
  * Pipelines are lazy-loaded and cached by modelId to avoid repeated init cost.
  *
- * Note: Runs on the main thread. Worker isolation is a future optimization
+ * Runs on the main thread. Worker isolation is a future optimization
  * (requires SharedArrayBuffer + COOP/COEP headers for Transferable).
  */
 
 import type {
-    IInferenceAdapter,
     ModelSpec,
     EmbedOptions,
     SynthesizeOptions,
@@ -22,13 +21,16 @@ import type {
 } from './types';
 import { createLogger } from '$lib/adapters/logger';
 
-const logger = createLogger('adapter:inference:web');
+const logger = createLogger('inference:transformers');
 
 // ─── Pipeline Cache ───────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyPipeline = any;
-const pipelineCache = new Map<string, AnyPipeline>();
+type CachedPipeline = ((...args: unknown[]) => Promise<unknown>) & {
+    tokenizer?: unknown;
+    dispose?: () => Promise<void> | void;
+};
+
+const pipelineCache = new Map<string, CachedPipeline>();
 
 function cacheKey(task: string, modelId: string, device: string): string {
     return `${task}::${modelId}::${device}`;
@@ -56,7 +58,7 @@ async function getOrLoadPipeline(
     spec: ModelSpec,
     device: string,
     onProgress?: InferenceProgressCallback
-): Promise<AnyPipeline> {
+): Promise<CachedPipeline> {
     const key = cacheKey(task, spec.modelId, device);
     const cached = pipelineCache.get(key);
     if (cached) return cached;
@@ -78,15 +80,16 @@ async function getOrLoadPipeline(
         progress_callback: toProgressCallback(onProgress)
     });
 
-    pipelineCache.set(key, p);
+    const cachedPipeline = p as unknown as CachedPipeline;
+    pipelineCache.set(key, cachedPipeline);
     onProgress?.({ status: 'ready' });
     logger.info(`Pipeline ready: ${key}`);
-    return p;
+    return cachedPipeline;
 }
 
-// ─── Adapter ──────────────────────────────────────────────────────────────────
+// ─── Runtime ──────────────────────────────────────────────────────────────────
 
-export class WebInferenceAdapter implements IInferenceAdapter {
+export class TransformersInference {
     async embed(spec: ModelSpec, texts: string[], options?: EmbedOptions): Promise<number[][]> {
         const device = options?.device ?? 'wasm';
         const extractor = await getOrLoadPipeline(
@@ -96,10 +99,13 @@ export class WebInferenceAdapter implements IInferenceAdapter {
             options?.onProgress
         );
 
-        const result = await extractor(texts, { pooling: 'mean', normalize: true });
+        const result = (await extractor(texts, {
+            pooling: 'mean',
+            normalize: true
+        })) as { data: Float32Array };
 
         // result.data is a flat Float32Array; split into per-text vectors
-        const data = result.data as Float32Array;
+        const data = result.data;
         const dims = data.length / texts.length;
         const vectors: number[][] = [];
         for (let i = 0; i < texts.length; i++) {
@@ -108,11 +114,11 @@ export class WebInferenceAdapter implements IInferenceAdapter {
         return vectors;
     }
 
-    async *synthesize(
+    async synthesize(
         spec: ModelSpec,
         text: string,
         options?: SynthesizeOptions
-    ): AsyncIterable<SynthesizeResult> {
+    ): Promise<SynthesizeResult> {
         const device = options?.device ?? 'wasm';
         const synthesizer = await getOrLoadPipeline(
             'text-to-speech',
@@ -121,14 +127,17 @@ export class WebInferenceAdapter implements IInferenceAdapter {
             options?.onProgress
         );
 
-        const out = await synthesizer(text, {});
+        const out = (await synthesizer(text, {})) as {
+            audio: Float32Array;
+            sampling_rate?: number;
+        };
 
-        // `out.audio` is a Float32Array of PCM samples; yield as a single chunk.
+        // `out.audio` is a Float32Array of PCM samples returned as a single result.
         // Copy into a fresh ArrayBuffer to avoid SharedArrayBuffer incompatibility.
-        const audio = out.audio as Float32Array;
+        const audio = out.audio;
         const copy = new ArrayBuffer(audio.byteLength);
         new Uint8Array(copy).set(new Uint8Array(audio.buffer, audio.byteOffset, audio.byteLength));
-        yield {
+        return {
             audio: copy,
             sampleRate: Number(out.sampling_rate) || 22050
         };
@@ -154,18 +163,15 @@ export class WebInferenceAdapter implements IInferenceAdapter {
 
         // TextStreamer handles extracting just the newly generated tokens
         const { TextStreamer } = await import('@huggingface/transformers');
-        const streamer = new TextStreamer(generator.tokenizer, { skip_prompt: true });
+        const streamer = new TextStreamer(
+            generator.tokenizer as ConstructorParameters<typeof TextStreamer>[0],
+            { skip_prompt: true }
+        );
 
         // We need a queue to bridge the callback-based streamer into an AsyncIterable
         const queue: (string | null)[] = [];
         let resolveNext: (() => void) | null = null;
 
-        // Monkey-patch the streamer to push to our queue
-        const originalPut = streamer.put.bind(streamer);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        streamer.put = (value: any) => {
-            originalPut(value); // calls tokenizer internally
-        };
         const originalOnFinalizedText = streamer.on_finalized_text.bind(streamer);
         streamer.on_finalized_text = (text: string, streamEnd?: boolean) => {
             originalOnFinalizedText(text, streamEnd ?? false);
@@ -223,18 +229,22 @@ export class WebInferenceAdapter implements IInferenceAdapter {
             audioData = await decodeAudio(arrayBuffer);
         }
 
-        const result = await transcriber(audioData, {
+        const result = (await transcriber(audioData, {
             return_timestamps: true,
             ...(options?.language ? { language: options.language } : {})
-        });
+        })) as {
+            text?: string;
+            chunks?: Array<{
+                text: string;
+                timestamp: [number | null, number | null];
+            }>;
+        };
 
-        const segments = result.chunks?.map(
-            (c: { text: string; timestamp: [number | null, number | null] }) => ({
-                text: c.text,
-                start: c.timestamp?.[0] ?? 0,
-                end: c.timestamp?.[1] ?? 0
-            })
-        );
+        const segments = result.chunks?.map((chunk) => ({
+            text: chunk.text,
+            start: chunk.timestamp?.[0] ?? 0,
+            end: chunk.timestamp?.[1] ?? 0
+        }));
 
         return {
             text: result.text ?? '',
@@ -259,7 +269,9 @@ export class WebInferenceAdapter implements IInferenceAdapter {
         const scores: number[] = [];
         // Transformers.js 'text-classification' pipeline supports (text, text_pair) arguments
         for (const doc of documents) {
-            const out = await classifier(query, doc);
+            const out = (await classifier(query, doc)) as
+                | { score: number }
+                | Array<{ score: number }>;
             // Depending on the model, it might return an array of objects like [{ label: 'LABEL_0', score: 0.99 }]
             // Rerankers typically just have one output score.
             scores.push(out instanceof Array ? out[0].score : out.score);
@@ -287,4 +299,4 @@ export class WebInferenceAdapter implements IInferenceAdapter {
     }
 }
 
-export const webInference = new WebInferenceAdapter();
+export const transformers = new TransformersInference();

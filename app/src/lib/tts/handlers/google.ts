@@ -1,10 +1,10 @@
 /**
- * Google Gemini TTS Stream Handler — KeiAI
+ * Google Gemini TTS Handler — KeiAI
  *
- * Implements the TTSStreamHandler interface for Google's Gemini-based TTS.
+ * Implements the TTSHandler interface for Google's Gemini-based TTS.
  */
 
-import type { TTSStreamHandler, TTSStreamChunk } from '../types';
+import type { TTSHandler, TTSResult } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
@@ -31,16 +31,14 @@ export interface GoogleTTSConfig {
     voiceId: string;
 }
 
-export class GoogleTTSStreamHandler implements TTSStreamHandler {
+export class GoogleTTSHandler implements TTSHandler {
     private readonly config: GoogleTTSConfig;
 
     constructor(config: GoogleTTSConfig) {
         this.config = config;
     }
 
-    async *synthesize(text: string, signal?: AbortSignal): AsyncIterable<TTSStreamChunk> {
-        if (!text.trim()) return;
-
+    async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         // It uses the same generateContent REST endpoint
         const url = buildUrl(this.config.baseUrl, `/models/${this.config.modelId}:generateContent`);
 
@@ -93,7 +91,7 @@ export class GoogleTTSStreamHandler implements TTSStreamHandler {
 
         const pcm = fromBase64(base64Audio);
         const sampleRate = parseSampleRate(inlineData.mimeType) ?? 24000;
-        yield { data: pcm16ToWav(pcm, sampleRate), mimeType: 'audio/wav' };
+        return { data: pcm16ToWav(pcm, sampleRate), mimeType: 'audio/wav' };
     }
 }
 

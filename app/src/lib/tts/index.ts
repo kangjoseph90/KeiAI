@@ -1,2 +1,2 @@
-export type { TTSStreamChunk, TTSStreamHandler } from './types';
+export type { TTSHandler, TTSResult } from './types';
 export { selectTTSHandler } from './handler';

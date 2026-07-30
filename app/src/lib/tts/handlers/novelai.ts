@@ -1,10 +1,10 @@
 /**
- * NovelAI TTS Stream Handler — KeiAI
+ * NovelAI TTS Handler — KeiAI
  *
- * Implements the TTSStreamHandler interface for NovelAI's TTS API.
+ * Implements the TTSHandler interface for NovelAI's TTS API.
  */
 
-import type { TTSStreamHandler, TTSStreamChunk } from '../types';
+import type { TTSHandler, TTSResult } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
@@ -16,16 +16,14 @@ export interface NovelAITTSConfig {
     version: string;
 }
 
-export class NovelAITTSStreamHandler implements TTSStreamHandler {
+export class NovelAITTSHandler implements TTSHandler {
     private readonly config: NovelAITTSConfig;
 
     constructor(config: NovelAITTSConfig) {
         this.config = config;
     }
 
-    async *synthesize(text: string, signal?: AbortSignal): AsyncIterable<TTSStreamChunk> {
-        if (!text.trim()) return;
-
+    async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         const url = buildUrl(this.config.baseUrl, '/ai/generate-voice');
 
         const response = await appHttp.fetch(
@@ -61,7 +59,7 @@ export class NovelAITTSStreamHandler implements TTSStreamHandler {
             ?.trim()
             .toLowerCase();
         const mimeType = responseMimeType?.startsWith('audio/') ? responseMimeType : 'audio/mpeg';
-        yield {
+        return {
             data: new Uint8Array(await response.arrayBuffer()),
             mimeType
         };

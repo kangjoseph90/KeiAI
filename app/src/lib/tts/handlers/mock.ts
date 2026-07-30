@@ -1,9 +1,9 @@
 /**
- * Mock TTS Stream Handler — Development / Testing
+ * Mock TTS Handler — Development / Testing
  */
 
 import { float32ToWav } from '$lib/utils/audio';
-import type { TTSStreamChunk, TTSStreamHandler } from '../types';
+import type { TTSHandler, TTSResult } from '../types';
 
 const SAMPLE_RATE = 16_000;
 const MORSE_UNIT_SECONDS = 0.06;
@@ -54,20 +54,19 @@ export interface MockTTSConfig {
     behavior?: MockTTSBehavior;
 }
 
-export class MockTTSStreamHandler implements TTSStreamHandler {
+export class MockTTSHandler implements TTSHandler {
     private readonly behavior: MockTTSBehavior;
 
     constructor(config: MockTTSConfig = {}) {
         this.behavior = config.behavior ?? 'sample';
     }
 
-    async *synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk> {
-        if (!text.trim()) return;
+    async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         signal.throwIfAborted();
 
         const samples = this.behavior === 'sample' ? createSampleAudio() : createMorseAudio(text);
         signal.throwIfAborted();
-        yield {
+        return {
             data: float32ToWav(samples, SAMPLE_RATE),
             mimeType: 'audio/wav'
         };

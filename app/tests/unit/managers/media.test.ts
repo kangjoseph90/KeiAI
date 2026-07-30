@@ -181,9 +181,9 @@ describe('media manager', () => {
     });
 
     it('stores synthesized audio and transcribes a single audio inlay', async () => {
-        mocks.synthesize.mockImplementation(async function* () {
-            yield { data: new Uint8Array([1, 2]), mimeType: 'audio/wav' };
-            yield { data: new Uint8Array([3]), mimeType: 'audio/wav' };
+        mocks.synthesize.mockResolvedValue({
+            data: new Uint8Array([1, 2, 3]),
+            mimeType: 'audio/wav'
         });
         mocks.transcribe.mockResolvedValue({ text: 'hello' });
 

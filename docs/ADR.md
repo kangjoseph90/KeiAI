@@ -341,8 +341,8 @@
 - 적용:
   - **LLM**: `openai_compatible` 핸들러 하나로 OpenAI, DeepSeek, Mistral 등 공유 → `OpenAILLMStreamHandler`
   - **Embedding**: LLM과 동일 패턴 → `OpenAIEmbeddingHandler`
-  - **TTS**: API 핸들러 비통일 → 핸들러별 클래스 (`OpenAITTSStreamHandler`, `ElevenLabsTTSStreamHandler`)
-  - **로컬 공통**: ONNX Runtime 하나로 여러 모델 커버 (`OnnxTTSHandler`, `OnnxEmbeddingHandler`)
+  - **TTS**: API 핸들러 비통일 → 핸들러별 클래스 (`OpenAITTSHandler`, `ElevenLabsTTSHandler`)
+  - **로컬 공통**: Transformers.js 런타임의 pipeline 로딩·캐시는 `lib/inference/transformers.ts`에서 공유하고, 프로토콜별 변환은 각 handler가 담당
 - 공통 선택 패턴: `selectXXXHandler(modelConfig, settings)` → `resolveModel()` → `resolveConnection()` → Handler/Runtime 기반 클래스 생성
 - 결과: 새 provider 추가 시 기존 handler와 호환되면 URL만 추가, 새 handler면 클래스 하나만 추가. 프로토콜 레이어(LLM/TTS/Embedding)와 태스크 레이어(chat/translate/summarize)가 명확히 분리.
 
