@@ -11,9 +11,9 @@ import {
     createDisplayMacros,
     normalizeAssetName,
     resolveAssetName,
-    type AssetNameIndex,
-    type RawAssetUrlCache
+    type AssetNameIndex
 } from '$lib/template/display';
+import { createAssetUri } from '$lib/services/asset';
 import type { AssetReadLocator } from '$lib/services/asset';
 import type { PluginInstance } from '$lib/plugins/manager';
 
@@ -513,15 +513,35 @@ describe('template', () => {
             ownerTable: 'characters',
             ownerId: 'char-1',
             hash: 'asset-1',
-            encKey: 'key-1'
+            encKey: 'key-1',
+            width: 800,
+            height: 1200
         };
         const assetMap: AssetNameIndex = new Map([
             ['char-1', new Map([['avatar', [mockLocator]]])]
         ]);
-        const cache: RawAssetUrlCache = new Map();
-        const macros = createDisplayMacros(assetMap, ['char-1'], cache);
+        const macros = createDisplayMacros(assetMap, ['char-1']);
         await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
-            '<img data-keiai-asset="{&quot;scopeType&quot;:&quot;user&quot;,&quot;scopeId&quot;:&quot;user-1&quot;,&quot;ownerTable&quot;:&quot;characters&quot;,&quot;ownerId&quot;:&quot;char-1&quot;,&quot;hash&quot;:&quot;asset-1&quot;,&quot;encKey&quot;:&quot;key-1&quot;}" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />'
+            `<img src="${createAssetUri(mockLocator)}" width="800" height="1200" alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`
+        );
+    });
+
+    it('renders raw asset macros as lazy asset URIs without reading the asset', async () => {
+        const locator: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'background-1',
+            encKey: 'key-1'
+        };
+        const assetMap: AssetNameIndex = new Map([
+            ['char-1', new Map([['background', [locator]]])]
+        ]);
+        const macros = createDisplayMacros(assetMap, ['char-1']);
+
+        await expect(runTemplate('{{raw::background}}', {}, macros)).resolves.toBe(
+            createAssetUri(locator)
         );
     });
 
@@ -549,13 +569,13 @@ describe('template', () => {
                 ])
             ]
         ]);
-        const macros = createDisplayMacros(assetMap, ['char-1'], new Map());
+        const macros = createDisplayMacros(assetMap, ['char-1']);
 
         await expect(runTemplate('{{audio::theme}}', {}, macros)).resolves.toContain(
-            '<audio data-keiai-asset='
+            `<audio src="${createAssetUri(audio)}"`
         );
         await expect(runTemplate('{{video::intro}}', {}, macros)).resolves.toContain(
-            '<video data-keiai-asset='
+            `<video src="${createAssetUri(video)}"`
         );
     });
 
@@ -593,12 +613,18 @@ describe('template', () => {
 
     it('renders inlay macros directly using asset ID', async () => {
         const assetMap: AssetNameIndex = new Map();
-        const cache: RawAssetUrlCache = new Map();
-        const macros = createDisplayMacros(assetMap, [], cache);
+        const macros = createDisplayMacros(assetMap, []);
         await expect(
             runTemplate('{{inlay::asset-direct-id}}', { chatId: 'chat-1' }, macros)
         ).resolves.toBe(
-            '<img data-keiai-asset="{&quot;scopeType&quot;:&quot;room&quot;,&quot;scopeId&quot;:&quot;room-1&quot;,&quot;ownerTable&quot;:&quot;chats&quot;,&quot;ownerId&quot;:&quot;chat-1&quot;,&quot;hash&quot;:&quot;hash-direct&quot;,&quot;encKey&quot;:&quot;key-direct&quot;}" data-keiai-inlay-id="asset-direct-id" alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />'
+            `<img src="${createAssetUri({
+                scopeType: 'room',
+                scopeId: 'room-1',
+                ownerTable: 'chats',
+                ownerId: 'chat-1',
+                hash: 'hash-direct',
+                encKey: 'key-direct'
+            })}" alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`
         );
     });
 

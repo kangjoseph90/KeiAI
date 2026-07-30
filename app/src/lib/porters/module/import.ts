@@ -53,7 +53,9 @@ export async function importModulePackage(
                 module.id,
                 materializeImportedAsset(imported, {
                     name: pkgRef.name,
-                    mimeType: pkgRef.mimeType
+                    mimeType: pkgRef.mimeType,
+                    width: pkgRef.width,
+                    height: pkgRef.height
                 }),
                 pkgRef.sortOrder
             );

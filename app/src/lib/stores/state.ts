@@ -237,7 +237,9 @@ export const chatAssetsMap = derived(
                             ownerId,
                             hash: ref.hash,
                             encKey: ref.encKey,
-                            mimeType: ref.mimeType
+                            mimeType: ref.mimeType,
+                            width: ref.width,
+                            height: ref.height
                         });
                         ownerMap.set(normalized, list);
                     }

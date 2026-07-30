@@ -44,6 +44,7 @@ vi.mock('$lib/adapters/asset', () => ({
         deleteScopeAssets: vi.fn(),
         getAllLocalAssets: vi.fn(),
         getAllRemoteAssets: vi.fn(),
+        hasAsset: vi.fn(),
         readAssetBytes: vi.fn(),
         getRenderUrl: vi.fn(),
         revokeRenderUrl: vi.fn(),
@@ -115,10 +116,13 @@ describe('AssetService', () => {
         vi.mocked(appAsset.putLocalAsset).mockResolvedValue(mockRegistry);
         vi.mocked(appAsset.putRemoteAsset).mockResolvedValue(mockRegistry);
         vi.mocked(appAsset.getAsset).mockResolvedValue(undefined);
+        vi.mocked(appAsset.hasAsset).mockResolvedValue(false);
         vi.mocked(appAsset.getRenderUrl).mockResolvedValue(null);
         vi.mocked(fileToPlaintext).mockResolvedValue({
             bytes: mockBytes,
-            mimeType: 'image/png'
+            mimeType: 'image/png',
+            width: 640,
+            height: 960
         });
 
         vi.mocked(encryptConvergentAsset).mockResolvedValue({
@@ -146,7 +150,9 @@ describe('AssetService', () => {
             name: 'avatar.png',
             hash: 'hash-123',
             encKey: 'enc-key',
-            mimeType: 'image/png'
+            mimeType: 'image/png',
+            width: 640,
+            height: 960
         });
         expect(appAsset.putLocalAsset).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -274,9 +280,8 @@ describe('AssetService', () => {
             hash: 'hash-123',
             encKey: 'enc-key'
         };
-        vi.mocked(appAsset.getRenderUrl)
-            .mockResolvedValueOnce('blob:probe')
-            .mockResolvedValueOnce('blob:asset-123');
+        vi.mocked(appAsset.hasAsset).mockResolvedValue(true);
+        vi.mocked(appAsset.getRenderUrl).mockResolvedValueOnce('blob:asset-123');
 
         const first = await AssetService.acquireUrl(locator);
         const second = await AssetService.acquireUrl(locator);
@@ -304,9 +309,8 @@ describe('AssetService', () => {
             hash: 'hash-123',
             encKey: 'enc-key'
         };
-        vi.mocked(appAsset.getRenderUrl)
-            .mockResolvedValueOnce('blob:probe')
-            .mockResolvedValueOnce('blob:asset-123');
+        vi.mocked(appAsset.hasAsset).mockResolvedValue(true);
+        vi.mocked(appAsset.getRenderUrl).mockResolvedValueOnce('blob:asset-123');
 
         await AssetService.acquireUrl(locator);
         AssetService.clear();
@@ -323,9 +327,7 @@ describe('AssetService', () => {
             hash: 'hash-123',
             encKey: 'enc-key'
         };
-        vi.mocked(appAsset.getRenderUrl)
-            .mockResolvedValueOnce(null)
-            .mockResolvedValueOnce('blob:asset-123');
+        vi.mocked(appAsset.getRenderUrl).mockResolvedValueOnce('blob:asset-123');
 
         const lease = await AssetService.acquireUrl(locator);
 
@@ -358,12 +360,10 @@ describe('AssetService', () => {
         const renderUrl = new Promise<string | null>((resolve) => {
             resolveRenderUrl = resolve;
         });
-        vi.mocked(appAsset.getRenderUrl)
-            .mockResolvedValueOnce(null)
-            .mockImplementationOnce(() => renderUrl);
+        vi.mocked(appAsset.getRenderUrl).mockImplementationOnce(() => renderUrl);
 
         const pendingLease = AssetService.acquireUrl(locator);
-        await vi.waitFor(() => expect(appAsset.getRenderUrl).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(appAsset.getRenderUrl).toHaveBeenCalledOnce());
 
         AssetService.clear();
         resolveRenderUrl('blob:late');

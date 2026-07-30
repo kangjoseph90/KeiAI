@@ -1,7 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fileToPlaintext } from '$lib/services/asset/util';
+import { preprocessImage } from '$lib/utils/image';
+
+vi.mock('$lib/utils/image', () => ({
+    preprocessImage: vi.fn(),
+    readImageDimensions: vi.fn()
+}));
 
 describe('fileToPlaintext multimedia MIME detection', () => {
+    it('returns the processed dimensions for uploaded images', async () => {
+        vi.mocked(preprocessImage).mockResolvedValue({
+            blob: new Blob([new Uint8Array([4, 5, 6])], { type: 'image/webp' }),
+            width: 640,
+            height: 960
+        });
+        const file = new File([new Uint8Array([1, 2, 3])], 'portrait.png', {
+            type: 'image/png'
+        });
+
+        await expect(fileToPlaintext(file)).resolves.toMatchObject({
+            mimeType: 'image/webp',
+            width: 640,
+            height: 960
+        });
+    });
+
     it('uses an audio extension when the browser provides no MIME type', async () => {
         const file = new File([new Uint8Array([1, 2, 3, 4])], 'voice.mp3');
 

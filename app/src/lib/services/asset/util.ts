@@ -6,12 +6,12 @@
 
 import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
 import { mimeTypeFromName } from '$lib/utils/file';
-import { preprocessImage } from '$lib/utils/image';
+import { preprocessImage, readImageDimensions } from '$lib/utils/image';
 import { MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, WEBP_QUALITY } from './types';
 
 export async function fileToPlaintext(
     file: File
-): Promise<{ bytes: Uint8Array; mimeType: string }> {
+): Promise<{ bytes: Uint8Array; mimeType: string; width?: number; height?: number }> {
     const sourceBytes = new Uint8Array(await file.arrayBuffer());
     const sourceMimeType = resolveFileMimeType(file, sourceBytes);
     const shouldPreprocess =
@@ -20,13 +20,17 @@ export async function fileToPlaintext(
         sourceMimeType === 'image/jpg';
 
     if (!shouldPreprocess) {
+        const dimensions = sourceMimeType.startsWith('image/')
+            ? await readImageDimensions(file)
+            : undefined;
         return {
             bytes: sourceBytes,
-            mimeType: sourceMimeType
+            mimeType: sourceMimeType,
+            ...dimensions
         };
     }
 
-    const { blob } = await preprocessImage(file, {
+    const { blob, width, height } = await preprocessImage(file, {
         maxWidth: MAX_IMAGE_WIDTH,
         maxHeight: MAX_IMAGE_HEIGHT,
         quality: WEBP_QUALITY
@@ -34,7 +38,9 @@ export async function fileToPlaintext(
 
     return {
         bytes: new Uint8Array(await blob.arrayBuffer()),
-        mimeType: blob.type || 'image/webp'
+        mimeType: blob.type || 'image/webp',
+        width,
+        height
     };
 }
 

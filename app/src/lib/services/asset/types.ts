@@ -10,7 +10,12 @@ import type { AssetMediaType } from '$lib/types/asset';
 export type { AssetFields, AssetEntries, AssetMediaType, AssetStatus } from '$lib/types/asset';
 export type { AssetLocator, AssetOwner, AssetRegistryRecord } from '$lib/adapters/asset';
 
-export type AssetReadLocator = AssetLocator & { encKey: string; mimeType?: string };
+export type AssetReadLocator = AssetLocator & {
+    encKey: string;
+    mimeType?: string;
+    width?: number;
+    height?: number;
+};
 
 // Compression Result
 export interface CompressAndHashResult {

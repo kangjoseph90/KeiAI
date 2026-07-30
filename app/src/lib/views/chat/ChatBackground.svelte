@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onDestroy } from 'svelte';
-    import { SvelteMap } from 'svelte/reactivity';
     import {
         activeRoom,
         appSettings,
@@ -12,7 +11,7 @@
     import type { Character, Module } from '$lib/services';
     import { runPipeline } from '$lib/pipeline';
     import { createDryRunMacros, runTemplate } from '$lib/template';
-    import { createBackgroundMacros, type RawAssetUrlCache } from '$lib/template/display';
+    import { createBackgroundMacros } from '$lib/template/display';
     import {
         scopeStyleBlocks,
         protectHtmlStyles,
@@ -33,7 +32,6 @@
 
     let renderedHtml = $state('');
     let version = 0;
-    const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
     let backgroundScope = $derived(`kei-bg-${chatId}`);
 
     async function renderBackground(html: string, character: Character | null, mods: Module[]) {
@@ -47,8 +45,7 @@
             new Set([
                 character?.id,
                 ...mods.map((module) => module.id),
-                ...$roomCharacters.map((item) => item.id),
-                ...$modules.map((module) => module.id)
+                ...$roomCharacters.map((item) => item.id)
             ])
         ).filter((id): id is string => !!id);
 
@@ -62,7 +59,7 @@
             speakerName: character?.name
         };
         const dryRunMacros = createDryRunMacros();
-        const backgroundMacros = createBackgroundMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
+        const backgroundMacros = createBackgroundMacros($chatAssetsMap, ownerIds);
         const templated = await runTemplate(html, ctx, dryRunMacros);
         const processed = await runPipeline('display', ctx, templated);
         const rendered = await runTemplate(processed, ctx, backgroundMacros);
@@ -93,10 +90,6 @@
 
     onDestroy(() => {
         version += 1;
-        for (const lease of rawAssetUrlCache.values()) {
-            if (lease) void lease.release();
-        }
-        rawAssetUrlCache.clear();
     });
 </script>
 

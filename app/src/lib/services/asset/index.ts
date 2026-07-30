@@ -36,6 +36,7 @@ import {
 } from '$lib/types/asset';
 
 export type { AssetLocator, AssetOwner, AssetReadLocator, AssetRegistryRecord } from './types';
+export { ASSET_URI_MARKER, ASSET_URI_PATTERN, createAssetUri, parseAssetUri } from './uri';
 
 const SUPPORTED_MEDIA_TYPES: readonly AssetMediaType[] = ['image', 'audio', 'video'];
 
@@ -126,7 +127,7 @@ export class AssetService {
         owner: AssetOwner,
         allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_MEDIA_TYPES
     ): Promise<AssetFields> {
-        const { bytes, mimeType } = await fileToPlaintext(file);
+        const { bytes, mimeType, width, height } = await fileToPlaintext(file);
         const mediaType = AssetService.validateMimeType(mimeType, allowedMediaTypes);
         const maxSize = MAX_ASSET_SIZE_BY_MEDIA_TYPE[mediaType];
         if (bytes.byteLength > maxSize) {
@@ -141,7 +142,9 @@ export class AssetService {
             name: file.name,
             hash: encrypted.hash,
             encKey: encrypted.encKey,
-            mimeType
+            mimeType,
+            width,
+            height
         };
 
         try {
@@ -241,9 +244,8 @@ export class AssetService {
     }
 
     private static async loadImpl(locator: AssetReadLocator): Promise<boolean> {
-        const localUrl = await appAsset.getRenderUrl(locator);
-        if (localUrl) {
-            await appAsset.revokeRenderUrl(localUrl);
+        if (await appAsset.hasAsset(locator)) {
+            await appAsset.touchAsset(locator);
             return true;
         }
 

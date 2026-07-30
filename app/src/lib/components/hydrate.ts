@@ -1,108 +1,351 @@
 import type { Action } from 'svelte/action';
-import { AssetService, type AssetReadLocator, type AssetUrlLease } from '$lib/services/asset';
+import {
+    ASSET_URI_MARKER,
+    ASSET_URI_PATTERN,
+    AssetService,
+    parseAssetUri,
+    type AssetReadLocator,
+    type AssetUrlLease
+} from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
 
-const ASSET_SELECTOR = 'img[data-keiai-asset],audio[data-keiai-asset],video[data-keiai-asset]';
+const RESOURCE_ATTRIBUTES = ['src', 'poster', 'href', 'style'] as const;
 const MAX_RETRIES = 2;
-type AssetElement = HTMLImageElement | HTMLAudioElement | HTMLVideoElement;
 
-function parseAssetLocator(raw: string | undefined): AssetReadLocator | null {
-    if (!raw) return null;
-    try {
-        return JSON.parse(raw);
-    } catch {
-        return null;
+type ResourceAttribute = (typeof RESOURCE_ATTRIBUTES)[number];
+type AssetElement = HTMLImageElement | HTMLAudioElement | HTMLVideoElement;
+type Slot = ResourceAttribute | 'text';
+
+interface SlotBinding {
+    canonical: string;
+    rendered: string;
+    replacements: Map<string, { url: string; key: string }>;
+}
+
+interface RetryState {
+    source: string;
+    count: number;
+}
+
+const hydratedSlotBindings = new WeakMap<Element, Map<Slot, SlotBinding>>();
+
+function readSlot(element: Element, slot: Slot): string {
+    return slot === 'text' ? (element.textContent ?? '') : (element.getAttribute(slot) ?? '');
+}
+
+function writeSlot(element: Element, slot: Slot, value: string): void {
+    if (slot === 'text') {
+        element.textContent = value;
+    } else {
+        element.setAttribute(slot, value);
+    }
+}
+
+function findAssetUris(value: string): string[] {
+    const matches = value.match(ASSET_URI_PATTERN) ?? [];
+    return [...new Set(matches)];
+}
+
+function isAssetElement(element: Element): element is AssetElement {
+    return (
+        element instanceof HTMLImageElement ||
+        element instanceof HTMLAudioElement ||
+        element instanceof HTMLVideoElement
+    );
+}
+
+function isAssetDimension(value: number | undefined): value is number {
+    return value !== undefined && Number.isInteger(value) && value > 0;
+}
+
+export function reconcileHydratedAssetSlots(fromEl: Element, toEl: Element): void {
+    if (fromEl.tagName !== toEl.tagName) return;
+
+    const slots = hydratedSlotBindings.get(fromEl);
+    if (!slots) return;
+
+    for (const [slot, binding] of slots) {
+        if (readSlot(fromEl, slot) !== binding.rendered) continue;
+
+        const canonical = readSlot(toEl, slot);
+        let rendered = canonical;
+        const retained = new Map<string, { url: string; key: string }>();
+        for (const [uri, replacement] of binding.replacements) {
+            if (!rendered.includes(uri)) continue;
+            rendered = rendered.replaceAll(uri, replacement.url);
+            retained.set(uri, replacement);
+        }
+        if (retained.size === 0) continue;
+
+        binding.canonical = canonical;
+        binding.rendered = rendered;
+        binding.replacements = retained;
+        writeSlot(toEl, slot, rendered);
+    }
+}
+
+function forgetHydratedAssetSlots(element: Element, slots: Map<Slot, SlotBinding>): void {
+    if (hydratedSlotBindings.get(element) === slots) {
+        hydratedSlotBindings.delete(element);
     }
 }
 
 export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => {
-    const loaded = new WeakMap<AssetElement, { key: string; lease: AssetUrlLease }>();
+    const bindings = new Map<Element, Map<Slot, SlotBinding>>();
+    const pending = new Map<Element, Set<Slot>>();
     const leaseCache = new Map<string, AssetUrlLease>();
-    const loading = new Set<AssetElement>();
-    const retryCounts = new WeakMap<AssetElement, number>();
-    const ownedLeases = new Set<AssetUrlLease>();
+    const leasePromises = new Map<string, Promise<AssetUrlLease | null>>();
+    const observed = new Set<Element>();
     const boundRecovery = new WeakSet<AssetElement>();
-    const observed = new Set<AssetElement>();
+    const retryStates = new WeakMap<AssetElement, RetryState>();
     let destroyed = false;
+    let scanQueued = false;
 
-    const observer = new IntersectionObserver(
+    const intersectionObserver = new IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
                 if (!entry.isIntersecting) continue;
-                const element = entry.target as AssetElement;
-                stopObserving(element);
-                void hydrate(element);
+
+                const target = entry.target;
+                stopObserving(target);
+                if (target === node) {
+                    void Promise.all([hydrateElement(target), hydrateHostStyles()]);
+                } else {
+                    void hydrateElement(target);
+                }
             }
         },
-        { rootMargin: '200px' }
+        { rootMargin: '1000px' }
     );
 
-    async function hydrate(element: AssetElement): Promise<void> {
-        if (destroyed || loading.has(element)) return;
+    const mutationObserver = new MutationObserver(() => {
+        queueScan();
+    });
+    mutationObserver.observe(node, {
+        attributes: true,
+        attributeFilter: [...RESOURCE_ATTRIBUTES],
+        characterData: true,
+        childList: true,
+        subtree: true
+    });
 
-        const asset = element.dataset.keiaiAsset;
-        const locator = parseAssetLocator(asset);
-        if (!locator) return;
+    function queueScan(): void {
+        if (destroyed || scanQueued) return;
+        scanQueued = true;
+        queueMicrotask(() => {
+            scanQueued = false;
+            scan();
+        });
+    }
 
+    function scan(): void {
+        if (destroyed) return;
+
+        pending.clear();
+        pruneBindings();
+
+        const elements = [node, ...node.querySelectorAll<Element>('*')];
+        const eagerElements = new Set<Element>();
+        let hasPendingHostStyle = false;
+
+        for (const element of elements) {
+            for (const attribute of RESOURCE_ATTRIBUTES) {
+                const value = readSlot(element, attribute);
+                if (value.includes(ASSET_URI_MARKER)) {
+                    if (attribute === 'src' && element instanceof HTMLImageElement) {
+                        if (!reserveImageLayout(element, value)) {
+                            eagerElements.add(element);
+                        }
+                    }
+                    addPending(element, attribute);
+                }
+            }
+
+            if (
+                element instanceof HTMLStyleElement &&
+                readSlot(element, 'text').includes(ASSET_URI_MARKER)
+            ) {
+                addPending(element, 'text');
+                hasPendingHostStyle = true;
+            }
+        }
+
+        const nextObserved = new Set<Element>();
+        for (const [element, slots] of pending) {
+            if (element instanceof HTMLStyleElement && slots.has('text')) continue;
+            if (eagerElements.has(element)) continue;
+            nextObserved.add(element);
+        }
+        if (hasPendingHostStyle) nextObserved.add(node);
+
+        for (const element of nextObserved) {
+            if (observed.has(element)) continue;
+            intersectionObserver.observe(element);
+            observed.add(element);
+        }
+        for (const element of [...observed]) {
+            if (!nextObserved.has(element)) stopObserving(element);
+        }
+        for (const element of eagerElements) {
+            void hydrateElement(element);
+        }
+
+        releaseUnusedLeases();
+    }
+
+    function addPending(element: Element, slot: Slot): void {
+        const slots = pending.get(element);
+        if (slots) {
+            slots.add(slot);
+        } else {
+            pending.set(element, new Set([slot]));
+        }
+    }
+
+    function reserveImageLayout(element: HTMLImageElement, source: string): boolean {
+        const hasWidth = element.hasAttribute('width');
+        const hasHeight = element.hasAttribute('height');
+
+        const uri = findAssetUris(source)[0];
+        const locator = uri ? parseAssetUri(uri) : null;
+        if (!locator || !isAssetDimension(locator.width) || !isAssetDimension(locator.height)) {
+            return hasWidth && hasHeight;
+        }
+
+        if (hasWidth && hasHeight) return true;
+
+        if (hasWidth) {
+            const width = Number(element.getAttribute('width'));
+            if (!isAssetDimension(width)) return false;
+            element.setAttribute(
+                'height',
+                String(Math.round((width * locator.height) / locator.width))
+            );
+        } else if (hasHeight) {
+            const height = Number(element.getAttribute('height'));
+            if (!isAssetDimension(height)) return false;
+            element.setAttribute(
+                'width',
+                String(Math.round((height * locator.width) / locator.height))
+            );
+        } else {
+            element.setAttribute('width', String(locator.width));
+            element.setAttribute('height', String(locator.height));
+        }
+        return true;
+    }
+
+    function pruneBindings(): void {
+        for (const [element, slots] of bindings) {
+            if (!node.contains(element) && element !== node) {
+                bindings.delete(element);
+                forgetHydratedAssetSlots(element, slots);
+                continue;
+            }
+
+            for (const [slot, binding] of slots) {
+                const current = readSlot(element, slot);
+                if (current !== binding.rendered && current !== binding.canonical) {
+                    slots.delete(slot);
+                }
+            }
+            if (slots.size === 0) {
+                bindings.delete(element);
+                forgetHydratedAssetSlots(element, slots);
+            }
+        }
+    }
+
+    async function hydrateHostStyles(): Promise<void> {
+        const tasks: Promise<void>[] = [];
+        for (const [element, slots] of pending) {
+            if (!element.isConnected || !(element instanceof HTMLStyleElement)) continue;
+            if (slots.has('text')) tasks.push(hydrateSlot(element, 'text'));
+        }
+        await Promise.all(tasks);
+    }
+
+    async function hydrateElement(element: Element): Promise<void> {
+        const slots = pending.get(element);
+        if (!slots || !element.isConnected) return;
+        await Promise.all([...slots].map((slot) => hydrateSlot(element, slot)));
+    }
+
+    async function hydrateSlot(element: Element, slot: Slot): Promise<void> {
+        const original = readSlot(element, slot);
+        const uris = findAssetUris(original);
+        if (destroyed || uris.length === 0) return;
+
+        const resolved = await Promise.all(
+            uris.map(async (uri) => {
+                const locator = parseAssetUri(uri);
+                if (!locator) return null;
+                try {
+                    const lease = await acquireLease(locator);
+                    return lease ? { uri, locator, lease } : null;
+                } catch {
+                    return null;
+                }
+            })
+        );
+
+        if (
+            destroyed ||
+            (!node.contains(element) && element !== node) ||
+            readSlot(element, slot) !== original
+        ) {
+            releaseUnusedLeases();
+            return;
+        }
+
+        const existingBinding = bindings.get(element)?.get(slot);
+        const extendsExisting = existingBinding?.rendered === original;
+        const canonical = extendsExisting ? existingBinding.canonical : original;
+        let rendered = original;
+        const replacements = new Map(extendsExisting ? existingBinding.replacements : undefined);
+        for (const entry of resolved) {
+            if (!entry) continue;
+            rendered = rendered.replaceAll(entry.uri, entry.lease.url);
+            replacements.set(entry.uri, {
+                url: entry.lease.url,
+                key: assetRegistryId(entry.locator)
+            });
+        }
+        if (rendered === original) return;
+
+        const slots = bindings.get(element) ?? new Map<Slot, SlotBinding>();
+        slots.set(slot, { canonical, rendered, replacements });
+        bindings.set(element, slots);
+        hydratedSlotBindings.set(element, slots);
+        writeSlot(element, slot, rendered);
+
+        if (isAssetElement(element)) bindRecovery(element);
+        queueScan();
+    }
+
+    async function acquireLease(locator: AssetReadLocator): Promise<AssetUrlLease | null> {
         const key = assetRegistryId(locator);
+        const cached = leaseCache.get(key);
+        if (cached) return cached;
 
-        const cached = loaded.get(element);
-        if (cached && cached.key !== key) {
-            loaded.delete(element);
-            if (!leaseCache.has(cached.key)) {
-                releaseLease(cached.lease);
-            }
-            element.removeAttribute('src');
-        }
+        const existing = leasePromises.get(key);
+        if (existing) return existing;
 
-        if (cached?.key === key) {
-            if (element.getAttribute('src') !== cached.lease.url) {
-                element.src = cached.lease.url;
-            }
-            stopObserving(element);
-            return;
-        }
-
-        const cachedLease = leaseCache.get(key);
-        if (cachedLease) {
-            bindRecovery(element);
-            element.src = cachedLease.url;
-            element.dataset.keiaiAssetState = 'loaded';
-            loaded.set(element, { key, lease: cachedLease });
-            ownedLeases.add(cachedLease);
-            stopObserving(element);
-            return;
-        }
-
-        loading.add(element);
-        element.dataset.keiaiAssetState = 'loading';
-
-        try {
-            const lease = await AssetService.acquireUrl(locator);
-            if (destroyed || !element.isConnected || element.dataset.keiaiAsset !== asset) {
-                if (lease) void lease.release();
-                return;
-            }
-
-            if (!lease) {
-                element.dataset.keiaiAssetState = 'error';
-                return;
-            }
-
-            bindRecovery(element);
-            element.src = lease.url;
-            element.dataset.keiaiAssetState = 'loaded';
-            ownedLeases.add(lease);
-            loaded.set(element, { key, lease });
-            leaseCache.set(key, lease);
-            stopObserving(element);
-        } catch {
-            if (!destroyed && element.isConnected && element.dataset.keiaiAsset === asset) {
-                element.dataset.keiaiAssetState = 'error';
-            }
-        } finally {
-            loading.delete(element);
-        }
+        const promise = AssetService.acquireUrl(locator)
+            .then((lease) => {
+                if (!lease) return null;
+                if (destroyed) {
+                    void lease.release();
+                    return null;
+                }
+                leaseCache.set(key, lease);
+                return lease;
+            })
+            .finally(() => {
+                leasePromises.delete(key);
+            });
+        leasePromises.set(key, promise);
+        return promise;
     }
 
     function bindRecovery(element: AssetElement): void {
@@ -110,68 +353,68 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         boundRecovery.add(element);
 
         element.addEventListener('error', () => {
-            const asset = element.dataset.keiaiAsset;
-            const locator = parseAssetLocator(asset);
-            if (destroyed || !element.isConnected || !locator) return;
+            if (destroyed || !element.isConnected) return;
+            const slots = bindings.get(element);
+            const binding = slots?.get('src');
+            if (!binding) return;
 
-            const key = assetRegistryId(locator);
-
-            const retryCount = retryCounts.get(element) ?? 0;
+            const retryState = retryStates.get(element);
+            const retryCount = retryState?.source === binding.canonical ? retryState.count : 0;
             if (retryCount >= MAX_RETRIES) {
-                const stale = loaded.get(element);
-                loaded.delete(element);
-                if (stale) {
-                    leaseCache.delete(stale.key);
-                    releaseLease(stale.lease);
+                slots?.delete('src');
+                if (slots?.size === 0) {
+                    bindings.delete(element);
+                    forgetHydratedAssetSlots(element, slots);
                 }
                 element.removeAttribute('src');
-                element.dataset.keiaiAssetState = 'error';
+                releaseUnusedLeases();
                 return;
             }
 
-            retryCounts.set(element, retryCount + 1);
-            loaded.delete(element);
-            element.removeAttribute('src');
-            element.dataset.keiaiAssetState = 'loading';
-            void hydrate(element);
+            retryStates.set(element, {
+                source: binding.canonical,
+                count: retryCount + 1
+            });
+            slots?.delete('src');
+            if (slots?.size === 0) {
+                bindings.delete(element);
+                forgetHydratedAssetSlots(element, slots);
+            }
+            writeSlot(element, 'src', binding.canonical);
+            void hydrateSlot(element, 'src');
         });
     }
 
-    function scan(): void {
-        if (destroyed) return;
-
+    function releaseUnusedLeases(): void {
         const activeKeys = new Set<string>();
-        const activeElements = new Set<AssetElement>();
-        node.querySelectorAll<AssetElement>(ASSET_SELECTOR).forEach((element) => {
-            activeElements.add(element);
-            const asset = element.dataset.keiaiAsset;
-            const locator = parseAssetLocator(asset);
-            if (!locator) return;
 
-            const key = assetRegistryId(locator);
-            activeKeys.add(key);
-
-            const cached = loaded.get(element);
-            if (cached?.key === key) {
-                if (element.getAttribute('src') !== cached.lease.url) {
-                    element.src = cached.lease.url;
+        for (const slots of bindings.values()) {
+            for (const binding of slots.values()) {
+                for (const replacement of binding.replacements.values()) {
+                    activeKeys.add(replacement.key);
                 }
-                return;
             }
-            if (loading.has(element)) return;
-            observer.observe(element);
-            observed.add(element);
-        });
+        }
 
-        for (const element of observed) {
-            if (!activeElements.has(element)) stopObserving(element);
+        for (const [element, slots] of pending) {
+            for (const slot of slots) {
+                for (const uri of findAssetUris(readSlot(element, slot))) {
+                    const locator = parseAssetUri(uri);
+                    if (locator) activeKeys.add(assetRegistryId(locator));
+                }
+            }
         }
 
         for (const [key, lease] of leaseCache) {
             if (activeKeys.has(key)) continue;
             leaseCache.delete(key);
-            releaseLease(lease);
+            void lease.release();
         }
+    }
+
+    function stopObserving(element: Element): void {
+        intersectionObserver.unobserve(element);
+        observed.delete(element);
     }
 
     scan();
@@ -182,23 +425,18 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         },
         destroy() {
             destroyed = true;
-            observer.disconnect();
+            mutationObserver.disconnect();
+            intersectionObserver.disconnect();
+            pending.clear();
+            for (const [element, slots] of bindings) {
+                forgetHydratedAssetSlots(element, slots);
+            }
+            bindings.clear();
             observed.clear();
-            for (const lease of ownedLeases) {
+            for (const lease of leaseCache.values()) {
                 void lease.release();
             }
-            ownedLeases.clear();
             leaseCache.clear();
         }
     };
-
-    function releaseLease(lease: AssetUrlLease): void {
-        if (!ownedLeases.delete(lease)) return;
-        void lease.release();
-    }
-
-    function stopObserving(element: AssetElement): void {
-        observer.unobserve(element);
-        observed.delete(element);
-    }
 };

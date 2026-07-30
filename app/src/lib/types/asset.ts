@@ -33,6 +33,8 @@ export interface AssetFields {
     hash: string;
     encKey: string;
     mimeType: string;
+    width?: number;
+    height?: number;
 }
 
 export type AssetStatus = 'local' | 'remote';

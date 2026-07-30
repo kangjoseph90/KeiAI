@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { hydrateAssets } from '$lib/components/hydrate';
-import { AssetService } from '$lib/services/asset';
+import { hydrateAssets, reconcileHydratedAssetSlots } from '$lib/components/hydrate';
+import { AssetService, createAssetUri } from '$lib/services/asset';
 import type { AssetReadLocator, AssetUrlLease } from '$lib/services/asset';
 
 const observers: FakeIntersectionObserver[] = [];
@@ -58,7 +58,9 @@ const testLocator: AssetReadLocator = {
     ownerTable: 'characters',
     ownerId: 'char-1',
     hash: 'hash-1',
-    encKey: 'key-1'
+    encKey: 'key-1',
+    width: 640,
+    height: 960
 };
 
 const testLocator2: AssetReadLocator = {
@@ -67,14 +69,20 @@ const testLocator2: AssetReadLocator = {
     ownerTable: 'characters',
     ownerId: 'char-2',
     hash: 'hash-2',
-    encKey: 'key-2'
+    encKey: 'key-2',
+    width: 1280,
+    height: 720
 };
 
-vi.mock('$lib/services/asset', () => ({
-    AssetService: {
-        acquireUrl: vi.fn()
-    }
-}));
+vi.mock('$lib/services/asset', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/services/asset')>();
+    return {
+        ...actual,
+        AssetService: {
+            acquireUrl: vi.fn()
+        }
+    };
+});
 
 function createLease(url: string): AssetUrlLease {
     return {
@@ -100,7 +108,7 @@ describe('hydrateAssets', () => {
         vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
-        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
+        node.innerHTML = `<img src="${createAssetUri(testLocator)}" alt="" />`;
         document.body.appendChild(node);
 
         const action = hydrateAssets(node);
@@ -111,13 +119,69 @@ describe('hydrateAssets', () => {
 
         observers[0].trigger(img);
         await vi.waitFor(() => expect(AssetService.acquireUrl).toHaveBeenCalledWith(testLocator));
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
-
-        expect(img.src).toContain('blob:asset-1');
+        await vi.waitFor(() => expect(img.src).toContain('blob:asset-1'));
 
         action?.destroy?.();
 
         expect(lease.release).toHaveBeenCalledOnce();
+    });
+
+    it('reserves raw image layout from locator dimensions before loading the asset', () => {
+        const locator: AssetReadLocator = {
+            ...testLocator,
+            width: 1024,
+            height: 1536
+        };
+        const node = document.createElement('div');
+        node.innerHTML = `<img src="${createAssetUri(locator)}" alt="" />`;
+        document.body.appendChild(node);
+
+        hydrateAssets(node);
+        const img = node.querySelector('img') as HTMLImageElement;
+
+        expect(img.getAttribute('width')).toBe('1024');
+        expect(img.getAttribute('height')).toBe('1536');
+        expect(AssetService.acquireUrl).not.toHaveBeenCalled();
+    });
+
+    it('does not override author-provided raw image dimensions', () => {
+        const locator: AssetReadLocator = {
+            ...testLocator,
+            width: 1024,
+            height: 1536
+        };
+        const node = document.createElement('div');
+        node.innerHTML = `<img src="${createAssetUri(locator)}" width="240" alt="" />`;
+        document.body.appendChild(node);
+
+        hydrateAssets(node);
+        const img = node.querySelector('img') as HTMLImageElement;
+
+        expect(img.getAttribute('width')).toBe('240');
+        expect(img.getAttribute('height')).toBe('360');
+        expect(AssetService.acquireUrl).not.toHaveBeenCalled();
+    });
+
+    it('eagerly hydrates legacy images that have no reservable dimensions', async () => {
+        const lease = createLease('blob:legacy-image');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
+        const locator: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-legacy',
+            hash: 'hash-legacy',
+            encKey: 'key-legacy'
+        };
+        const node = document.createElement('div');
+        node.innerHTML = `<img src="${createAssetUri(locator)}" alt="" />`;
+        document.body.appendChild(node);
+
+        hydrateAssets(node);
+        const img = node.querySelector('img') as HTMLImageElement;
+
+        await vi.waitFor(() => expect(AssetService.acquireUrl).toHaveBeenCalledWith(locator));
+        await vi.waitFor(() => expect(img.src).toContain(lease.url));
     });
 
     it('hydrates native audio and video elements', async () => {
@@ -127,8 +191,8 @@ describe('hydrateAssets', () => {
 
         const node = document.createElement('div');
         node.innerHTML = [
-            `<audio data-keiai-asset='${JSON.stringify(testLocator)}'></audio>`,
-            `<video data-keiai-asset='${JSON.stringify(testLocator2)}'></video>`
+            `<audio src="${createAssetUri(testLocator)}"></audio>`,
+            `<video src="${createAssetUri(testLocator2)}"></video>`
         ].join('');
         document.body.appendChild(node);
 
@@ -139,10 +203,8 @@ describe('hydrateAssets', () => {
         observers[0].trigger(audio);
         observers[0].trigger(video);
 
-        await vi.waitFor(() => expect(audio.dataset.keiaiAssetState).toBe('loaded'));
-        await vi.waitFor(() => expect(video.dataset.keiaiAssetState).toBe('loaded'));
-        expect(audio.src).toContain('blob:audio-1');
-        expect(video.src).toContain('blob:video-1');
+        await vi.waitFor(() => expect(audio.src).toContain('blob:audio-1'));
+        await vi.waitFor(() => expect(video.src).toContain('blob:video-1'));
     });
 
     it('revokes cached URLs when their images leave the hydrated DOM', async () => {
@@ -150,14 +212,14 @@ describe('hydrateAssets', () => {
         vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
-        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
+        node.innerHTML = `<img src="${createAssetUri(testLocator)}" alt="" />`;
         document.body.appendChild(node);
 
         const action = hydrateAssets(node);
         const img = node.querySelector('img') as HTMLImageElement;
 
         observers[0].trigger(img);
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+        await vi.waitFor(() => expect(img.src).toContain(lease.url));
 
         img.remove();
         action?.update?.(undefined);
@@ -170,7 +232,7 @@ describe('hydrateAssets', () => {
         vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
 
         const node = document.createElement('div');
-        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator2)}' alt="" />`;
+        node.innerHTML = `<img src="${createAssetUri(testLocator2)}" alt="" />`;
         document.body.appendChild(node);
 
         hydrateAssets(node);
@@ -178,24 +240,132 @@ describe('hydrateAssets', () => {
 
         observers[0].trigger(img);
         await vi.waitFor(() => expect(AssetService.acquireUrl).toHaveBeenCalledWith(testLocator2));
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+        await vi.waitFor(() => expect(img.src).toContain(lease.url));
 
         const originalLoadCount = vi.mocked(AssetService.acquireUrl).mock.calls.length;
 
         // Error retries reuse cached URL — no additional read() calls
         img.dispatchEvent(new Event('error'));
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+        expect(img.getAttribute('src')).toContain('#keiai-asset:');
+        await vi.waitFor(() => expect(img.src).toContain(lease.url));
         img.dispatchEvent(new Event('error'));
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+        expect(img.getAttribute('src')).toContain('#keiai-asset:');
+        await vi.waitFor(() => expect(img.src).toContain(lease.url));
 
-        // Third error exceeds MAX_RETRIES → error state, urlCache evicted
+        // Third error exceeds MAX_RETRIES → source removed, urlCache evicted
         img.dispatchEvent(new Event('error'));
-        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('error'));
+        expect(img.hasAttribute('src')).toBe(false);
 
         // read() was called only once (initial load, no retries via read)
         expect(vi.mocked(AssetService.acquireUrl).mock.calls.length).toBe(originalLoadCount);
 
         // Evicted URL is revoked
         expect(lease.release).toHaveBeenCalledOnce();
+    });
+
+    it('hydrates asset URIs in inline styles when their element becomes visible', async () => {
+        const lease = createLease('blob:inline-background');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
+
+        const node = document.createElement('div');
+        const assetUri = createAssetUri(testLocator);
+        node.innerHTML = `<div style="background-image:url('${assetUri}')"></div>`;
+        document.body.appendChild(node);
+
+        const action = hydrateAssets(node);
+        const target = node.firstElementChild as HTMLElement;
+
+        expect(target.getAttribute('style')).toContain(assetUri);
+        expect(AssetService.acquireUrl).not.toHaveBeenCalled();
+
+        observers[0].trigger(target);
+        await vi.waitFor(() => expect(target.getAttribute('style')).toContain(lease.url));
+
+        action?.destroy?.();
+        expect(lease.release).toHaveBeenCalledOnce();
+    });
+
+    it('hydrates style blocks when their host becomes visible', async () => {
+        const lease = createLease('blob:scoped-background');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
+
+        const node = document.createElement('div');
+        const assetUri = createAssetUri(testLocator);
+        node.innerHTML = `<style>.message{background-image:url("${assetUri}")}</style><p>Visible</p>`;
+        document.body.appendChild(node);
+
+        const action = hydrateAssets(node);
+        const style = node.querySelector('style') as HTMLStyleElement;
+
+        expect(style.textContent).toContain(assetUri);
+        expect(AssetService.acquireUrl).not.toHaveBeenCalled();
+
+        observers[0].trigger(node);
+        await vi.waitFor(() => expect(style.textContent).toContain(lease.url));
+
+        action?.destroy?.();
+        expect(lease.release).toHaveBeenCalledOnce();
+    });
+
+    it('preserves every hydrated slot when morphing the same canonical asset output', async () => {
+        const lease = createLease('blob:shared-asset');
+        vi.mocked(AssetService.acquireUrl).mockResolvedValue(lease);
+
+        const assetUri = createAssetUri(testLocator);
+        const html = [
+            `<video src="${assetUri}" poster="${assetUri}" style="background-image:url('${assetUri}')"></video>`,
+            `<a href="${assetUri}">asset</a>`,
+            `<style>.asset{background-image:url("${assetUri}")}</style>`
+        ].join('');
+        const node = document.createElement('div');
+        node.innerHTML = html;
+        document.body.appendChild(node);
+
+        const action = hydrateAssets(node);
+        const video = node.querySelector('video') as HTMLVideoElement;
+        const anchor = node.querySelector('a') as HTMLAnchorElement;
+        const style = node.querySelector('style') as HTMLStyleElement;
+
+        observers[0].trigger(video);
+        observers[0].trigger(anchor);
+        observers[0].trigger(node);
+
+        await vi.waitFor(() => {
+            expect(video.getAttribute('src')).toContain(lease.url);
+            expect(video.getAttribute('poster')).toContain(lease.url);
+            expect(video.getAttribute('style')).toContain(lease.url);
+            expect(anchor.getAttribute('href')).toContain(lease.url);
+            expect(style.textContent).toContain(lease.url);
+        });
+
+        const target = document.createElement('div');
+        target.innerHTML = html;
+        const targetVideo = target.querySelector('video') as HTMLVideoElement;
+        const targetAnchor = target.querySelector('a') as HTMLAnchorElement;
+        const targetStyle = target.querySelector('style') as HTMLStyleElement;
+        targetVideo.className = 'updated';
+        targetVideo.setAttribute('style', `opacity:0.5;background-image:url('${assetUri}')`);
+        targetStyle.textContent = `.asset{background-image:url("${assetUri}");opacity:0.5}`;
+
+        reconcileHydratedAssetSlots(video, targetVideo);
+        reconcileHydratedAssetSlots(anchor, targetAnchor);
+        reconcileHydratedAssetSlots(style, targetStyle);
+
+        expect(targetVideo.getAttribute('src')).toContain(lease.url);
+        expect(targetVideo.getAttribute('poster')).toContain(lease.url);
+        expect(targetVideo.getAttribute('style')).toContain(lease.url);
+        expect(targetVideo.getAttribute('style')).toContain('opacity:0.5');
+        expect(targetVideo.className).toBe('updated');
+        expect(targetAnchor.getAttribute('href')).toContain(lease.url);
+        expect(targetStyle.textContent).toContain(lease.url);
+        expect(targetStyle.textContent).toContain('opacity:0.5');
+
+        const changedAnchor = document.createElement('a');
+        const changedUri = createAssetUri(testLocator2);
+        changedAnchor.setAttribute('href', changedUri);
+        reconcileHydratedAssetSlots(anchor, changedAnchor);
+        expect(changedAnchor.getAttribute('href')).toBe(changedUri);
+
+        action?.destroy?.();
     });
 });

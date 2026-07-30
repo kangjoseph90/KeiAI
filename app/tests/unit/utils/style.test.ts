@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { scopeCss, scopeStyleBlocks } from '$lib/utils/style';
+import { createAssetUri } from '$lib/services/asset';
+import { sanitizeWithStyle, scopeCss, scopeStyleBlocks } from '$lib/utils/style';
 
 describe('style scoping', () => {
     const scope = '[data-keiai-message-scope="message-1"]';
@@ -62,5 +63,19 @@ describe('style scoping', () => {
         expect(html).toContain(`<style>${scope} .status-window { color: red; }</style>`);
         expect(html).toContain('<p>Before</p>');
         expect(html).toContain('<div class="status-window">Ready</div>');
+    });
+
+    it('preserves internal asset URIs', () => {
+        const uri = createAssetUri({
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'character-1',
+            hash: 'hash-1',
+            encKey: 'key-1'
+        });
+        const sanitized = sanitizeWithStyle(`<img src="${uri}">`);
+
+        expect(sanitized).toContain(`src="${uri}"`);
     });
 });

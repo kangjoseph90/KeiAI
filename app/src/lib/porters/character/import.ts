@@ -56,7 +56,9 @@ export async function importCharacterPackage(
                 importAssetPayload('avatar', pkg.avatar, options.allowLightAssets ?? true),
                 {
                     name: pkg.character.avatar?.name ?? 'avatar.bin',
-                    mimeType: pkg.character.avatar?.mimeType ?? 'application/octet-stream'
+                    mimeType: pkg.character.avatar?.mimeType ?? 'application/octet-stream',
+                    width: pkg.character.avatar?.width,
+                    height: pkg.character.avatar?.height
                 }
             );
             await CharacterService.updateAvatar(character.id, avatarInput);
@@ -72,7 +74,9 @@ export async function importCharacterPackage(
                 character.id,
                 materializeImportedAsset(imported, {
                     name: pkgRef.name,
-                    mimeType: pkgRef.mimeType
+                    mimeType: pkgRef.mimeType,
+                    width: pkgRef.width,
+                    height: pkgRef.height
                 }),
                 pkgRef.sortOrder
             );

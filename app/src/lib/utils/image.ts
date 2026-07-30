@@ -20,6 +20,14 @@ function loadImage(file: File): Promise<HTMLImageElement> {
     });
 }
 
+export async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+    const image = await loadImage(file);
+    return {
+        width: image.naturalWidth || image.width,
+        height: image.naturalHeight || image.height
+    };
+}
+
 function calculateDimensions(
     width: number,
     height: number,
