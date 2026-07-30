@@ -1,5 +1,5 @@
 /**
- * Kokoro TTS Stream Handler — KeiAI
+ * Kokoro TTS Handler — KeiAI
  *
  * Uses kokoro-js so the selected Kokoro voice embedding is loaded and applied.
  */
@@ -7,7 +7,7 @@
 import type { KokoroTTS } from 'kokoro-js';
 import { AppError } from '$lib/types/errors';
 import { isKokoroVoiceId } from '$lib/types/models/tts';
-import type { TTSStreamChunk, TTSStreamHandler } from '../types';
+import type { TTSHandler, TTSResult } from '../types';
 
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 
@@ -34,15 +34,14 @@ async function loadModel(): Promise<KokoroTTS> {
     return modelPromise;
 }
 
-export class KokoroTTSStreamHandler implements TTSStreamHandler {
+export class KokoroTTSHandler implements TTSHandler {
     private readonly config: KokoroTTSConfig;
 
     constructor(config: KokoroTTSConfig) {
         this.config = config;
     }
 
-    async *synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk> {
-        if (!text.trim()) return;
+    async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         if (!isKokoroVoiceId(this.config.voiceId)) {
             throw new AppError('INVALID_INPUT', `Unknown Kokoro voice: ${this.config.voiceId}`);
         }
@@ -54,7 +53,7 @@ export class KokoroTTSStreamHandler implements TTSStreamHandler {
         const audio = await model.generate(text, { voice: this.config.voiceId });
         signal.throwIfAborted();
 
-        yield {
+        return {
             data: new Uint8Array(audio.toWav()),
             mimeType: 'audio/wav'
         };

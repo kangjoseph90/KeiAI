@@ -1,11 +1,10 @@
 /**
  * Transformers STT Handler — KeiAI
  *
- * Implements STTHandler using the local inference adapter.
- * Uses @huggingface/transformers Whisper models via appInference.
+ * Implements STTHandler using the local Transformers.js runtime.
  */
 
-import { appInference } from '$lib/adapters/inference';
+import { transformers } from '$lib/inference';
 import type { STTHandler, STTResult } from '../types';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -25,7 +24,7 @@ export class TransformersSTTHandler implements STTHandler {
     }
 
     async transcribe(audio: Blob, signal?: AbortSignal): Promise<STTResult> {
-        const result = await appInference.transcribe({ modelId: this.config.modelId }, audio, {
+        const result = await transformers.transcribe({ modelId: this.config.modelId }, audio, {
             device: 'wasm',
             language: this.config.language
         });

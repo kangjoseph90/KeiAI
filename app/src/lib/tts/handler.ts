@@ -1,30 +1,27 @@
 /**
  * TTS Handler Selection — KeiAI
  *
- * Resolves a provider + settings into a concrete TTSStreamHandler.
+ * Resolves a provider + settings into a concrete TTSHandler.
  * Model and voice IDs are stored directly in provider config (no registry lookup).
  */
 
-import type { TTSStreamHandler } from './types';
+import type { TTSHandler } from './types';
 import type { AppSettings } from '$lib/services';
 import type { TTSProvider } from '$lib/types/models/tts';
-import { OpenAITTSStreamHandler } from './handlers/openai';
-import { TransformersTTSStreamHandler } from './handlers/transformers';
-import { KokoroTTSStreamHandler } from './handlers/kokoro';
-import { GoogleTTSStreamHandler } from './handlers/google';
-import { ElevenLabsTTSStreamHandler } from './handlers/elevenlabs';
-import { NovelAITTSStreamHandler } from './handlers/novelai';
-import { MockTTSStreamHandler, type MockTTSBehavior } from './handlers/mock';
+import { OpenAITTSHandler } from './handlers/openai';
+import { TransformersTTSHandler } from './handlers/transformers';
+import { KokoroTTSHandler } from './handlers/kokoro';
+import { GoogleTTSHandler } from './handlers/google';
+import { ElevenLabsTTSHandler } from './handlers/elevenlabs';
+import { NovelAITTSHandler } from './handlers/novelai';
+import { MockTTSHandler, type MockTTSBehavior } from './handlers/mock';
 import { pluginManager } from '$lib/plugins';
-import { PluginTTSStreamHandler } from './handlers/plugin';
+import { PluginTTSHandler } from './handlers/plugin';
 
-export function selectTTSHandler(
-    provider: TTSProvider,
-    settings: AppSettings
-): TTSStreamHandler | null {
+export function selectTTSHandler(provider: TTSProvider, settings: AppSettings): TTSHandler | null {
     switch (provider) {
         case 'openai': {
-            return new OpenAITTSStreamHandler({
+            return new OpenAITTSHandler({
                 apiKey: settings.openai?.apiKey,
                 baseUrl: 'https://api.openai.com/v1',
                 modelId: settings.openai.tts.modelId,
@@ -33,7 +30,7 @@ export function selectTTSHandler(
         }
 
         case 'elevenlabs': {
-            return new ElevenLabsTTSStreamHandler({
+            return new ElevenLabsTTSHandler({
                 apiKey: settings.elevenlabs?.apiKey,
                 baseUrl: 'https://api.elevenlabs.io/v1',
                 modelId: settings.elevenlabs.tts.modelId,
@@ -42,7 +39,7 @@ export function selectTTSHandler(
         }
 
         case 'google': {
-            return new GoogleTTSStreamHandler({
+            return new GoogleTTSHandler({
                 apiKey: settings.google?.apiKey,
                 baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
                 modelId: settings.google.tts.modelId,
@@ -51,7 +48,7 @@ export function selectTTSHandler(
         }
 
         case 'novelai': {
-            return new NovelAITTSStreamHandler({
+            return new NovelAITTSHandler({
                 apiKey: settings.novelai?.apiKey,
                 baseUrl: 'https://api.novelai.net',
                 voiceId: settings.novelai.tts.voiceId,
@@ -60,19 +57,19 @@ export function selectTTSHandler(
         }
 
         case 'kokoro': {
-            return new KokoroTTSStreamHandler({
+            return new KokoroTTSHandler({
                 voiceId: settings.kokoro.tts.voiceId
             });
         }
 
         case 'transformers': {
-            return new TransformersTTSStreamHandler({
+            return new TransformersTTSHandler({
                 modelId: settings.transformers.tts.modelId
             });
         }
 
         case 'mock': {
-            return new MockTTSStreamHandler({
+            return new MockTTSHandler({
                 behavior: settings.mock.tts.modelId as MockTTSBehavior
             });
         }
@@ -82,11 +79,11 @@ export function selectTTSHandler(
     }
 }
 
-function selectPluginHandler(modelId: string): TTSStreamHandler | null {
+function selectPluginHandler(modelId: string): TTSHandler | null {
     for (const instance of pluginManager.getInstances()) {
         const definition = instance.ttsProviders.get(modelId);
         if (definition) {
-            return new PluginTTSStreamHandler(instance, definition.fnId);
+            return new PluginTTSHandler(instance, definition.fnId);
         }
     }
     return null;

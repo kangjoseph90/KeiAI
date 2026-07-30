@@ -1,11 +1,10 @@
 /**
  * OpenAI TTS Handler — KeiAI
  *
- * Implements TTSStreamHandler for OpenAI's /audio/speech endpoint.
- * Streams MP3 audio chunks via AsyncIterable.
+ * Implements TTSHandler for OpenAI's /audio/speech endpoint.
  */
 
-import type { TTSStreamChunk, TTSStreamHandler } from '../types';
+import type { TTSHandler, TTSResult } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
@@ -21,14 +20,14 @@ export interface OpenAITTSConfig {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export class OpenAITTSStreamHandler implements TTSStreamHandler {
+export class OpenAITTSHandler implements TTSHandler {
     private readonly config: OpenAITTSConfig;
 
     constructor(config: OpenAITTSConfig) {
         this.config = config;
     }
 
-    async *synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk> {
+    async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/audio/speech'), {
             method: 'POST',
             headers: {
@@ -48,19 +47,9 @@ export class OpenAITTSStreamHandler implements TTSStreamHandler {
             throw new AppError('NETWORK_ERROR', `OpenAI TTS failed: ${response.status}`);
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) {
-            throw new AppError('NETWORK_ERROR', 'Response body is not readable');
-        }
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                yield { data: Uint8Array.from(value), mimeType: 'audio/mpeg' };
-            }
-        } finally {
-            reader.releaseLock();
-        }
+        return {
+            data: new Uint8Array(await response.arrayBuffer()),
+            mimeType: 'audio/mpeg'
+        };
     }
 }

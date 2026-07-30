@@ -36,6 +36,7 @@ lib/types/         Domain vocabulary (models/, errors.ts, refs.ts)
 lib/utils/         Infrastructure utilities (cache.ts, defaults.ts, events.ts, id.ts, ordering.ts, stream.ts)
 lib/llm/           LLM handler layer (OpenAI-compatible streaming, prompt building, tokenizer)
 lib/tts/           TTS handler layer (OpenAI TTS, ElevenLabs — per-handler classes)
+lib/inference/     Shared local inference runtimes (Transformers.js pipeline loading/cache)
 lib/embedding/     Embedding handler layer (OpenAI-compatible batch embedding)
 lib/scripts/       Text transformation (regex-based, used by both UI and tasks)
 lib/tasks/         Pipeline orchestration (chat task, future: translate, summarize)
@@ -384,7 +385,7 @@ Three protocol layers share a common selection pattern: `selectXXXHandler(modelC
 | Layer            | Input          | Output                            | Class Dispatch                                             |
 | ---------------- | -------------- | --------------------------------- | ---------------------------------------------------------- |
 | `lib/llm/`       | `OpenAIChat[]` | `AsyncIterable<LLMStreamContent>` | Handler-based (`openai_compatible`, `anthropic`, `google`) |
-| `lib/tts/`       | `text`         | `AsyncIterable<TTSStreamChunk>`   | Handler-based (`openai`, `elevenlabs`, `google`)           |
+| `lib/tts/`       | `text`         | `Promise<TTSResult>`              | Handler-based (`openai`, `elevenlabs`, `google`)           |
 | `lib/embedding/` | `text[]`       | `Promise<EmbeddingResult>`        | Handler-based (`openai_compatible`, `google`)              |
 
 - **Handler-based** (LLM, Embedding): Multiple providers share one class when they use the same wire protocol (e.g. OpenAI-compatible handler). URL + API key swap only.

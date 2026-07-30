@@ -1,11 +1,11 @@
 /**
  * Transformers LLM Stream Handler — KeiAI
  *
- * Implements LLMStreamHandler using the local inference adapter.
+ * Implements LLMStreamHandler using the local Transformers.js runtime.
  * Handles continuous text generation using WebGPU via transformers.js.
  */
 
-import { appInference } from '$lib/adapters/inference';
+import { transformers } from '$lib/inference';
 import { getTextContent } from '$lib/workflow/agent/llm';
 import type {
     LLMStreamHandler,
@@ -41,7 +41,7 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
             role: message.role,
             content: getTextContent(message.content)
         }));
-        const stream = appInference.generate({ modelId: this.config.modelId }, textMessages, {
+        const stream = transformers.generate({ modelId: this.config.modelId }, textMessages, {
             device: 'webgpu', // LLM generation strongly prefers WebGPU
             max_new_tokens: options.maxResponse ?? 512,
             temperature: (parameters['temperature'] as number) ?? 0.7,

@@ -411,7 +411,7 @@ export const guestSDK = String.raw`
             );
         },
         synthesizeSpeech: (text, signal) => {
-            return broker.invokeStream('core.synthesizeSpeech', [text], signal);
+            return broker.invoke('core.synthesizeSpeech', [text], signal);
         },
         transcribeSpeech: (audio, signal) => {
             return broker.invoke('core.transcribeSpeech', [audio], signal);

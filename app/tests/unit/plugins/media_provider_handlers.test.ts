@@ -6,8 +6,7 @@ import type { PluginInstance } from '$lib/plugins/manager';
 
 const mocks = vi.hoisted(() => ({
     instances: [] as PluginInstance[],
-    invoke: vi.fn(),
-    invokeStream: vi.fn()
+    invoke: vi.fn()
 }));
 
 vi.mock('$lib/plugins', () => ({
@@ -46,8 +45,7 @@ describe('plugin media provider handlers', () => {
                     ['transcription', provider('plugin::transcription', 'transcription', 'stt-fn')]
                 ]),
                 broker: {
-                    invoke: mocks.invoke,
-                    invokeStream: mocks.invokeStream
+                    invoke: mocks.invoke
                 }
             } as unknown as PluginInstance
         ];
@@ -65,11 +63,11 @@ describe('plugin media provider handlers', () => {
                 data: new Uint8Array([1]),
                 mimeType: 'image/png'
             })
+            .mockResolvedValueOnce({
+                data: new Uint8Array([2]),
+                mimeType: 'audio/wav'
+            })
             .mockResolvedValueOnce({ text: 'transcribed' });
-        const speech = (async function* () {
-            yield { data: new Uint8Array([2]), mimeType: 'audio/wav' };
-        })();
-        mocks.invokeStream.mockReturnValue(speech);
 
         await expect(
             selectImageGenHandler('plugin', settings)?.generate(imageRequest, signal)
@@ -77,14 +75,12 @@ describe('plugin media provider handlers', () => {
             data: new Uint8Array([1]),
             mimeType: 'image/png'
         });
-        const ttsChunks = [];
-        for await (const chunk of selectTTSHandler('plugin', settings)!.synthesize(
-            'hello',
-            signal
-        )) {
-            ttsChunks.push(chunk);
-        }
-        expect(ttsChunks).toEqual([{ data: new Uint8Array([2]), mimeType: 'audio/wav' }]);
+        await expect(
+            selectTTSHandler('plugin', settings)!.synthesize('hello', signal)
+        ).resolves.toEqual({
+            data: new Uint8Array([2]),
+            mimeType: 'audio/wav'
+        });
         await expect(
             selectSTTHandler('plugin', settings)?.transcribe(
                 new Blob([new Uint8Array([3])], { type: 'audio/wav' }),
@@ -93,9 +89,9 @@ describe('plugin media provider handlers', () => {
         ).resolves.toEqual({ text: 'transcribed' });
 
         expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'image-fn', [imageRequest], signal);
-        expect(mocks.invokeStream).toHaveBeenCalledWith('tts-fn', ['hello'], signal);
+        expect(mocks.invoke).toHaveBeenNthCalledWith(2, 'tts-fn', ['hello'], signal);
         expect(mocks.invoke).toHaveBeenNthCalledWith(
-            2,
+            3,
             'stt-fn',
             [{ data: new Uint8Array([3]), mimeType: 'audio/wav' }],
             signal

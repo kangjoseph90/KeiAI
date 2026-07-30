@@ -6,7 +6,7 @@
  * Less accurate than cross-encoder but works with any embedding model.
  */
 
-import { appInference } from '$lib/adapters/inference';
+import { transformers } from '$lib/inference';
 import type { RerankerResult, RerankerItem, RerankerHandler } from '../types';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -31,8 +31,7 @@ export class TransformersRerankerHandler implements RerankerHandler {
     ): Promise<RerankerResult> {
         if (documents.length === 0) return { results: [] };
 
-        // Delegate to appInference which uses the 'text-classification' cross-encoder pipeline
-        const scores = await appInference.rerank(
+        const scores = await transformers.rerank(
             { modelId: this.config.modelId },
             query,
             documents,
