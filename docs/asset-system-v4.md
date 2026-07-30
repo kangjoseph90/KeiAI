@@ -167,13 +167,13 @@ resource asset은 이름으로 접근한다.
 locator를 보존한다. `img`, `asset`, `raw`, `path`, `bg`와 inlay가
 같은 URI 표현을 사용한다.
 
-이미지의 `width`와 `height`는 업로드 시 추출해 encrypted parent payload에 저장한다.
-`img` macro는 HTML의 intrinsic size attribute로 이를 출력한다. `raw` URI가 `<img src>`에
-사용된 경우에도 `hydrateAssets`가 asset을 읽기 전에 locator의 크기를 적용한다. 사용자가
+이미지와 비디오의 `width`와 `height`는 업로드 시 추출해 encrypted parent payload에 저장한다.
+`img`와 `video` macro는 HTML의 intrinsic size attribute로 이를 출력한다. `raw` URI가
+`<img src>` 또는 `<video src>`에 사용된 경우에도 `hydrateAssets`가 asset을 읽기 전에
+locator의 크기를 적용한다. 사용자가
 직접 `width` 또는 `height`를 지정했다면 해당 값을 유지하고 누락된 축만 원본 비율로 계산한다.
-크기 메타데이터가 없는 기존
-에셋은 스크롤 중 0 높이에서 갑자기 확장되는 것을 피하기 위해 DOM hydration 직후 eager
-load한다.
+크기 메타데이터가 없는 기존 이미지는 스크롤 중 0 높이에서 갑자기 확장되는 것을 피하기 위해
+DOM hydration 직후 eager load한다.
 
 inlay는 chat-local id로 접근한다.
 
@@ -223,7 +223,7 @@ canonical media discriminator로 사용하며, 런타임에서는 MIME top-level
 media type은 추가하지 않는다.
 
 - 이미지: PNG/JPEG는 기존처럼 WebP 전처리를 적용하고, WebP/GIF는 원본 바이트를 유지한다.
-- 오디오/비디오: 원본 바이트와 MIME type을 유지한다.
+- 오디오/비디오: 원본 바이트와 MIME type을 유지하며, 비디오는 metadata에서 크기를 추출한다.
 - 이름 기반 매크로: `asset`, `media`, `img`, `image`, `audio`, `video`는 실제 MIME type에
   따라 `<img>`, `<audio controls>`, `<video controls>` 중 하나를 렌더한다.
 - inlay 매크로: `{{inlay::refId}}`도 같은 MIME 기반 렌더링 규칙을 사용한다.

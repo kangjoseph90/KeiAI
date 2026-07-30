@@ -28,6 +28,39 @@ export async function readImageDimensions(file: File): Promise<{ width: number; 
     };
 }
 
+export function readVideoDimensions(
+    file: File,
+    mimeType = file.type
+): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        const source = file.type === mimeType ? file : new Blob([file], { type: mimeType });
+        const url = URL.createObjectURL(source);
+
+        const cleanup = () => {
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            URL.revokeObjectURL(url);
+        };
+
+        video.onloadedmetadata = () => {
+            const { videoWidth: width, videoHeight: height } = video;
+            cleanup();
+            if (width > 0 && height > 0) {
+                resolve({ width, height });
+            } else {
+                reject(new Error('Video has no dimensions'));
+            }
+        };
+        video.onerror = () => {
+            cleanup();
+            reject(new Error('Failed to load video metadata'));
+        };
+        video.preload = 'metadata';
+        video.src = url;
+    });
+}
+
 function calculateDimensions(
     width: number,
     height: number,

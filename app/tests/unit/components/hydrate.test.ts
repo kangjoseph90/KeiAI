@@ -200,6 +200,9 @@ describe('hydrateAssets', () => {
         const audio = node.querySelector('audio') as HTMLAudioElement;
         const video = node.querySelector('video') as HTMLVideoElement;
 
+        expect(video.getAttribute('width')).toBe('1280');
+        expect(video.getAttribute('height')).toBe('720');
+
         observers[0].trigger(audio);
         observers[0].trigger(video);
 
