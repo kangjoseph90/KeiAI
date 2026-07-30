@@ -12,6 +12,8 @@ import { CohereRerankerHandler } from './handlers/cohere';
 import { JinaRerankerHandler } from './handlers/jina';
 import { VoyageAIRerankerHandler } from './handlers/voyageai';
 import { TransformersRerankerHandler } from './handlers/transformers';
+import { PluginRerankerHandler } from './handlers/plugin';
+import { pluginManager } from '$lib/plugins';
 
 export function selectRerankerHandler(
     provider: RerankerProvider,
@@ -47,5 +49,19 @@ export function selectRerankerHandler(
                 modelId: settings.transformers.reranker.modelId
             });
         }
+
+        case 'plugin': {
+            return selectPluginHandler(settings.plugin.reranker.modelId);
+        }
     }
+}
+
+function selectPluginHandler(modelId: string): RerankerHandlerType | null {
+    for (const instance of pluginManager.getInstances()) {
+        const definition = instance.rerankerProviders.get(modelId);
+        if (definition) {
+            return new PluginRerankerHandler(instance, definition.fnId);
+        }
+    }
+    return null;
 }

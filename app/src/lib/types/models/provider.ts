@@ -226,4 +226,10 @@ export interface PluginProviderConfig {
     stt: {
         modelId: string;
     };
+    embedding: {
+        modelId: string;
+    };
+    reranker: {
+        modelId: string;
+    };
 }

@@ -381,6 +381,44 @@ export const guestSDK = String.raw`
                 }
             };
         },
+        addEmbeddingProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'embedding_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, fn);
+            const registration = broker.invoke('core.addEmbeddingProvider', [
+                modelId,
+                fnId,
+                { name: opts.name }
+            ]);
+            registrations.push(registration);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeEmbeddingProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        },
+        addRerankerProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'reranker_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, fn);
+            const registration = broker.invoke('core.addRerankerProvider', [
+                modelId,
+                fnId,
+                { name: opts.name }
+            ]);
+            registrations.push(registration);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeRerankerProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        },
         registerLLMType: (type, opts = {}) => {
             const p = broker.invoke('core.registerLLMType', [
                 type,

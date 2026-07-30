@@ -15,13 +15,21 @@
     import { appSettings, updateSettings } from '$lib/stores';
     import type { AppSettings } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
-    import { getEmbeddingProviderName, type EmbeddingProvider } from '$lib/types/models/embedding';
+    import {
+        getEmbeddingProviderName,
+        type EmbeddingProvider,
+        type PluginEmbeddingModel
+    } from '$lib/types/models/embedding';
     import {
         getImageGenProviderName,
         type ImageGenProvider,
         type PluginImageGenModel
     } from '$lib/types/models/imagegen';
-    import { getRerankerProviderName, type RerankerProvider } from '$lib/types/models/reranker';
+    import {
+        getRerankerProviderName,
+        type PluginRerankerModel,
+        type RerankerProvider
+    } from '$lib/types/models/reranker';
     import {
         getSTTProviderName,
         type PluginSTTModel,
@@ -41,8 +49,12 @@
     import { pluginManager } from '$lib/plugins';
 
     type Feature = 'imagegen' | 'tts' | 'stt' | 'embedding' | 'reranker';
-    type MediaFeature = 'imagegen' | 'tts' | 'stt';
-    type PluginMediaModel = PluginImageGenModel | PluginTTSModel | PluginSTTModel;
+    type PluginModel =
+        | PluginImageGenModel
+        | PluginTTSModel
+        | PluginSTTModel
+        | PluginEmbeddingModel
+        | PluginRerankerModel;
     type ServiceProvider =
         | ImageGenProvider
         | TTSProvider
@@ -138,9 +150,16 @@
         'openrouter',
         'minilm',
         'transformers',
-        'custom'
+        'custom',
+        'plugin'
     ];
-    const RERANKER_PROVIDERS: RerankerProvider[] = ['cohere', 'jina', 'voyageai', 'transformers'];
+    const RERANKER_PROVIDERS: RerankerProvider[] = [
+        'cohere',
+        'jina',
+        'voyageai',
+        'transformers',
+        'plugin'
+    ];
     const MOCK_IMAGEGEN_MODELS = ['sample', 'diagnostic'] as const;
     const MOCK_TTS_MODELS = ['sample', 'morse'] as const;
     const MOCK_STT_MODELS = ['sample', 'diagnostic'] as const;
@@ -230,7 +249,7 @@
         }
     }
 
-    function getPluginModels(selectedFeature: MediaFeature): PluginMediaModel[] {
+    function getPluginModels(selectedFeature: Feature): PluginModel[] {
         return pluginManager.getInstances().flatMap((instance) => {
             switch (selectedFeature) {
                 case 'imagegen':
@@ -241,6 +260,14 @@
                     return [...instance.ttsProviders.values()].map((provider) => provider.model);
                 case 'stt':
                     return [...instance.sttProviders.values()].map((provider) => provider.model);
+                case 'embedding':
+                    return [...instance.embeddingProviders.values()].map(
+                        (provider) => provider.model
+                    );
+                case 'reranker':
+                    return [...instance.rerankerProviders.values()].map(
+                        (provider) => provider.model
+                    );
             }
         });
     }
@@ -791,6 +818,8 @@
                                 'Model ID'
                             )
                         ];
+                    case 'plugin':
+                        return [];
                 }
                 return [];
             }
@@ -843,6 +872,8 @@
                                 'Model ID'
                             )
                         ];
+                    case 'plugin':
+                        return [];
                 }
                 return [];
             }
@@ -875,12 +906,7 @@
     }
 
     function updatePluginModel(modelId: string): void {
-        if (!isMediaFeature(activeFeature)) return;
         void save({ plugin: { [activeFeature]: { modelId } } } as DeepPartial<AppSettings>);
-    }
-
-    function isMediaFeature(value: Feature): value is MediaFeature {
-        return value === 'imagegen' || value === 'tts' || value === 'stt';
     }
 
     function updateField(field: SettingsField, value: string): void {
@@ -959,7 +985,7 @@
                         </select>
                     </div>
 
-                    {#if activeProvider === 'plugin' && isMediaFeature(activeFeature)}
+                    {#if activeProvider === 'plugin'}
                         <div class="space-y-2 border-t pt-6">
                             <Label for="plugin-model">Model</Label>
                             <select
@@ -971,7 +997,7 @@
                             >
                                 <option value="">Select a model...</option>
                                 {#each getPluginModels(activeFeature) as model (model.id)}
-                                    <option value={model.modelId}>{model.name}</option>
+                                    <option value={model.id}>{model.name}</option>
                                 {/each}
                             </select>
                         </div>

@@ -5,7 +5,7 @@
  * and stored directly in provider config (no model registry needed for built-ins).
  */
 
-export type EmbeddingProvider =
+export type BuiltInEmbeddingProvider =
     | 'openai'
     | 'google'
     | 'voyageai'
@@ -13,6 +13,14 @@ export type EmbeddingProvider =
     | 'minilm'
     | 'transformers'
     | 'custom';
+export type EmbeddingProvider = BuiltInEmbeddingProvider | 'plugin';
+
+export interface PluginEmbeddingModel {
+    id: string;
+    name: string;
+    modelId: string;
+    provider: 'plugin';
+}
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
@@ -23,7 +31,8 @@ const providerNames: Record<EmbeddingProvider, string> = {
     openrouter: 'OpenRouter',
     minilm: 'MiniLM',
     transformers: 'Transformers',
-    custom: 'Custom'
+    custom: 'Custom',
+    plugin: 'Plugin'
 };
 
 export function getEmbeddingProviderName(provider: EmbeddingProvider): string {
