@@ -6,7 +6,7 @@
 
 import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
 import { mimeTypeFromName } from '$lib/utils/file';
-import { preprocessImage, readImageDimensions } from '$lib/utils/image';
+import { preprocessImage, readImageDimensions, readVideoDimensions } from '$lib/utils/image';
 import { MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, WEBP_QUALITY } from './types';
 
 export async function fileToPlaintext(
@@ -20,9 +20,12 @@ export async function fileToPlaintext(
         sourceMimeType === 'image/jpg';
 
     if (!shouldPreprocess) {
-        const dimensions = sourceMimeType.startsWith('image/')
-            ? await readImageDimensions(file)
-            : undefined;
+        let dimensions: { width: number; height: number } | undefined;
+        if (sourceMimeType.startsWith('image/')) {
+            dimensions = await readImageDimensions(file);
+        } else if (sourceMimeType.startsWith('video/')) {
+            dimensions = await readVideoDimensions(file, sourceMimeType);
+        }
         return {
             bytes: sourceBytes,
             mimeType: sourceMimeType,

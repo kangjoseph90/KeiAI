@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fileToPlaintext } from '$lib/services/asset/util';
-import { preprocessImage } from '$lib/utils/image';
+import { preprocessImage, readVideoDimensions } from '$lib/utils/image';
 
 vi.mock('$lib/utils/image', () => ({
     preprocessImage: vi.fn(),
-    readImageDimensions: vi.fn()
+    readImageDimensions: vi.fn(),
+    readVideoDimensions: vi.fn()
 }));
 
 describe('fileToPlaintext multimedia MIME detection', () => {
@@ -36,9 +37,12 @@ describe('fileToPlaintext multimedia MIME detection', () => {
     it('recognizes an MP4 container signature', async () => {
         const bytes = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
         const file = new File([bytes], 'clip.bin');
+        vi.mocked(readVideoDimensions).mockResolvedValue({ width: 1920, height: 1080 });
 
         await expect(fileToPlaintext(file)).resolves.toMatchObject({
-            mimeType: 'video/mp4'
+            mimeType: 'video/mp4',
+            width: 1920,
+            height: 1080
         });
     });
 

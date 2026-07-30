@@ -561,7 +561,9 @@ describe('template', () => {
         const video: AssetReadLocator = {
             ...audio,
             hash: 'video-1',
-            mimeType: 'video/mp4'
+            mimeType: 'video/mp4',
+            width: 1920,
+            height: 1080
         };
         const assetMap: AssetNameIndex = new Map([
             [
@@ -578,7 +580,7 @@ describe('template', () => {
             `<audio src="${createAssetUri(audio)}"`
         );
         await expect(runTemplate('{{video::intro}}', {}, macros)).resolves.toContain(
-            `<video src="${createAssetUri(video)}"`
+            `<video src="${createAssetUri(video)}" width="1920" height="1080"`
         );
     });
 

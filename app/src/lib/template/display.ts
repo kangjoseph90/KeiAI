@@ -97,19 +97,19 @@ export function createDisplayMacros(
 function renderMediaElement(locator: AssetReadLocator, mediaType: AssetMediaType): string {
     const src = createAssetUri(locator);
     const source = ` src="${escapeHtmlAttribute(src)}"`;
+    const dimensions =
+        isAssetDimension(locator.width) && isAssetDimension(locator.height)
+            ? ` width="${locator.width}" height="${locator.height}"`
+            : '';
 
     if (mediaType === 'audio') {
         return `<audio${source} controls preload="metadata" style="max-width:100%;"></audio>`;
     }
     if (mediaType === 'video') {
-        return `<video${source} controls preload="metadata" playsinline style="max-width:100%;max-height:320px;border-radius:0.375rem;"></video>`;
+        return `<video${source}${dimensions} controls preload="metadata" playsinline style="max-width:100%;max-height:320px;border-radius:0.375rem;"></video>`;
     }
     if (mediaType !== 'image') return '';
 
-    const dimensions =
-        isAssetDimension(locator.width) && isAssetDimension(locator.height)
-            ? ` width="${locator.width}" height="${locator.height}"`
-            : '';
     return `<img${source}${dimensions} alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`;
 }
 

@@ -152,8 +152,12 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             for (const attribute of RESOURCE_ATTRIBUTES) {
                 const value = readSlot(element, attribute);
                 if (value.includes(ASSET_URI_MARKER)) {
-                    if (attribute === 'src' && element instanceof HTMLImageElement) {
-                        if (!reserveImageLayout(element, value)) {
+                    if (
+                        attribute === 'src' &&
+                        (element instanceof HTMLImageElement || element instanceof HTMLVideoElement)
+                    ) {
+                        const reserved = reserveMediaLayout(element, value);
+                        if (element instanceof HTMLImageElement && !reserved) {
                             eagerElements.add(element);
                         }
                     }
@@ -202,7 +206,10 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         }
     }
 
-    function reserveImageLayout(element: HTMLImageElement, source: string): boolean {
+    function reserveMediaLayout(
+        element: HTMLImageElement | HTMLVideoElement,
+        source: string
+    ): boolean {
         const hasWidth = element.hasAttribute('width');
         const hasHeight = element.hasAttribute('height');
 
