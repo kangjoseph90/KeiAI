@@ -19,6 +19,15 @@ export interface CacheStore<T> {
     flush(): Promise<void>;
 }
 
+export interface AsyncCacheStore<T> {
+    get(key: string): Promise<T | undefined>;
+    getMany(keys: string[]): Promise<Map<string, T>>;
+    set(key: string, value: T): Promise<void>;
+    setMany(entries: ReadonlyArray<readonly [string, T]>): Promise<void>;
+    delete(key: string): Promise<void>;
+    deleteMany(keys: string[]): Promise<void>;
+}
+
 export interface CacheEntry {
     key: string;
     value: unknown;
@@ -27,4 +36,7 @@ export interface CacheEntry {
 export interface CacheBackend {
     loadAll(namespace: string): Promise<CacheEntry[]>;
     sync(namespace: string, puts: CacheEntry[], deletes: string[]): Promise<void>;
+    getMany(namespace: string, keys: string[]): Promise<CacheEntry[]>;
+    setMany(namespace: string, entries: CacheEntry[], capacity: number): Promise<void>;
+    deleteMany(namespace: string, keys: string[]): Promise<void>;
 }

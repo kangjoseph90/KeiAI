@@ -15,14 +15,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { createCache } from '$lib/adapters/cache';
+import { createAsyncCache, createCache } from '$lib/adapters/cache';
 import Dexie from 'dexie';
 
 // Reads underlying rows directly from Dexie to assert what actually landed in
 // storage, bypassing the cache's in-memory state.
 function readNamespace(namespace: string): Promise<Map<string, unknown>> {
     const db = new Dexie('KeiCacheDB');
-    db.version(1).stores({ entries: 'nskey, namespace' });
+    db.version(1).stores({ entries: 'nskey, namespace, [namespace+accessedAt]' });
     return db
         .open()
         .then(() => db.table('entries').where('namespace').equals(namespace).toArray())
@@ -143,5 +143,61 @@ describe('createCache (Web backend)', () => {
         expect(rows.get('a')).toBe(3); // last write wins
         expect(rows.get('b')).toBe(9);
         expect(rows.size).toBe(2);
+    });
+
+    it('deletes persisted entries evicted after hydration', async () => {
+        const initial = createCache<number>('hydrated-eviction', 2);
+        initial.set('a', 1);
+        initial.set('b', 2);
+        await initial.flush();
+
+        const reloaded = createCache<number>('hydrated-eviction', 2);
+        await reloaded.flush();
+        reloaded.get('a');
+        reloaded.set('c', 3);
+        await reloaded.flush();
+
+        const rows = await readNamespace('hydrated-eviction');
+        expect(rows).toEqual(
+            new Map([
+                ['a', 1],
+                ['c', 3]
+            ])
+        );
+    });
+});
+
+describe('createAsyncCache (Web backend)', () => {
+    it('reads and writes keys without creating an in-memory cache instance', async () => {
+        const cache = createAsyncCache<{ n: number }>('async-read-write', 10);
+        await cache.setMany([
+            ['a', { n: 1 }],
+            ['b', { n: 2 }]
+        ]);
+
+        await expect(cache.getMany(['b', 'missing'])).resolves.toEqual(new Map([['b', { n: 2 }]]));
+    });
+
+    it('evicts the least recently used persisted entry on set', async () => {
+        const cache = createAsyncCache<number>('async-eviction', 2);
+        await cache.setMany([
+            ['a', 1],
+            ['b', 2]
+        ]);
+        await cache.get('a');
+        await cache.set('c', 3);
+
+        await expect(cache.getMany(['a', 'b', 'c'])).resolves.toEqual(
+            new Map([
+                ['a', 1],
+                ['c', 3]
+            ])
+        );
+        expect(await readNamespace('async-eviction')).toEqual(
+            new Map([
+                ['a', 1],
+                ['c', 3]
+            ])
+        );
     });
 });

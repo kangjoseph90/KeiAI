@@ -1,11 +1,11 @@
 import { appHttp } from '$lib/adapters/http';
-import { createCache } from '$lib/adapters/cache';
+import { createAsyncCache } from '$lib/adapters/cache';
 import { sha256, toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { buildUrl } from '$lib/utils/url';
 import type { ImageGenHandler, ImageGenImage, ImageGenInput, ImageGenRequest } from '../types';
 
-const vibeEncodingCache = createCache<string>('novelai-vibe-encodings', 100);
+const vibeEncodingCache = createAsyncCache<string>('novelai-vibe-encodings', 100);
 
 export interface NovelAIImageGenConfig {
     apiKey?: string;
@@ -132,8 +132,7 @@ export class NovelAIImageGenHandler implements ImageGenHandler {
             this.config.vibeInformationExtracted,
             imageHash
         ].join(':');
-        await vibeEncodingCache.flush();
-        const cached = vibeEncodingCache.get(cacheKey);
+        const cached = await vibeEncodingCache.get(cacheKey).catch(() => undefined);
         if (cached) return cached;
 
         const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/ai/encode-vibe'), {
@@ -160,8 +159,7 @@ export class NovelAIImageGenHandler implements ImageGenHandler {
         }
 
         const encoding = toBase64(new Uint8Array(await response.arrayBuffer()));
-        vibeEncodingCache.set(cacheKey, encoding);
-        await vibeEncodingCache.flush().catch(() => undefined);
+        await vibeEncodingCache.set(cacheKey, encoding).catch(() => undefined);
         return encoding;
     }
 

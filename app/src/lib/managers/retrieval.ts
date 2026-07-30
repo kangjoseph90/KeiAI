@@ -1,7 +1,11 @@
+import { createAsyncCache } from '$lib/adapters/cache';
+import { sha256 } from '$lib/crypto';
 import { selectEmbeddingHandler } from '$lib/embedding';
 import { selectRerankerHandler, type RankedResult } from '$lib/reranker';
 import { getAppSettings } from '$lib/stores';
 import { AppError } from '$lib/types/errors';
+
+const embeddingCache = createAsyncCache<number[]>('embedding-vectors', 1_000);
 
 export async function similarity(
     query: string,
@@ -19,15 +23,65 @@ export async function similarity(
         throw new AppError('INVALID_INPUT', 'Failed to create embedding handler');
     }
 
-    const { vectors } = await selected.handler.embed([query, ...documents], signal);
+    const texts = [query, ...documents];
+    const cacheKeys = await Promise.all(
+        texts.map((text) => sha256(`${selected.modelId}\0${text}`))
+    );
     signal.throwIfAborted();
-    if (vectors.length !== documents.length + 1) {
-        throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector count');
+
+    const cachedVectors = await embeddingCache
+        .getMany(cacheKeys)
+        .catch(() => new Map<string, number[]>());
+    signal.throwIfAborted();
+    const vectorsByKey = new Map<string, number[]>();
+    const misses = new Map<string, string>();
+    const invalidKeys: string[] = [];
+    for (let index = 0; index < texts.length; index += 1) {
+        const key = cacheKeys[index];
+        const cached = cachedVectors.get(key);
+        if (isEmbeddingVector(cached)) {
+            vectorsByKey.set(key, cached);
+        } else {
+            if (cached !== undefined) invalidKeys.push(key);
+            if (!misses.has(key)) misses.set(key, texts[index]);
+        }
     }
-    if (vectors.some((vector) => !isEmbeddingVector(vector))) {
-        throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector');
+    if (invalidKeys.length > 0) {
+        await embeddingCache.deleteMany(invalidKeys).catch(() => undefined);
     }
 
+    if (misses.size > 0) {
+        const missingEntries = [...misses.entries()];
+        const { vectors } = await selected.handler.embed(
+            missingEntries.map(([, text]) => text),
+            signal
+        );
+        signal.throwIfAborted();
+        if (vectors.length !== missingEntries.length) {
+            throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector count');
+        }
+        if (vectors.some((vector) => !isEmbeddingVector(vector))) {
+            throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector');
+        }
+
+        const cacheEntries: Array<readonly [string, number[]]> = [];
+        for (let index = 0; index < missingEntries.length; index += 1) {
+            const [key] = missingEntries[index];
+            const vector = vectors[index];
+            vectorsByKey.set(key, vector);
+            cacheEntries.push([key, vector]);
+        }
+        await embeddingCache.setMany(cacheEntries).catch(() => undefined);
+    }
+
+    signal.throwIfAborted();
+    const vectors = cacheKeys.map((key) => {
+        const vector = vectorsByKey.get(key);
+        if (!vector) {
+            throw new AppError('NETWORK_ERROR', 'Failed to resolve embedding vector');
+        }
+        return vector;
+    });
     const queryVector = vectors[0];
     const results = vectors.slice(1).map((vector, index) => ({
         index,
