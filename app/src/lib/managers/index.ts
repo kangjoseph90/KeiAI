@@ -12,5 +12,6 @@ export * from './message';
 export * from './media';
 export * from './multi';
 export * from './preset';
+export * from './retrieval';
 export * from './routing';
 export * from './toggle';

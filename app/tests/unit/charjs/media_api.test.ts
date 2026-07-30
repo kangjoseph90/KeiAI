@@ -5,7 +5,15 @@ import type { CharJS } from '$lib/services';
 const mocks = vi.hoisted(() => ({
     generateImageInlay: vi.fn().mockResolvedValue('generated-image'),
     synthesizeSpeechInlay: vi.fn().mockResolvedValue('generated-audio'),
-    transcribeSpeechInlay: vi.fn().mockResolvedValue('transcribed text')
+    transcribeSpeechInlay: vi.fn().mockResolvedValue('transcribed text'),
+    similarity: vi.fn().mockResolvedValue([
+        { index: 1, score: 0.9 },
+        { index: 0, score: 0.4 }
+    ]),
+    rerank: vi.fn().mockResolvedValue([
+        { index: 0, score: 0.8 },
+        { index: 1, score: 0.3 }
+    ])
 }));
 
 vi.mock('$lib/managers/media', () => ({
@@ -17,6 +25,11 @@ vi.mock('$lib/managers/media', () => ({
 vi.mock('$lib/managers/chat', () => ({
     getChatVariable: vi.fn(),
     setChatVariable: vi.fn()
+}));
+
+vi.mock('$lib/managers/retrieval', () => ({
+    similarity: mocks.similarity,
+    rerank: mocks.rerank
 }));
 
 const script: CharJS = {
@@ -34,7 +47,9 @@ const script: CharJS = {
             );
             const audio = await KeiAPI.synthesizeSpeech('hello');
             const text = await KeiAPI.transcribeSpeech('audio-id');
-            return JSON.stringify({ image, audio, text });
+            const similar = await KeiAPI.similarity('query', ['first', 'second']);
+            const ranked = await KeiAPI.rerank('query', ['first', 'second']);
+            return JSON.stringify({ image, audio, text, similar, ranked });
         });
     `
 };
@@ -53,7 +68,15 @@ describe('CharJS media APIs', () => {
             JSON.stringify({
                 image: 'generated-image',
                 audio: 'generated-audio',
-                text: 'transcribed text'
+                text: 'transcribed text',
+                similar: [
+                    { index: 1, score: 0.9 },
+                    { index: 0, score: 0.4 }
+                ],
+                ranked: [
+                    { index: 0, score: 0.8 },
+                    { index: 1, score: 0.3 }
+                ]
             })
         );
 
@@ -75,6 +98,16 @@ describe('CharJS media APIs', () => {
         expect(mocks.transcribeSpeechInlay).toHaveBeenCalledWith(
             'chat-1',
             'audio-id',
+            expect.any(AbortSignal)
+        );
+        expect(mocks.similarity).toHaveBeenCalledWith(
+            'query',
+            ['first', 'second'],
+            expect.any(AbortSignal)
+        );
+        expect(mocks.rerank).toHaveBeenCalledWith(
+            'query',
+            ['first', 'second'],
             expect.any(AbortSignal)
         );
     });

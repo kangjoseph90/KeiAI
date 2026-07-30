@@ -13,10 +13,16 @@ const mocks = vi.hoisted(() => ({
     listInlays: vi.fn(),
     getRoom: vi.fn(),
     getChat: vi.fn(),
-    getMessage: vi.fn()
+    getMessage: vi.fn(),
+    similarity: vi.fn(),
+    rerank: vi.fn()
 }));
 
 vi.mock('$lib/managers/media', () => mocks);
+vi.mock('$lib/managers/retrieval', () => ({
+    similarity: mocks.similarity,
+    rerank: mocks.rerank
+}));
 vi.mock('$lib/stores', () => ({
     getRoom: mocks.getRoom,
     getChat: mocks.getChat,
@@ -201,6 +207,26 @@ describe('plugin media APIs', () => {
             },
             signal
         );
+    });
+
+    it('passes retrieval input and cancellation to the configured managers', async () => {
+        const signal = new AbortController().signal;
+        const result = [
+            { index: 1, score: 0.9 },
+            { index: 0, score: 0.4 }
+        ];
+        mocks.similarity.mockResolvedValue(result);
+        mocks.rerank.mockResolvedValue(result);
+
+        await expect(
+            exposed.get('core.similarity')!('query', ['first', 'second'], signal)
+        ).resolves.toBe(result);
+        await expect(
+            exposed.get('core.rerank')!('query', ['first', 'second'], signal)
+        ).resolves.toBe(result);
+
+        expect(mocks.similarity).toHaveBeenCalledWith('query', ['first', 'second'], signal);
+        expect(mocks.rerank).toHaveBeenCalledWith('query', ['first', 'second'], signal);
     });
 
     it('binds resource and raw inlay APIs', async () => {

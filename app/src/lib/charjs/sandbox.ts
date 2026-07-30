@@ -10,6 +10,7 @@ import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { callLLM } from '$lib/managers/llm';
+import { rerank, similarity } from '$lib/managers/retrieval';
 import {
     generateImageInlay,
     listInlays,
@@ -332,6 +333,28 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     });
     ctx.setProp(keiObj, 'transcribeSpeech', transcribeSpeechFn);
     transcribeSpeechFn.dispose();
+
+    const similarityFn = ctx.newFunction('similarity', (queryHandle, documentsHandle) => {
+        const query = ctx.getString(queryHandle);
+        const documents = readStringArray(ctx.dump(documentsHandle), 'documents');
+        return createValuePromise(async () => {
+            await requirePermission();
+            return similarity(query, documents, new AbortController().signal);
+        });
+    });
+    ctx.setProp(keiObj, 'similarity', similarityFn);
+    similarityFn.dispose();
+
+    const rerankFn = ctx.newFunction('rerank', (queryHandle, documentsHandle) => {
+        const query = ctx.getString(queryHandle);
+        const documents = readStringArray(ctx.dump(documentsHandle), 'documents');
+        return createValuePromise(async () => {
+            await requirePermission();
+            return rerank(query, documents, new AbortController().signal);
+        });
+    });
+    ctx.setProp(keiObj, 'rerank', rerankFn);
+    rerankFn.dispose();
 
     // ── Mount to global ────────────────────────────────────────
     ctx.setProp(ctx.global, 'KeiAPI', keiObj);
