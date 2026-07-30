@@ -51,6 +51,7 @@ export interface IAssetAdapter {
     getAllLocalAssets(scope: DataScope): Promise<AssetRegistryRecord[]>;
     getAllRemoteAssets(scope?: DataScope): Promise<AssetRegistryRecord[]>;
 
+    hasAsset(locator: AssetLocator): Promise<boolean>;
     readAssetBytes(locator: AssetLocator): Promise<Uint8Array | null>;
     getRenderUrl(locator: AssetLocator): Promise<string | null>;
     revokeRenderUrl(url: string): Promise<void>;

@@ -239,13 +239,12 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return appStorage.read(storagePath(assetRegistryId(locator)));
     }
 
+    async hasAsset(locator: AssetLocator): Promise<boolean> {
+        return appStorage.exists(storagePath(assetRegistryId(locator)));
+    }
+
     async getRenderUrl(locator: AssetLocator): Promise<string | null> {
-        const id = assetRegistryId(locator);
-        const url = await appStorage.getRenderUrl(storagePath(id));
-        if (url) {
-            await this.touchAsset(locator);
-        }
-        return url;
+        return appStorage.getRenderUrl(storagePath(assetRegistryId(locator)));
     }
 
     async revokeRenderUrl(url: string): Promise<void> {

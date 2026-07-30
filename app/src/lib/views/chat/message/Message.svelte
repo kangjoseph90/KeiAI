@@ -26,8 +26,8 @@
     import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
-    import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
-    import { SvelteMap } from 'svelte/reactivity';
+    import { createDisplayMacros } from '$lib/template/display';
+    import { hydrateAssets } from '$lib/components/hydrate';
     import { scopeCss, stripStyleTags } from '$lib/utils/style';
     import {
         getLastTextContent,
@@ -139,8 +139,6 @@
     let messageStyleHtml = $state('');
     let messageStyleSignature = '';
     let messageStyleVersion = 0;
-
-    const cssRawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -315,7 +313,7 @@
                 opponentId,
                 ...$roomCharacters.map((c) => c.id),
                 ...$chatPersonas.map((p) => p.id),
-                ...$modules.map((m) => m.id)
+                ...activeModules.map((m) => m.id)
             ])
         ).filter((id): id is string => !!id);
 
@@ -369,7 +367,7 @@
             return;
         }
 
-        const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, cssRawAssetUrlCache);
+        const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds);
         const templated = await runTemplate(cssSource, ctx);
         const processed = await runPipeline('display', ctx, templated);
         const withAssets = await runTemplate(processed, ctx, displayMacros);
@@ -426,10 +424,6 @@
 
     onDestroy(() => {
         messageStyleVersion++;
-        for (const lease of cssRawAssetUrlCache.values()) {
-            if (lease) void lease.release();
-        }
-        cssRawAssetUrlCache.clear();
     });
 </script>
 
@@ -530,6 +524,7 @@
                 class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'}"
+                use:hydrateAssets={messageStyleHtml}
             >
                 {#if message.displayStatus === 'generating' && parts.length === 0}
                     <span

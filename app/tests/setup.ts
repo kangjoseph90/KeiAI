@@ -6,7 +6,7 @@
  * - PocketBase mocking
  */
 
-import { beforeAll, afterEach, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
 
 // ─── Mock PocketBase ─────────────────────────────────────────────────────
@@ -44,12 +44,9 @@ const createMockPocketBase = () => ({
     })
 });
 
-beforeAll(() => {
-    // Mock PocketBase adapter
-    vi.mock('$lib/adapters/pb', () => ({
-        pb: createMockPocketBase()
-    }));
-});
+vi.mock('$lib/adapters/pb', () => ({
+    pb: createMockPocketBase()
+}));
 
 // ─── Mock IndexedDB for Dexie ────────────────────────────────────────
 

@@ -2,6 +2,12 @@
 
 @import 'tw-animate-css';
 
+img[src^='data:image/gif;base64,'][src*='#keiai-asset:'],
+audio[src^='data:image/gif;base64,'][src*='#keiai-asset:'],
+video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
+    visibility: hidden;
+}
+
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));

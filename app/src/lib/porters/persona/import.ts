@@ -46,7 +46,9 @@ export async function importPersonaPackage(
                 importAssetPayload('avatar', pkg.avatar, options.allowLightAssets ?? true),
                 {
                     name: 'avatar.bin',
-                    mimeType: pkg.persona.avatar?.mimeType ?? 'application/octet-stream'
+                    mimeType: pkg.persona.avatar?.mimeType ?? 'application/octet-stream',
+                    width: pkg.persona.avatar?.width,
+                    height: pkg.persona.avatar?.height
                 }
             );
             await PersonaService.updateAvatar(persona.id, avatarInput);
@@ -62,7 +64,9 @@ export async function importPersonaPackage(
                 persona.id,
                 materializeImportedAsset(imported, {
                     name: pkgRef.name,
-                    mimeType: pkgRef.mimeType
+                    mimeType: pkgRef.mimeType,
+                    width: pkgRef.width,
+                    height: pkgRef.height
                 }),
                 pkgRef.sortOrder
             );

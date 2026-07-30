@@ -1,29 +1,26 @@
 import type { Macro } from './types';
-import { AssetService, type AssetReadLocator, type AssetUrlLease } from '$lib/services/asset';
-import { assetRegistryId } from '$lib/adapters/asset';
+import { createAssetUri, type AssetReadLocator } from '$lib/services/asset';
 import { ChatService } from '$lib/services';
 import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 
 export type AssetNameIndex = Map<string, Map<string, AssetReadLocator[]>>;
-export type RawAssetUrlCache = Map<string, AssetUrlLease | null>;
 
 export function createBackgroundMacros(
     index: AssetNameIndex,
-    ownerIds: readonly (string | null | undefined)[],
-    rawUrlCache: RawAssetUrlCache
+    ownerIds: readonly (string | null | undefined)[]
 ): Map<string, Macro> {
-    const macros = createDisplayMacros(index, ownerIds, rawUrlCache);
+    const macros = createDisplayMacros(index, ownerIds);
     macros.set('bg', {
-        run: async ([name]) => {
+        run: ([name]) => {
             if (!name) return '';
 
-            const url = await readAssetUrl(index, ownerIds, rawUrlCache, name);
-            if (!url) return '';
+            const resolved = resolveAssetName(index, ownerIds, name);
+            if (!resolved) return '';
 
             const style = [
                 'width:100%',
                 'height:100%',
-                `background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)),url("${escapeCssString(url)}")`,
+                `background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)),url("${escapeCssString(createAssetUri(resolved))}")`,
                 'background-size: cover'
             ].join(';');
             return `<div style="${escapeHtmlAttribute(style)}"></div>`;
@@ -34,8 +31,7 @@ export function createBackgroundMacros(
 
 export function createDisplayMacros(
     index: AssetNameIndex,
-    ownerIds: readonly (string | null | undefined)[],
-    rawUrlCache: RawAssetUrlCache
+    ownerIds: readonly (string | null | undefined)[]
 ): Map<string, Macro> {
     const macros = new Map<string, Macro>();
 
@@ -46,10 +42,10 @@ export function createDisplayMacros(
             const resolved = resolveAssetName(index, ownerIds, name);
             if (!resolved) return '';
 
-            return renderMediaElement(resolved, {
-                assetName: name,
-                mediaType: resolved.mimeType ? getAssetMediaType(resolved.mimeType) : 'image'
-            });
+            return renderMediaElement(
+                resolved,
+                resolved.mimeType ? getAssetMediaType(resolved.mimeType) : 'image'
+            );
         }
     };
 
@@ -73,18 +69,24 @@ export function createDisplayMacros(
                 ownerId: chat.id,
                 hash: ref.hash,
                 encKey: ref.encKey,
-                mimeType: ref.mimeType
+                mimeType: ref.mimeType,
+                width: ref.width,
+                height: ref.height
             };
 
-            return renderMediaElement(locator, {
-                inlayId,
-                mediaType: ref.mimeType ? getAssetMediaType(ref.mimeType) : 'image'
-            });
+            return renderMediaElement(
+                locator,
+                ref.mimeType ? getAssetMediaType(ref.mimeType) : 'image'
+            );
         }
     });
 
     const rawMacro: Macro = {
-        run: ([name]) => readAssetUrl(index, ownerIds, rawUrlCache, name)
+        run: ([name]) => {
+            if (!name) return '';
+            const resolved = resolveAssetName(index, ownerIds, name);
+            return resolved ? createAssetUri(resolved) : '';
+        }
     };
     macros.set('raw', rawMacro);
     macros.set('path', rawMacro);
@@ -92,49 +94,27 @@ export function createDisplayMacros(
     return macros;
 }
 
-function renderMediaElement(
-    locator: AssetReadLocator,
-    options: { mediaType: AssetMediaType; assetName?: string; inlayId?: string }
-): string {
-    const data = [
-        ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(locator))}"`,
-        options.assetName
-            ? ` data-keiai-asset-name="${escapeHtmlAttribute(options.assetName)}"`
-            : '',
-        options.inlayId ? ` data-keiai-inlay-id="${escapeHtmlAttribute(options.inlayId)}"` : ''
-    ].join('');
+function renderMediaElement(locator: AssetReadLocator, mediaType: AssetMediaType): string {
+    const src = createAssetUri(locator);
+    const source = ` src="${escapeHtmlAttribute(src)}"`;
 
-    if (options.mediaType === 'audio') {
-        return `<audio${data} controls preload="metadata" style="max-width:100%;"></audio>`;
+    if (mediaType === 'audio') {
+        return `<audio${source} controls preload="metadata" style="max-width:100%;"></audio>`;
     }
-    if (options.mediaType === 'video') {
-        return `<video${data} controls preload="metadata" playsinline style="max-width:100%;max-height:320px;border-radius:0.375rem;"></video>`;
+    if (mediaType === 'video') {
+        return `<video${source} controls preload="metadata" playsinline style="max-width:100%;max-height:320px;border-radius:0.375rem;"></video>`;
     }
-    if (options.mediaType !== 'image') return '';
+    if (mediaType !== 'image') return '';
 
-    return `<img${data} alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`;
+    const dimensions =
+        isAssetDimension(locator.width) && isAssetDimension(locator.height)
+            ? ` width="${locator.width}" height="${locator.height}"`
+            : '';
+    return `<img${source}${dimensions} alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`;
 }
 
-async function readAssetUrl(
-    index: AssetNameIndex,
-    ownerIds: readonly (string | null | undefined)[],
-    rawUrlCache: RawAssetUrlCache,
-    name: string | undefined
-): Promise<string> {
-    if (!name) return '';
-
-    const resolved = resolveAssetName(index, ownerIds, name);
-    if (resolved) {
-        const key = assetRegistryId(resolved);
-        const cached = rawUrlCache.get(key);
-        if (cached !== undefined) return cached?.url ?? '';
-
-        const lease = await AssetService.acquireUrl(resolved);
-        rawUrlCache.set(key, lease);
-        return lease?.url ?? '';
-    }
-
-    return '';
+function isAssetDimension(value: number | undefined): value is number {
+    return value !== undefined && Number.isInteger(value) && value > 0;
 }
 
 /**

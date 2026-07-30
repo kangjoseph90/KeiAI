@@ -267,7 +267,7 @@ export function importAssetPayloads(
 
 export function materializeImportedAsset(
     imported: ImportedAssetPayload,
-    metadata: Pick<AssetFields, 'name' | 'mimeType'>
+    metadata: Omit<AssetFields, 'hash' | 'encKey'>
 ): File | AssetFields {
     if (imported.kind === 'baked') {
         return new File([imported.data.slice()], metadata.name || imported.fallbackName, {
@@ -278,6 +278,8 @@ export function materializeImportedAsset(
     return {
         ...imported.fields,
         name: metadata.name || imported.fields.name,
-        mimeType: metadata.mimeType || imported.fields.mimeType
+        mimeType: metadata.mimeType || imported.fields.mimeType,
+        width: metadata.width,
+        height: metadata.height
     };
 }

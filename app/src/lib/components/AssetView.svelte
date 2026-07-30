@@ -45,7 +45,7 @@
                     visible = true;
                 }
             },
-            { rootMargin: '200px' }
+            { rootMargin: '1000px' }
         );
         observer.observe(node);
         return {
@@ -72,7 +72,6 @@
                 if (lease) {
                     setLease(lease);
                     error = false;
-                    retryCount = 0;
                 } else {
                     setLease(null);
                     error = true;

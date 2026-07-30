@@ -36,6 +36,8 @@ interface AssetFields {
   hash: string;
   encKey: string;
   mimeType: string;
+  width?: number;
+  height?: number;
 }
 
 interface AssetRef extends OrderedRef, AssetFields {}
@@ -138,7 +140,12 @@ message.swipes[*].parts: AgentPart[]; // { type: "inlay", ids: string[] }
 렌더링은 `AssetReadLocator`로 닫힌다.
 
 ```ts
-type AssetReadLocator = AssetLocator & { encKey: string };
+type AssetReadLocator = AssetLocator & {
+  encKey: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+};
 ```
 
 resource asset은 이름으로 접근한다.
@@ -151,7 +158,22 @@ resource asset은 이름으로 접근한다.
 {{bg::name}}
 ```
 
-이름 macro는 렌더 context의 owner별 asset index를 통해 `AssetReadLocator`로 해석된다.
+이름 macro는 렌더 context의 owner별 asset index를 통해 `AssetReadLocator`로 해석한다.
+템플릿 실행 중에는 asset binary나 blob URL을 읽지 않고 locator를 base64url로 직렬화한
+원본 이미지와 같은 고유 크기를 가진 GIF `data:` URI의 fragment에
+`#keiai-asset:<payload>`를 넣어 출력한다. 따라서 `height: auto`인 이미지도 hydration 전후
+종횡비가 바뀌지 않는다.
+브라우저가 hydration 전에 알 수 없는 scheme을 요청하거나 콘솔 오류를 남기지 않으면서
+locator를 보존한다. `img`, `asset`, `raw`, `path`, `bg`와 inlay가
+같은 URI 표현을 사용한다.
+
+이미지의 `width`와 `height`는 업로드 시 추출해 encrypted parent payload에 저장한다.
+`img` macro는 HTML의 intrinsic size attribute로 이를 출력한다. `raw` URI가 `<img src>`에
+사용된 경우에도 `hydrateAssets`가 asset을 읽기 전에 locator의 크기를 적용한다. 사용자가
+직접 `width` 또는 `height`를 지정했다면 해당 값을 유지하고 누락된 축만 원본 비율로 계산한다.
+크기 메타데이터가 없는 기존
+에셋은 스크롤 중 0 높이에서 갑자기 확장되는 것을 피하기 위해 DOM hydration 직후 eager
+load한다.
 
 inlay는 chat-local id로 접근한다.
 
@@ -161,7 +183,16 @@ inlay는 chat-local id로 접근한다.
 
 이 macro는 `chat.inlays.refs[inlayRefId]`를 찾아 locator를 구성한다. inlay id는 전역 asset id가 아니라 해당 chat 안의 ref id다.
 
-`AssetView`와 hydrate 경로도 locator를 받아 `AssetService.read(locator)`를 호출한다. 로컬 캐시에 없으면 서버에서 ciphertext를 fetch하고, `encKey`로 복호화한 뒤 remote registry/storage에 저장하고 render URL을 반환한다.
+`hydrateAssets`는 `src`, `poster`, `href`, inline style과 `<style>` 안의 internal asset data
+URI를 감지한다. 해당 element 또는 style host가 viewport 근처에 들어오면 URI에서 locator를
+복원해 `AssetService.acquireUrl(locator)`를 호출하고 blob URL로 치환한다. 로컬 캐시에 없으면
+서버에서 ciphertext를 fetch하고, `encKey`로 복호화한 뒤 remote registry/storage에 저장한다.
+DOM에서 참조가 사라지거나 render host가 파괴되면 URL lease를 해제한다.
+
+Hydration은 각 DOM element의 슬롯별로 canonical data URI와 치환된 runtime 값을 binding으로
+관리한다. 메시지를 morph할 때 새 출력에 기존 canonical URI가 남아 있으면 해당 runtime 값만
+새 target에 승계한다. 따라서 `src`뿐 아니라 `poster`, `href`, inline style, `<style>` 내용의
+blob URL도 유지하면서 같은 슬롯의 다른 내용과 일반 HTML 변경은 정상적으로 반영한다.
 
 ## Porter
 

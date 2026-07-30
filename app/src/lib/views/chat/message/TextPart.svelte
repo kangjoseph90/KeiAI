@@ -4,11 +4,7 @@
     import morphdom from 'morphdom';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate, createDryRunMacros } from '$lib/template';
-    import {
-        createDisplayMacros,
-        type AssetNameIndex,
-        type RawAssetUrlCache
-    } from '$lib/template/display';
+    import { createDisplayMacros, type AssetNameIndex } from '$lib/template/display';
     import { parseMarkdownAsync } from '$lib/markdown';
     import {
         protectHtmlStyles,
@@ -16,8 +12,7 @@
         sanitizeWithStyle,
         scopeStyleBlocks
     } from '$lib/utils/style';
-    import { hydrateAssets } from '$lib/components/hydrate';
-    import { SvelteMap } from 'svelte/reactivity';
+    import { reconcileHydratedAssetSlots } from '$lib/components/hydrate';
     import type { RuntimeContext } from '$lib/types/context';
     import { eventButtons, externalLinks } from '$lib/ui';
 
@@ -51,8 +46,6 @@
 
     const RENDER_THROTTLE_MS = 150;
 
-    const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
-
     interface RenderRequest {
         text: string;
         context: TextPartRenderContext;
@@ -60,20 +53,6 @@
 
     const morphHtml: Action<HTMLElement, string> = (node, html) => {
         const template = document.createElement('template');
-
-        function isSameStableImage(fromEl: Element, toEl: Element): boolean {
-            if (!(fromEl instanceof HTMLImageElement) || !(toEl instanceof HTMLImageElement)) {
-                return false;
-            }
-
-            const assetVal = fromEl.dataset.keiaiAsset;
-            if (assetVal && toEl.dataset.keiaiAsset === assetVal && fromEl.hasAttribute('src')) {
-                return true;
-            }
-
-            const nextSrc = toEl.getAttribute('src');
-            return !!nextSrc && fromEl.src === toEl.src;
-        }
 
         const update = (newHtml: string) => {
             if (!newHtml) {
@@ -89,7 +68,7 @@
             morphdom(node, target, {
                 childrenOnly: true,
                 onBeforeElUpdated: (fromEl, toEl) => {
-                    if (isSameStableImage(fromEl, toEl)) return false;
+                    reconcileHydratedAssetSlots(fromEl, toEl);
                     if (fromEl.isEqualNode(toEl)) return false;
                     return true;
                 }
@@ -125,7 +104,7 @@
     async function render(request: RenderRequest): Promise<string> {
         const { ctx, messageScope, ownerIds, chatAssetsMap } = request.context;
         const dryRunMacros = createDryRunMacros();
-        const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, rawAssetUrlCache);
+        const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds);
         const templated = await runTemplate(request.text, ctx, dryRunMacros);
         const processed = await runPipeline('display', ctx, templated);
         const rendered = await runTemplate(processed, ctx, displayMacros);
@@ -211,10 +190,6 @@
         destroyed = true;
         pendingRequest = null;
         clearRenderTimeout();
-        for (const lease of rawAssetUrlCache.values()) {
-            if (lease) void lease.release();
-        }
-        rawAssetUrlCache.clear();
     });
 </script>
 
@@ -222,7 +197,6 @@
     <div
         data-keiai-message-scope={renderContext.messageScope}
         use:morphHtml={renderedHtml}
-        use:hydrateAssets={renderedHtml}
         use:externalLinks={renderedHtml}
         use:eventButtons={renderContext.ctx}
         class="prose prose-sm max-w-none {isUser
