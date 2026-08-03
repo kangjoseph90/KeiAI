@@ -47,7 +47,7 @@ vi.mock('$lib/stores/tasks/translation', () => ({
 
 vi.mock('$lib/services/content/paged_messages', () => ({
     PagedMessages: {
-        createBefore: mocks.createPagedMessages
+        createThrough: mocks.createPagedMessages
     }
 }));
 
@@ -100,7 +100,7 @@ describe('translation task', () => {
             }
         );
         mocks.getChat.mockResolvedValue({ id: 'chat-1', roomId: 'room-1' });
-        mocks.createPagedMessages.mockResolvedValue({ length: 3 });
+        mocks.createPagedMessages.mockResolvedValue({ length: 4 });
         mocks.runtimeStream.mockImplementation(async function* () {
             yield '안녕';
             yield '안녕하세요';
@@ -114,13 +114,15 @@ describe('translation task', () => {
         expect(mocks.sha256).toHaveBeenCalledWith('Korean\0Hello');
     });
 
-    it('bounds history before the target message and streams the workflow result', async () => {
+    it('includes the target message in history and streams the workflow result', async () => {
         await runTranslation('message-1');
 
         expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskComplete).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskError).not.toHaveBeenCalled();
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
+        );
         expect(mocks.createTask).toHaveBeenCalledWith(
             'message-1',
             'hash:Korean\0Hello',
