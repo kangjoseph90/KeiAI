@@ -13,16 +13,10 @@ import { getActiveSession } from '../session';
 import { SyncManager } from '../sync';
 import { UserService, type User } from '../user';
 import { applyUserConnectionRuntime, resolveProxyRuntimeConfig, resolveServerUrl } from './runtime';
-import type {
-    ConnectionChangeOptions,
-    ConnectionChangeProgress,
-    ProxyCapabilities,
-    ServerCapabilities
-} from './types';
+import type { ConnectionChangeOptions, ConnectionChangeProgress, ConnectionSpec } from './types';
 import { AuthService } from '../auth';
 
 const LOCALIZATION_CONCURRENCY = 4;
-const REQUIRED_PROXY_CAPABILITIES = ['generic-fetch', 'streaming'] as const;
 type LockListener = (locked: boolean) => void;
 
 function normalizeCustomUrl(rawUrl: string | undefined, label: string): string {
@@ -75,32 +69,22 @@ export class ConnectionService {
         return () => this.lockListeners.delete(listener);
     }
 
-    static async checkServerCapabilities(baseUrl: string): Promise<ServerCapabilities> {
-        const response = await this.fetchCapabilities(
-            buildUrl(baseUrl, '/api/capabilities'),
-            'server'
-        );
-        const capabilities = (await response.json()) as Partial<ServerCapabilities>;
-        if (capabilities.app !== 'keiai' || capabilities.protocol !== 1) {
+    static async checkServerSpec(baseUrl: string): Promise<ConnectionSpec> {
+        const response = await this.fetchSpec(buildUrl(baseUrl, '/api/spec'), 'server');
+        const spec = (await response.json()) as Partial<ConnectionSpec>;
+        if (spec.app !== 'keiai' || spec.protocol !== 1) {
             throw new AppError('INVALID_INPUT', 'This is not a compatible KeiAI server.');
         }
-        return capabilities as ServerCapabilities;
+        return spec as ConnectionSpec;
     }
 
-    static async checkProxyCapabilities(baseUrl: string): Promise<ProxyCapabilities> {
-        const response = await this.fetchCapabilities(buildUrl(baseUrl, '/spec'), 'proxy');
-        const capabilities = (await response.json()) as Partial<ProxyCapabilities>;
-        const supported = new Set(
-            Array.isArray(capabilities.capabilities) ? capabilities.capabilities : []
-        );
-        if (
-            capabilities.service !== 'keiai-proxy' ||
-            capabilities.protocolVersion !== 1 ||
-            REQUIRED_PROXY_CAPABILITIES.some((capability) => !supported.has(capability))
-        ) {
+    static async checkProxySpec(baseUrl: string): Promise<ConnectionSpec> {
+        const response = await this.fetchSpec(buildUrl(baseUrl, '/spec'), 'proxy');
+        const spec = (await response.json()) as Partial<ConnectionSpec>;
+        if (spec.app !== 'keiai-proxy' || spec.protocol !== 1) {
             throw new AppError('INVALID_INPUT', 'This is not a compatible KeiAI proxy.');
         }
-        return capabilities as ProxyCapabilities;
+        return spec as ConnectionSpec;
     }
 
     static async changeServerConnection(
@@ -119,7 +103,7 @@ export class ConnectionService {
 
         this.emitProgress(options, { phase: 'validating', completed: 0, total: 0 });
         if (nextServer.mode === 'custom') {
-            await this.checkServerCapabilities(nextUrl);
+            await this.checkServerSpec(nextUrl);
         }
 
         const nextConnections: UserConnectionSettings = {
@@ -202,7 +186,7 @@ export class ConnectionService {
         const nextRuntime = resolveProxyRuntimeConfig(nextProxy);
 
         if (nextProxy.mode === 'custom' && nextRuntime.mode === 'proxy') {
-            await this.checkProxyCapabilities(nextRuntime.baseUrl);
+            await this.checkProxySpec(nextRuntime.baseUrl);
         }
 
         const nextConnections: UserConnectionSettings = {
@@ -237,7 +221,7 @@ export class ConnectionService {
         }
     }
 
-    private static async fetchCapabilities(url: string, label: string): Promise<Response> {
+    private static async fetchSpec(url: string, label: string): Promise<Response> {
         let response: Response;
         try {
             response = await appHttp.fetch(
@@ -251,7 +235,7 @@ export class ConnectionService {
         if (!response.ok) {
             throw new AppError(
                 'NETWORK_ERROR',
-                `${label[0].toUpperCase()}${label.slice(1)} capabilities check failed: ${response.status}`
+                `${label[0].toUpperCase()}${label.slice(1)} spec check failed: ${response.status}`
             );
         }
         return response;

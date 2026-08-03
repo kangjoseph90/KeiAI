@@ -194,12 +194,12 @@ onRecordCreateRequest((e) => {
   e.next();
 }, "multi_room_index");
 
-// Server capabilities
+// Server spec
 
-routerAdd("GET", "/api/capabilities", (e) => {
+routerAdd("GET", "/api/spec", (e) => {
   var h = require(`${__hooks}/keiai.js`);
   var ip = e.realIP();
-  if (!h.checkRate(ip + ":capabilities", 60, 60000)) {
+  if (!h.checkRate(ip + ":spec", 60, 60000)) {
     return e.json(429, { error: "Too many requests. Try again later." });
   }
 

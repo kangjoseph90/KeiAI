@@ -1,178 +1,65 @@
-# PocketBase — AGENTS.md
+# PocketBase
 
-Zero-knowledge sync backend: stores encrypted blobs, handles auth, syncs between devices. Never sees application plaintext.
+PocketBase provides accounts, encrypted sync, multi-room access control, and encrypted asset storage. Domain logic and plaintext user content belong in `app/`.
+
+## Files
+
+| Path | Responsibility |
+| --- | --- |
+| `start.js` | Load the root `.env`, upsert the superuser, and start PocketBase |
+| `pb_migrations/1773000000_init_keiai_schema.js` | Canonical collections, access rules, and indexes |
+| `pb_hooks/main.pb.js` | Routes and PocketBase hook registration |
+| `pb_hooks/keiai.js` | Auth, room, asset, quota, and storage helpers |
+
+## Data model
+
+| Collection | Purpose |
+| --- | --- |
+| `users` | Login identity, encrypted master-key bundles, identity keys, and encrypted profile |
+| `records` | User-scoped encrypted domain records routed by `kind` |
+| `multi_room_index` | Room ownership, discovery, visibility, and deletion metadata |
+| `multi_room_members` | Membership state and encrypted room-key distribution |
+| `multi_room_records` | Room-scoped encrypted domain records routed by `kind` |
+| `asset_catalog` | Content-addressed encrypted asset bytes stored locally or in R2 |
+| `asset_usage` | Per-owner asset reference counts |
+| `asset_accounts` | Per-user asset usage and quota |
+
+`records` and `multi_room_records` expose only routing, sync, deletion, and asset-reference metadata. Their domain payload remains encrypted in `encryptedData`.
+
+## Invariants
+
+- Never decrypt or interpret encrypted profiles, records, room keys, or assets on the server.
+- Keep plaintext fields limited to data required for authentication, access control, synchronization, discovery, and storage accounting.
+- Personal records are accessible only when `userId` matches the authenticated user. Room records require accepted membership in a live room.
+- Soft-deleted records cannot be resurrected. The owner-only room deletion endpoint tombstones the room and removes its records.
+- Assets are globally deduplicated by the SHA-256 hash of their ciphertext. Record `assetEntries` drive reference counts; room assets count against the room owner.
+- Asset bytes use PocketBase file storage unless R2 is configured. Unreferenced assets are garbage-collected after the grace period.
+- Keep AI providers, prompts, and other application behavior out of this project.
+
+## Custom endpoints
+
+| Area | Endpoints |
+| --- | --- |
+| Server | `GET /api/spec` |
+| Account | `POST /api/account/salt`, `POST /api/recovery/lookup`, `POST /api/recovery/reset-password`, `POST /api/recovery/delete` |
+| Pairing | `POST /api/pairing`, `GET /api/pairing/{lookupId}` |
+| Multi-room | `GET /api/multi-rooms/search`, `GET /api/users/{userId}/public-key`, join, leave, and owner deletion endpoints |
+| Assets | Personal and room upload endpoints, authenticated download, and the superuser R2 migration endpoint |
+
+PocketBase's collection and realtime APIs provide record synchronization. Custom endpoints handle operations that require server-controlled validation or lifecycle changes.
+
+## Changes
+
+- Treat the single init migration as the canonical schema while the project assumes clean database setup.
+- Put route and hook registration in `main.pb.js`; put reusable implementation in `keiai.js`.
+- Keep collection rules, custom endpoints, and the consuming app contract consistent.
+- Preserve generic error responses for salt lookup, recovery, and pairing so account existence and secret validity are not exposed.
+- Add plaintext metadata or a new endpoint only when the server must enforce the corresponding rule.
+
+## Run
+
+Copy the root `.env.example` to `.env`, configure the required PocketBase values, place the PocketBase binary in this directory, then run:
 
 ```bash
-# First run: copy config and set secrets
-cp ../.env.example ../.env
-# Edit .env: set PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD, PB_HOST, PB_PORT
-
-node start.js     # http://localhost:8090 — creates admin, runs migrations, starts server
+node start.js
 ```
-
----
-
-## What This Backend Does
-
-- Stores and retrieves opaque encrypted blobs pushed by `app/`
-- Authenticates users via PocketBase username/password where `username` is a user-chosen unique login alias and password is login key `X`
-- Syncs records between devices via realtime subscriptions + LWW timestamps
-- Serves account v2 endpoints for connect, recovery, and device pairing
-
-## What This Backend Does NOT Do
-
-- Decrypt, inspect, or validate any user data content
-- Generate user identity; identity starts locally in `app/`
-- Require email for auth or recovery
-- Execute business logic (that lives entirely in `app/`)
-- Log or store anything about AI API usage (that's the proxy's non-job)
-
----
-
-## Schema
-
-### Users (built-in auth collection + E2EE fields)
-
-| Field                         | Purpose                                        |
-| ----------------------------- | ---------------------------------------------- |
-| `id`                          | Local userId chosen by the client              |
-| `username`                    | Unique login alias                             |
-| `passwordHash`                | PB hash of login key `X`, not the raw password |
-| `email`                       | Optional contact email only                    |
-| `salt`                        | PBKDF2 salt for client-side KDF                |
-| `encryptedMasterKey`          | M wrapped with Y: M(Y)                         |
-| `masterKeyIv`                 | IV for M(Y) encryption                         |
-| `encryptedRecoveryMasterKey`  | M wrapped with Z: M(Z)                         |
-| `recoveryMasterKeyIv`         | IV for M(Z) encryption                         |
-| `recoveryAuthTokenHash`       | SHA-256 hash of recovery code back half        |
-| `identityPublicKey`           | RSA-OAEP public key JWK                        |
-| `encryptedIdentityPrivateKey` | Private key encrypted with M                   |
-| `identityPrivateKeyIv`        | IV for private key encryption                  |
-
-### Encrypted User Records
-
-```
-records:
-id, userId (plain text), kind, createdAt, updatedAt,
-encryptedData, encryptedDataIV, isDeleted
-```
-
-Domain records are routed by `kind` on sync. Domain relationships stay in the encrypted payload unless a server feature explicitly needs a plain field.
-
-`assets` remains a separate encrypted sync table because asset hooks need plaintext `hash` and `status`.
-
-### Encrypted Multi-Room Records
-
-```
-multi_room_records:
-id, roomId, kind, createdAt, updatedAt,
-encryptedData, encryptedDataIV, isDeleted
-
-multi_room_assets:
-id, roomId, hash, status, createdAt, updatedAt,
-encryptedData, encryptedDataIV, isDeleted
-```
-
-`multi_room_records` are routed by `kind`. Access requires accepted membership in the room. `multi_room_assets` count against the room owner's asset quota through the shared asset usage ledger.
-
-### Multi-Room Metadata
-
-```
-multi_room_index:
-id (roomId), ownerUserId, visibility, publicName, createdAt, updatedAt, isDeleted
-
-multi_room_members:
-id, roomId, userId, status, encryptedRoomKey,
-createdAt, updatedAt, isDeleted
-```
-
-Membership metadata is the root for multi-room sync discovery. Room content sync is limited to the active room and accepted members.
-
----
-
-## Custom Auth Endpoints (pb_hooks/main.pb.js)
-
-### POST /api/account/salt
-
-Looks up the salt for a username/password sign-in without revealing whether the username exists.
-
-- Request: `{ username }`
-- Response: `{ salt }`
-- Existing accounts return their real salt
-- Unknown usernames return a deterministic dummy salt derived from `DUMMY_SALT_SECRET`
-- Rate-limited by IP
-
-### POST /api/recovery/lookup
-
-Finds a user by recovery code back-half hash and returns the encrypted recovery bundle.
-
-- Request: `{ authTokenHash }`
-- Response: userId, M(Z), identity public/private bundle, profile fields
-- Uses constant-time comparison
-- Rate-limited by IP
-
-### POST /api/recovery/reset-password
-
-Resets PB password (`X`), salt, M(Y), and recovery bundle after recovery-code verification.
-
-### POST /api/recovery/delete
-
-Deletes the remote account after recovery-code verification.
-
-### POST /api/pairing
-
-Stores a one-time encrypted device-pairing blob.
-
-- Request: `{ id: lookupId, blob, ttl }`
-- TTL is capped at 300 seconds
-- Rate-limited by IP
-
-### GET /api/pairing/{lookupId}
-
-Fetches and immediately deletes a one-time pairing blob.
-
-- Rate-limited by IP
-- Missing, expired, or over-attempt entries return 404
-
----
-
-## E2EE Auth Dance
-
-```
-Client                                  Server
-  │                                        │
-  │  POST /api/account/salt { username }   │
-  │ ─────────────────────────────────────> │
-  │                                { salt } │
-  │                                        │
-  │  PBKDF2(password, salt) → X, Y         │
-  │  (client-side only)                    │
-  │                                        │
-  │  authWithPassword(username, X)         │
-  │ ─────────────────────────────────────> │ Validates X as PB password
-  │                                        │ Returns JWT + user record
-  │                                        │
-  │  unwrapMasterKey(M(Y), Y)              │
-  │  (client-side only)                    │
-```
-
-The server never sees the raw password, Y, or M. It only stores X as a PB password hash and M(Y) as an opaque blob.
-
----
-
-## Canonical Schema
-
-PocketBase calls files in `pb_migrations/` migrations, but this project currently assumes a clean database. Treat `1773000000_init_keiai_schema.js` as the canonical schema definition.
-
-- `1773000000_init_keiai_schema.js` — Creates all encrypted collections with proper fields, auth rules, and sync indices
-- Personal sync auth: `userId = @request.auth.id`
-- Multi-room sync auth: accepted membership for room content; room owner for metadata writes
-- Down migration drops all tables and removes E2EE fields from users
-
----
-
-## See Also
-
-- [app/AGENTS.md](../app/AGENTS.md) — Frontend architecture, service layer that consumes these APIs
-- [docs/account-system-v2.md](../docs/account-system-v2.md) — Account system v2
-- [docs/ADR.md](../docs/ADR.md) — Architecture decision records

@@ -9,14 +9,7 @@ export interface ConnectionChangeOptions {
     onProgress?: (progress: ConnectionChangeProgress) => void;
 }
 
-export interface ServerCapabilities {
-    app: 'keiai';
+export interface ConnectionSpec {
+    app: 'keiai' | 'keiai-proxy';
     protocol: number;
-    capabilities?: string[];
-}
-
-export interface ProxyCapabilities {
-    service: 'keiai-proxy';
-    protocolVersion: number;
-    capabilities: string[];
 }
