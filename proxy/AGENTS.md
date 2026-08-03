@@ -1,148 +1,57 @@
-# Proxy — AGENTS.md
+# KeiAI Proxy Guide
 
-Stateless Cloudflare Worker that forwards HTTP requests. No logging, no storage, no state.
+`proxy/` is a stateless Cloudflare Worker that forwards HTTP requests for the client.
 
-```bash
-pnpm install && pnpm dev     # Local wrangler dev server
-pnpm deploy                  # Deploy to Cloudflare
-pnpm test                    # Vitest with cloudflare vitest-pool-workers
-```
-
----
-
-## Purpose
-
-Generic HTTP proxy that forwards any fetch request to a target URL. Originally designed for AI API requests (OpenAI, Anthropic, etc.) to bypass CORS restrictions, but now supports arbitrary HTTP forwarding.
-
-**Why a proxy?** Browser-to-API requests often face CORS restrictions. The proxy code is open source so users can verify it doesn't snoop.
-
----
-
-## Inviolable Rules
-
-| The proxy NEVER...             | Why                                            |
-| ------------------------------ | ---------------------------------------------- |
-| Stores API keys or data        | User privacy — everything is pass-through only |
-| Logs requests or responses     | Zero traceability by design                    |
-| Connects to any database       | Must remain fully stateless                    |
-| Modifies request/response body | Transparency — what goes in comes out          |
-| Stores any data                | Ephemeral-only, no persistence of any kind     |
-| Inspects or parses content     | Not the proxy's concern                        |
-
-Any new feature must pass this test: **"Does this require state or inspection?"** If yes, it doesn't belong here.
-
----
-
-## Architecture
-
-```
-Client Request → POST /proxy
-    ↓ (Headers: x-target-url, x-target-headers, x-target-method)
-[Cloudflare Worker] — forward request as-is
-    ↓
-[Target URL] — response streams back (with CORS headers)
-    ↓
-[Client receives response]
-```
-
-No database. No logging. No state. Just HTTP forwarding with CORS headers.
-
----
-
-## Endpoints
-
-### `/health`
-
-Health check endpoint. Returns `200 OK`.
-
-### `/spec`
-
-Protocol discovery endpoint used before saving a custom proxy connection.
-
-```json
-{
-	"service": "keiai-proxy",
-	"protocolVersion": 1,
-	"capabilities": ["generic-fetch", "streaming"]
-}
-```
-
-### `/proxy`
-
-Generic proxy endpoint. Accepts POST requests with the following headers:
-
-| Header             | Required | Description                              |
-| ------------------ | -------- | ---------------------------------------- |
-| `x-target-url`     | Yes      | Target URL to forward the request to     |
-| `x-target-method`  | No       | HTTP method for target (default: `POST`) |
-| `x-target-headers` | No       | JSON-encoded headers to forward          |
-
-**Request Format:**
-
-```typescript
-const response = await fetch('/proxy', {
-	method: 'POST',
-	headers: {
-		'x-target-url': 'https://api.example.com/endpoint',
-		'x-target-method': 'POST',
-		'x-target-headers': encodeURIComponent(
-			JSON.stringify({
-				Authorization: 'Bearer xxx',
-				'Content-Type': 'application/json',
-			}),
-		),
-	},
-	body: JSON.stringify({ data: '...' }),
-});
-```
-
-**Response:** The target server's response with CORS headers added.
-
----
-
-## Development
-
-### Tech Stack
-
-- **Runtime**: Cloudflare Workers (V8 isolates)
-- **Config**: `wrangler.jsonc` (compatibility date: 2026-02-24, `nodejs_compat` flag)
-- **Testing**: Vitest with `@cloudflare/vitest-pool-workers` (runs tests in Workers runtime)
-- **Types**: `wrangler types` generates `Env` interface from bindings
-
-### Current State
-
-✅ **Implemented** — Generic fetch proxy with:
-
-- Single `/proxy` endpoint for all HTTP forwarding
-- Header-based target specification (RisuAI-style pattern)
-- CORS support (preflight + response headers)
-- Health check endpoint
-- Protocol discovery endpoint
-- CORS headers on success and error responses
-- Streaming support (body pass-through)
-
-### Testing
+## Commands
 
 ```bash
-npm test          # Runs vitest with cloudflare pool
-npm test -- --watch   # Watch mode
+pnpm dev
+pnpm test
+pnpm cf-typegen
 ```
 
-Tests run inside the Cloudflare Workers runtime (not Node.js), so they accurately reflect production behavior.
+## Invariants
 
----
+- Do not store request data, response data, credentials, or user state.
+- Do not log or inspect request and response content.
+- Do not add databases, durable state, analytics, or content-dependent behavior.
+- Preserve the target response status, headers, and streaming body except for required CORS headers.
+- Treat target URLs and target headers as untrusted input.
+- Keep provider-specific logic in the client; the proxy remains protocol-agnostic.
 
-## Deployment
+## External contract
 
-```bash
-npm deploy        # Deploy via wrangler to your Cloudflare account
-```
+| Endpoint | Contract |
+| --- | --- |
+| `GET /health` | Basic availability check |
+| `GET /spec` | Proxy identity and protocol discovery |
+| `POST /proxy` | Forward a request to the supplied target |
 
-Users can also deploy to their own Cloudflare account.
+`POST /proxy` accepts these control headers:
 
----
+| Header | Requirement |
+| --- | --- |
+| `x-target-url` | Required target URL |
+| `x-target-method` | Optional target method; defaults to `POST` |
+| `x-target-headers` | Optional encoded JSON object containing target headers |
 
-## See Also
+The request body is forwarded as a stream. The target response is returned as a stream with CORS headers added. Changes to this contract require matching client and protocol-version changes.
 
-- [app/AGENTS.md](../app/AGENTS.md) — Frontend that consumes this proxy
-- [../AGENTS.md](../AGENTS.md) — Root project agents guide
+`ALLOWED_ORIGINS` controls accepted browser origins. CORS headers must be present on preflight, success, and error responses.
+
+## Security
+
+- Validate every target before forwarding it.
+- Allow only HTTP and HTTPS targets.
+- Block loopback, private, link-local, metadata-service, and other internal destinations.
+- Do not weaken target validation to support a provider or development environment.
+- Do not expose credentials or upstream response content in proxy-generated errors.
+
+Any target-validation change requires tests for allowed public targets and blocked internal targets. CORS changes require tests for configured and unconfigured origins.
+
+## Development rules
+
+- Run tests in the Cloudflare Workers test pool rather than assuming Node.js behavior.
+- Test forwarding without making tests depend on live third-party services.
+- Keep request and response bodies unbuffered unless a protocol requirement makes buffering unavoidable.
+- Do not edit generated Worker type declarations manually; regenerate them with `pnpm cf-typegen`.

@@ -77,9 +77,8 @@ describe('Proxy worker', () => {
 			expect(response.status).toBe(200);
 			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
 			expect(await response.json()).toEqual({
-				service: 'keiai-proxy',
-				protocolVersion: 1,
-				capabilities: ['generic-fetch', 'streaming'],
+				app: 'keiai-proxy',
+				protocol: 1,
 			});
 		});
 	});

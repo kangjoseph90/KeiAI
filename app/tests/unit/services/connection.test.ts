@@ -68,9 +68,8 @@ describe('ConnectionService', () => {
         appHttpMock.fetch.mockResolvedValue(
             new Response(
                 JSON.stringify({
-                    service: 'keiai-proxy',
-                    protocolVersion: 1,
-                    capabilities: ['generic-fetch', 'streaming']
+                    app: 'keiai-proxy',
+                    protocol: 1
                 }),
                 { status: 200 }
             )

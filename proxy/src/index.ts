@@ -18,9 +18,8 @@ interface Env {
 }
 
 const PROXY_SPEC = {
-	service: 'keiai-proxy',
-	protocolVersion: 1,
-	capabilities: ['generic-fetch', 'streaming'],
+	app: 'keiai-proxy',
+	protocol: 1,
 } as const;
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
