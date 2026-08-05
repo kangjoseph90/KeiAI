@@ -410,11 +410,13 @@
                 <!-- Chat Note -->
                 <section class="space-y-2 border-b border-sidebar-border p-3">
                     <Label
+                        for="chat-note"
                         class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
                         <FileText class="size-3" /> Chat Note
                     </Label>
                     <Textarea
+                        id="chat-note"
                         rows={4}
                         class="text-xs bg-background"
                         placeholder="Context specific to this conversation..."

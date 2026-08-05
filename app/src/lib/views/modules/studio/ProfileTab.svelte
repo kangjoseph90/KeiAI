@@ -29,8 +29,9 @@
         </CardHeader>
         <CardContent class="space-y-6">
             <div class="grid gap-1.5">
-                <Label>Module Name</Label>
+                <Label for="module-name">Module Name</Label>
                 <Input
+                    id="module-name"
                     value={module.name}
                     oninput={(e) => onUpdate({ name: e.currentTarget.value })}
                     placeholder="Enter module name..."
@@ -38,8 +39,9 @@
             </div>
 
             <div class="grid gap-1.5">
-                <Label>Description</Label>
+                <Label for="module-description">Description</Label>
                 <Textarea
+                    id="module-description"
                     rows={3}
                     value={module.description}
                     oninput={(e) => onUpdate({ description: e.currentTarget.value })}

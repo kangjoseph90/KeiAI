@@ -24,15 +24,19 @@
     let canToggle = $derived(collapsible && hasMore);
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-    onclick={() => {
-        if (canToggle) isExpanded = !isExpanded;
-    }}
-    class="max-w-prose whitespace-pre-wrap italic leading-relaxed text-xs text-muted-foreground/80 {canToggle
-        ? 'cursor-pointer hover:text-muted-foreground transition-colors'
-        : ''}"
->
-    {displayText}
-</div>
+{#if canToggle}
+    <button
+        type="button"
+        class="block max-w-prose cursor-pointer whitespace-pre-wrap text-left italic leading-relaxed text-xs text-muted-foreground/80 transition-colors hover:text-muted-foreground"
+        aria-expanded={isExpanded}
+        onclick={() => (isExpanded = !isExpanded)}
+    >
+        {displayText}
+    </button>
+{:else}
+    <div
+        class="max-w-prose whitespace-pre-wrap italic leading-relaxed text-xs text-muted-foreground/80"
+    >
+        {displayText}
+    </div>
+{/if}

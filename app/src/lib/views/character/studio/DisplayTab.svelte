@@ -21,8 +21,9 @@
         </CardHeader>
         <CardContent class="space-y-6">
             <div class="grid gap-1.5">
-                <Label>Background HTML</Label>
+                <Label for="character-background-html">Background HTML</Label>
                 <Textarea
+                    id="character-background-html"
                     rows={12}
                     value={character.backgroundHTML}
                     oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
@@ -35,8 +36,9 @@
             </div>
 
             <div class="grid gap-1.5">
-                <Label>Message CSS</Label>
+                <Label for="character-message-css">Message CSS</Label>
                 <Textarea
+                    id="character-message-css"
                     rows={12}
                     value={character.messageCSS}
                     oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}

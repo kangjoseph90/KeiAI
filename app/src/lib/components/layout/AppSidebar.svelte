@@ -295,21 +295,23 @@
                             moveGlobalItem('rooms', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet folder({ folder: f, collapsed, toggle })}
-                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                            <div
+                            <button
+                                type="button"
                                 class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border transition-colors select-none cursor-pointer
                                     {f.color
                                     ? getFolderColorClass(f.color)
                                     : 'border-transparent bg-muted/30 text-foreground hover:bg-muted/50 hover:border-sidebar-border'}"
                                 onclick={toggle}
                                 title={f.name}
+                                aria-label={f.name}
+                                aria-expanded={!collapsed}
                             >
                                 {#if collapsed}
                                     <Folder strokeWidth={2.5} class="size-4 text-inherit" />
                                 {:else}
                                     <FolderOpen strokeWidth={2.5} class="size-4 text-inherit" />
                                 {/if}
-                            </div>
+                            </button>
                         {/snippet}
 
                         {#snippet item({ entity: room })}

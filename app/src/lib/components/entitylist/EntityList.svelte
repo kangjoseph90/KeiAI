@@ -624,10 +624,19 @@
 {#snippet defaultFolder(payload: FolderSnippetPayload)}
     {@const { folder: f, collapsed, toggle, childCount, parts } = payload}
     {#if collapsed && layout === 'grid'}
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
+            role="button"
+            tabindex="0"
+            aria-expanded={!collapsed}
+            aria-label={f.name}
             class="relative group/folder flex w-full min-h-28 flex-col items-start rounded-lg border bg-card border-border text-foreground hover:bg-muted/50 p-4 text-left select-none cursor-pointer"
             onclick={toggle}
+            onkeydown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                toggle();
+            }}
         >
             <div class="flex w-full items-center gap-3">
                 {@render parts.icon({ folder: f, collapsed })}
@@ -651,12 +660,21 @@
             </div>
         </div>
     {:else}
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
+            role="button"
+            tabindex="0"
+            aria-expanded={!collapsed}
+            aria-label={f.name}
             class="relative group/folder flex items-center justify-between rounded-md border p-2 text-sm select-none cursor-pointer transition-all duration-200 w-full {getFolderColorClass(
                 f.color
             )}"
             onclick={toggle}
+            onkeydown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                toggle();
+            }}
         >
             <div class="flex items-center gap-2 min-w-0 flex-1">
                 {@render parts.icon({

@@ -61,6 +61,7 @@
     bind:this={textareaEl}
     bind:value
     {placeholder}
+    aria-label="Message"
     {disabled}
     rows={minRows}
     oninput={resize}

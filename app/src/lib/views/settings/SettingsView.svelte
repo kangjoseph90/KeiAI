@@ -241,13 +241,16 @@
                                     class="flex items-center justify-between gap-4 p-4 border rounded-lg"
                                 >
                                     <div class="space-y-0.5">
-                                        <Label>Generate response after sending</Label>
+                                        <Label for="setting-auto-generate-response"
+                                            >Generate response after sending</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
                                             Automatically start generating a response after you send
                                             a message.
                                         </p>
                                     </div>
                                     <input
+                                        id="setting-auto-generate-response"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary"
                                         checked={$appSettings?.chat?.autoGenerateResponse !== false}
@@ -265,13 +268,16 @@
                                     class="flex items-center justify-between gap-4 p-4 border rounded-lg"
                                 >
                                     <div class="space-y-0.5">
-                                        <Label>Save messages on swipe</Label>
+                                        <Label for="setting-save-messages-on-swipe"
+                                            >Save messages on swipe</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
                                             Save message history when swiping between alternative
                                             responses.
                                         </p>
                                     </div>
                                     <input
+                                        id="setting-save-messages-on-swipe"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary"
                                         checked={$appSettings?.chat?.saveMessagesOnSwipe !== false}
@@ -289,13 +295,16 @@
                                     class="flex items-center justify-between gap-4 p-4 border rounded-lg"
                                 >
                                     <div class="space-y-0.5">
-                                        <Label>Expand trace steps during generation</Label>
+                                        <Label for="setting-expand-steps"
+                                            >Expand trace steps during generation</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
                                             Automatically expand reasoning steps when AI is
                                             generating responses.
                                         </p>
                                     </div>
                                     <input
+                                        id="setting-expand-steps"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary"
                                         checked={$appSettings?.chat?.expandStepsOnGeneration !==

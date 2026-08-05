@@ -54,12 +54,13 @@
         <CardContent class="space-y-6">
             <div class="flex items-center justify-between gap-4 rounded-md border p-4">
                 <div class="space-y-0.5">
-                    <Label>Enabled globally</Label>
+                    <Label for="module-enabled-globally">Enabled globally</Label>
                     <p class="text-xs text-muted-foreground">
                         Turn this module runtime on or off globally.
                     </p>
                 </div>
                 <input
+                    id="module-enabled-globally"
                     type="checkbox"
                     class="size-5 shrink-0 rounded border-primary"
                     checked={enabled}
@@ -69,12 +70,13 @@
 
             <div class="flex items-center justify-between gap-4 rounded-md border p-4">
                 <div class="space-y-0.5">
-                    <Label>Allow Low Level Access</Label>
+                    <Label for="module-allow-low-level">Allow Low Level Access</Label>
                     <p class="text-xs text-muted-foreground">
                         Bypass standard safety filters and prompt constraints.
                     </p>
                 </div>
                 <input
+                    id="module-allow-low-level"
                     type="checkbox"
                     class="size-5 shrink-0 rounded border-primary"
                     checked={module.allowLowLevel}

@@ -270,6 +270,7 @@
                             variant="ghost"
                             size="icon"
                             class="size-8"
+                            aria-label="Cancel room rename"
                             disabled={panelAction !== null}
                             onclick={() => {
                                 editingRoomName = false;
@@ -479,10 +480,19 @@
                             <EmptyListPlaceholder message="No chats yet." />
                         {/snippet}
                         {#snippet folder({ folder: f, collapsed, toggle, parts })}
-                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                             <div
+                                role="button"
+                                tabindex="0"
+                                aria-expanded={!collapsed}
+                                aria-label={f.name}
                                 class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
                                 onclick={toggle}
+                                onkeydown={(event) => {
+                                    if (event.target !== event.currentTarget) return;
+                                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                                    event.preventDefault();
+                                    toggle();
+                                }}
                             >
                                 <div class="flex items-center gap-2 min-w-0 flex-1">
                                     {#if collapsed}
@@ -550,6 +560,7 @@
                                             variant="ghost"
                                             size="icon"
                                             class="size-7"
+                                            aria-label="Cancel chat rename"
                                             disabled={panelAction !== null}
                                             onclick={() => {
                                                 editingChatId = null;

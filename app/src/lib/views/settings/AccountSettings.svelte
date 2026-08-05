@@ -226,8 +226,9 @@
                     <div class="space-y-3">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1">
-                                <Label>Username</Label>
+                                <Label for="account-signup-username">Username</Label>
                                 <Input
+                                    id="account-signup-username"
                                     bind:value={username}
                                     type="text"
                                     placeholder="your-name"
@@ -235,8 +236,9 @@
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Email (optional)</Label>
+                                <Label for="account-signup-email">Email (optional)</Label>
                                 <Input
+                                    id="account-signup-email"
                                     bind:value={email}
                                     type="email"
                                     placeholder="updates@example.com"
@@ -246,8 +248,9 @@
                         </div>
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1">
-                                <Label>Password</Label>
+                                <Label for="account-signup-password">Password</Label>
                                 <Input
+                                    id="account-signup-password"
                                     bind:value={password}
                                     type="password"
                                     placeholder="Password"
@@ -255,8 +258,10 @@
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Confirm Password</Label>
+                                <Label for="account-signup-confirm-password">Confirm Password</Label
+                                >
                                 <Input
+                                    id="account-signup-confirm-password"
                                     bind:value={confirmPassword}
                                     type="password"
                                     placeholder="Confirm password"
@@ -296,8 +301,9 @@
                     {#if loginMethod === 'password'}
                         <div class="space-y-3">
                             <div class="space-y-1">
-                                <Label>Username</Label>
+                                <Label for="account-login-username">Username</Label>
                                 <Input
+                                    id="account-login-username"
                                     bind:value={username}
                                     type="text"
                                     placeholder="your-name"
@@ -305,8 +311,9 @@
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Password</Label>
+                                <Label for="account-login-password">Password</Label>
                                 <Input
+                                    id="account-login-password"
                                     bind:value={password}
                                     type="password"
                                     placeholder="Password"
@@ -320,8 +327,9 @@
                     {:else if loginMethod === 'recovery'}
                         <div class="space-y-3">
                             <div class="space-y-1">
-                                <Label>Recovery Code</Label>
+                                <Label for="account-recovery-code">Recovery Code</Label>
                                 <Input
+                                    id="account-recovery-code"
                                     bind:value={recoveryCode}
                                     type="text"
                                     placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
@@ -330,8 +338,9 @@
                             </div>
                             <div class="grid gap-3 sm:grid-cols-2">
                                 <div class="space-y-1">
-                                    <Label>New Password</Label>
+                                    <Label for="account-recovery-new-password">New Password</Label>
                                     <Input
+                                        id="account-recovery-new-password"
                                         bind:value={newPassword}
                                         type="password"
                                         placeholder="New password"
@@ -339,8 +348,11 @@
                                     />
                                 </div>
                                 <div class="space-y-1">
-                                    <Label>Confirm Password</Label>
+                                    <Label for="account-recovery-confirm-password"
+                                        >Confirm Password</Label
+                                    >
                                     <Input
+                                        id="account-recovery-confirm-password"
                                         bind:value={confirmPassword}
                                         type="password"
                                         placeholder="Confirm password"
@@ -363,8 +375,9 @@
                     {:else if loginMethod === 'pairing'}
                         <div class="space-y-3">
                             <div class="space-y-1">
-                                <Label>Pairing Code</Label>
+                                <Label for="account-pairing-code">Pairing Code</Label>
                                 <Input
+                                    id="account-pairing-code"
                                     bind:value={pairingCodeInput}
                                     type="text"
                                     placeholder="XXXXXXXX"
@@ -383,8 +396,9 @@
                                 <AlertTriangle class="size-4" /> Delete Remote Account
                             </h3>
                             <div class="space-y-1">
-                                <Label>Recovery Code</Label>
+                                <Label for="account-delete-recovery-code">Recovery Code</Label>
                                 <Input
+                                    id="account-delete-recovery-code"
                                     bind:value={recoveryCode}
                                     type="text"
                                     placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
@@ -436,12 +450,22 @@
                 {#if accountView === 'security'}
                     <div class="space-y-3">
                         <div class="space-y-1">
-                            <Label>Current Password</Label>
-                            <Input bind:value={password} type="password" disabled={loading} />
+                            <Label for="account-current-password">Current Password</Label>
+                            <Input
+                                id="account-current-password"
+                                bind:value={password}
+                                type="password"
+                                disabled={loading}
+                            />
                         </div>
                         <div class="space-y-1">
-                            <Label>New Password</Label>
-                            <Input bind:value={newPassword} type="password" disabled={loading} />
+                            <Label for="account-new-password">New Password</Label>
+                            <Input
+                                id="account-new-password"
+                                bind:value={newPassword}
+                                type="password"
+                                disabled={loading}
+                            />
                         </div>
                         <Button
                             variant="outline"

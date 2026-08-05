@@ -133,8 +133,9 @@
                 </div>
                 <div class="min-w-0 flex-1 space-y-4">
                     <div class="grid gap-1.5">
-                        <Label>Character Name</Label>
+                        <Label for="character-name">Character Name</Label>
                         <Input
+                            id="character-name"
                             value={character.name}
                             oninput={(e) => onUpdate({ name: e.currentTarget.value })}
                             placeholder="Enter character name..."
@@ -166,8 +167,9 @@
             </div>
 
             <div class="grid gap-1.5">
-                <Label>Description</Label>
+                <Label for="character-description">Description</Label>
                 <Textarea
+                    id="character-description"
                     rows={3}
                     value={character.description}
                     oninput={(e) => onUpdate({ description: e.currentTarget.value })}
@@ -177,8 +179,9 @@
             </div>
 
             <div class="grid gap-1.5">
-                <Label>Character Note</Label>
+                <Label for="character-note">Character Note</Label>
                 <Textarea
+                    id="character-note"
                     rows={15}
                     value={character.characterNote}
                     oninput={(e) => onUpdate({ characterNote: e.currentTarget.value })}
