@@ -241,6 +241,30 @@
                                     class="flex items-center justify-between gap-4 p-4 border rounded-lg"
                                 >
                                     <div class="space-y-0.5">
+                                        <Label>Generate response after sending</Label>
+                                        <p class="text-xs text-muted-foreground">
+                                            Automatically start generating a response after you send
+                                            a message.
+                                        </p>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        class="size-5 shrink-0 rounded border-primary"
+                                        checked={$appSettings?.chat?.autoGenerateResponse !== false}
+                                        disabled={settingsBusy}
+                                        onchange={(e) =>
+                                            updateSettingsSafely({
+                                                chat: {
+                                                    autoGenerateResponse: e.currentTarget.checked
+                                                }
+                                            })}
+                                    />
+                                </div>
+
+                                <div
+                                    class="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                                >
+                                    <div class="space-y-0.5">
                                         <Label>Save messages on swipe</Label>
                                         <p class="text-xs text-muted-foreground">
                                             Save message history when swiping between alternative

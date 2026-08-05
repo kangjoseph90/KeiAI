@@ -21,7 +21,7 @@
         Copy,
         Languages
     } from 'lucide-svelte';
-    import { onDestroy } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
@@ -139,6 +139,9 @@
     let messageStyleHtml = $state('');
     let messageStyleSignature = '';
     let messageStyleVersion = 0;
+    let messageElement = $state<HTMLDivElement | null>(null);
+    let translationMinHeight = $state(0);
+    let translationLockKey = '';
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -210,6 +213,38 @@
     let visibleStartIdx = $derived(findVisibleStartIndex(parts));
     let traceCount = $derived(visibleStartIdx);
     let lastTextIdx = $derived(findLastTextIndex(parts));
+
+    $effect(() => {
+        const task = translationTask;
+        const lastTextIndex = lastTextIdx;
+        const element = messageElement;
+        const isStreamingTranslation = showTranslation && task?.status === 'generating';
+
+        if (!isStreamingTranslation || !task) {
+            translationMinHeight = 0;
+            translationLockKey = '';
+            return;
+        }
+
+        const lockKey = `${message.id}:${task.sourceHash}`;
+        if (translationLockKey === lockKey || lastTextIndex < 0 || !element) return;
+
+        let cancelled = false;
+        void tick().then(() => {
+            if (cancelled || translationLockKey === lockKey) return;
+            const lastTextPart = element.querySelector<HTMLElement>(
+                '[data-translation-last-text="true"]'
+            );
+            if (!lastTextPart) return;
+
+            translationMinHeight = lastTextPart.getBoundingClientRect().height;
+            translationLockKey = lockKey;
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    });
 
     let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
@@ -429,7 +464,8 @@
 
 <!-- Message Container -->
 <div
-    class="group grid gap-x-2 md:flex md:gap-3 {isUser
+    bind:this={messageElement}
+    class="group grid w-full max-w-4xl flex-none content-start self-center gap-x-2 md:flex md:items-start md:gap-3 {isUser
         ? 'grid-cols-[minmax(0,1fr)_2rem] md:flex-row-reverse'
         : 'grid-cols-[2rem_minmax(0,1fr)]'}"
     role="group"
@@ -574,7 +610,16 @@
                                 {#if isTrace}
                                     <span class="trace-dot"></span>
                                 {/if}
-                                <div class="trace-flat-body">
+                                <div
+                                    class="trace-flat-body"
+                                    data-translation-last-text={entry.index === lastTextIdx
+                                        ? 'true'
+                                        : undefined}
+                                    style:min-height={entry.index === lastTextIdx &&
+                                    translationMinHeight > 0
+                                        ? `${translationMinHeight}px`
+                                        : undefined}
+                                >
                                     {#if entry.part.type === 'thought'}
                                         <ThoughtPart
                                             text={entry.part.text}

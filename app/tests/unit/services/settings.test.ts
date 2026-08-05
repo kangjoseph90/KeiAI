@@ -110,6 +110,32 @@ describe('SettingsService', () => {
 
             expect(result.theme).toBe('system');
             expect(result.translation.workflow).toEqual({ nodes: {} });
+            expect(result.chat.autoGenerateResponse).toBe(true);
+        });
+
+        it('should add the default auto-generation setting to older records', async () => {
+            vi.mocked(buffer.get).mockResolvedValue({
+                id: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
+                createdAt: 100,
+                updatedAt: 100,
+                isDeleted: false,
+                data: {
+                    chat: {
+                        saveMessagesOnSwipe: false,
+                        expandStepsOnGeneration: false
+                    }
+                }
+            } as SettingsRecord);
+
+            const result = await SettingsService.get();
+
+            expect(result.chat).toEqual({
+                saveMessagesOnSwipe: false,
+                expandStepsOnGeneration: false,
+                autoGenerateResponse: true
+            });
         });
     });
 
@@ -131,6 +157,29 @@ describe('SettingsService', () => {
             expect(result.theme).toBe('light');
             expect(result.openai?.apiKey).toBe('sk-test'); // Preserved
             expect(buffer.update).toHaveBeenCalled();
+        });
+
+        it('should disable automatic generation without changing other chat settings', async () => {
+            const mockRecord: SettingsRecord = {
+                id: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
+                createdAt: 100,
+                updatedAt: 110,
+                isDeleted: false,
+                data: mockSettings as unknown as Record<string, unknown>
+            };
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
+
+            const result = await SettingsService.update({
+                chat: { autoGenerateResponse: false }
+            });
+
+            expect(result.chat.autoGenerateResponse).toBe(false);
+            expect(result.chat.saveMessagesOnSwipe).toBe(mockSettings.chat.saveMessagesOnSwipe);
+            expect(result.chat.expandStepsOnGeneration).toBe(
+                mockSettings.chat.expandStepsOnGeneration
+            );
         });
 
         it('should preserve createdAt across consecutive queued updates', async () => {
