@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
         ChevronDown,
+        ChevronLeft,
         ChevronRight,
         Cloud,
         CloudOff,
@@ -51,6 +52,7 @@
 
     interface Props {
         collapsed?: boolean;
+        compact?: boolean;
         route: RouteState;
         onToggle: () => void;
         onNavigate: (route: RouteState) => void;
@@ -65,6 +67,7 @@
 
     let {
         collapsed = false,
+        compact = false,
         route,
         onToggle,
         onNavigate,
@@ -228,26 +231,25 @@
     </div>
 {/snippet}
 
-{#if !collapsed}
-    <button
-        type="button"
-        class="fixed inset-0 z-30 bg-black/35 lg:hidden"
-        aria-label="Close navigation"
-        onclick={onToggle}
-    ></button>
-{/if}
+<button
+    type="button"
+    class="app-sidebar-backdrop fixed inset-0 z-30 bg-black/35 lg:hidden"
+    data-open={!collapsed}
+    aria-hidden={collapsed}
+    aria-label="Close navigation"
+    tabindex={collapsed ? -1 : 0}
+    onclick={onToggle}
+></button>
 
 <aside
     data-compact-open={!collapsed}
-    class="app-sidebar relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
-        ? 'border-r max-lg:z-20 max-lg:w-0 max-lg:border-0'
-        : 'border-r max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-xl'}"
+    data-collapsed={collapsed}
+    data-panel-open={hasPanel && !collapsed}
+    aria-hidden={compact && collapsed}
+    inert={compact && collapsed}
+    class="app-sidebar relative z-40 flex h-full shrink-0 bg-sidebar text-sidebar-foreground max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:shadow-xl"
 >
-    <div
-        class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar {collapsed
-            ? 'max-lg:hidden'
-            : ''}"
-    >
+    <div class="flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
             <Button
                 variant={route.view === 'home' ? 'secondary' : 'ghost'}
@@ -489,13 +491,26 @@
     </div>
 
     {#if hasPanel}
-        {#if !collapsed}
+        <div class="app-room-panel-stage shrink-0" aria-hidden={collapsed} inert={collapsed}>
             {@render panel?.()}
-        {:else}
+        </div>
+        {#if !collapsed}
             <Button
                 variant="outline"
                 size="icon-lg"
-                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
+                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
+                title="Hide room panel"
+                aria-label="Hide room panel"
+                onclick={onToggle}
+            >
+                <ChevronLeft class="size-4" />
+            </Button>
+        {/if}
+        {#if collapsed}
+            <Button
+                variant="outline"
+                size="icon-lg"
+                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
                 title="Show room panel"
                 aria-label="Show room panel"
                 onclick={onToggle}
@@ -504,17 +519,64 @@
             </Button>
         {/if}
     {/if}
-
-    {#if !hasPanel && collapsed}
-        <Button
-            variant="outline"
-            size="icon-lg"
-            class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
-            title="Show sidebar"
-            aria-label="Show sidebar"
-            onclick={onToggle}
-        >
-            <ChevronRight class="size-4" />
-        </Button>
-    {/if}
 </aside>
+
+{#if collapsed}
+    <Button
+        variant="outline"
+        size="icon-lg"
+        class="fixed left-[var(--safe-area-left)] top-[calc(var(--safe-area-top)+0.375rem)] z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
+        title={hasPanel ? 'Show room panel' : 'Show sidebar'}
+        aria-label={hasPanel ? 'Show room panel' : 'Show sidebar'}
+        onclick={onToggle}
+    >
+        <ChevronRight class="size-4" />
+    </Button>
+{/if}
+
+<style>
+    .app-sidebar {
+        transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .app-sidebar[data-panel-open='true'] {
+        border-right: 1px solid var(--sidebar-border);
+    }
+
+    .app-room-panel-stage {
+        width: 360px;
+        overflow: hidden;
+        transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .app-sidebar-backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease-out;
+    }
+
+    .app-sidebar-backdrop[data-open='true'] {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (min-width: 1024px) {
+        .app-sidebar[data-collapsed='true'] .app-room-panel-stage {
+            width: 0;
+        }
+    }
+
+    @media (max-width: 1023.98px) {
+        .app-room-panel-stage {
+            width: min(
+                22.75rem,
+                calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
+            );
+        }
+
+        .app-sidebar[data-collapsed='true'] {
+            transform: translateX(-100%);
+            pointer-events: none;
+        }
+    }
+</style>

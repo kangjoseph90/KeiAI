@@ -47,7 +47,21 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
 
-    let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
+    let {
+        roomId,
+        chatId,
+        inspectorOpen = $bindable(false),
+        onRequestInspectorOpen,
+        onRequestInspectorClose,
+        roomOverlayOpen = false
+    }: {
+        roomId: string;
+        chatId?: string;
+        inspectorOpen?: boolean;
+        onRequestInspectorOpen?: () => void;
+        onRequestInspectorClose?: () => void;
+        roomOverlayOpen?: boolean;
+    } = $props();
 
     const logger = createLogger('view:chat');
     let newMessageText = $state('');
@@ -55,7 +69,6 @@
     let editModeId = $state<string | null>(null);
     let isEditingTranslation = $state(false);
     let editMessageText = $state('');
-    let inspectorOpen = $state(false);
     let scrollContainerEl: HTMLElement | undefined = $state();
     type PaginationDirection = 'older' | 'newer';
     let paginationDirection = $state<PaginationDirection | null>(null);
@@ -65,6 +78,9 @@
     let previousActiveChatId = $state<string | undefined>();
     let composerHeight = $state(0);
     let messagesContentEl: HTMLElement | undefined = $state();
+    let chatViewElement: HTMLElement | undefined = $state();
+    let chatLayoutTransitionSuppressed = $state(false);
+    let chatPanelOverlayMode = $state(false);
     let streamReserveHeight = $state(0);
     let reserveContentHeight = 0;
     let previousGeneratingMessageId: string | null = null;
@@ -74,6 +90,9 @@
     type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
     let messageAction = $state<{ messageId: string; type: MessageAction } | null>(null);
     let chatViewEpoch = 0;
+    let previousChatPanelOverlayMode: boolean | undefined;
+    let chatLayoutTransitionFrame: number | undefined;
+    let chatLayoutTransitionRestoreFrame: number | undefined;
 
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
@@ -81,6 +100,7 @@
     const MIN_STREAM_RESERVE_HEIGHT = 240;
     const MAX_STREAM_RESERVE_HEIGHT = 640;
     const STREAM_RESERVE_RATIO = 0.68;
+    const CHAT_PANEL_OVERLAY_MAX_WIDTH = 1023.98;
     const isLoadingOlder = $derived(paginationDirection === 'older');
     const messageBottomInset = $derived(Math.max(composerHeight + 16, 96));
     const generatingMessageId = $derived.by(() => {
@@ -92,7 +112,59 @@
 
     onDestroy(() => {
         chatViewEpoch += 1;
+        if (chatLayoutTransitionFrame !== undefined) {
+            cancelAnimationFrame(chatLayoutTransitionFrame);
+        }
+        if (chatLayoutTransitionRestoreFrame !== undefined) {
+            cancelAnimationFrame(chatLayoutTransitionRestoreFrame);
+        }
     });
+
+    $effect(() => {
+        const element = chatViewElement;
+        if (!element) return;
+
+        const updateMode = (width: number): void => {
+            const overlayMode = width <= CHAT_PANEL_OVERLAY_MAX_WIDTH;
+            if (
+                previousChatPanelOverlayMode !== undefined &&
+                previousChatPanelOverlayMode !== overlayMode
+            ) {
+                suppressChatLayoutTransitions();
+            }
+            previousChatPanelOverlayMode = overlayMode;
+            chatPanelOverlayMode = overlayMode;
+        };
+
+        const observer = new ResizeObserver((entries) => {
+            updateMode(entries[0]?.contentRect.width ?? element.getBoundingClientRect().width);
+        });
+        observer.observe(element);
+        updateMode(element.getBoundingClientRect().width);
+
+        return () => {
+            observer.disconnect();
+            previousChatPanelOverlayMode = undefined;
+        };
+    });
+
+    function suppressChatLayoutTransitions(): void {
+        if (chatLayoutTransitionFrame !== undefined) {
+            cancelAnimationFrame(chatLayoutTransitionFrame);
+        }
+        if (chatLayoutTransitionRestoreFrame !== undefined) {
+            cancelAnimationFrame(chatLayoutTransitionRestoreFrame);
+        }
+
+        chatLayoutTransitionSuppressed = true;
+        chatLayoutTransitionFrame = requestAnimationFrame(() => {
+            chatLayoutTransitionFrame = undefined;
+            chatLayoutTransitionRestoreFrame = requestAnimationFrame(() => {
+                chatLayoutTransitionRestoreFrame = undefined;
+                chatLayoutTransitionSuppressed = false;
+            });
+        });
+    }
 
     $effect(() => {
         const element = messagesContentEl;
@@ -630,13 +702,30 @@
             navigate({ view: 'room', roomId: $activeRoom.id, chatId: targetChatId });
         }
     }
+
+    function openInspector(): void {
+        if (onRequestInspectorOpen) onRequestInspectorOpen();
+        else inspectorOpen = true;
+    }
+
+    function closeInspector(): void {
+        if (onRequestInspectorClose) onRequestInspectorClose();
+        else inspectorOpen = false;
+    }
 </script>
 
-<div class="flex h-full flex-col">
+<div
+    bind:this={chatViewElement}
+    class="chat-view-container flex h-full flex-col"
+    data-layout-transition-suppressed={chatLayoutTransitionSuppressed}
+>
     <!-- Main Area -->
     <div class="relative flex flex-1 overflow-hidden">
         {#if !$activeChat}
-            <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <div
+                class="flex flex-1 flex-col items-center justify-center gap-3 text-center"
+                inert={roomOverlayOpen}
+            >
                 <div class="flex size-16 items-center justify-center rounded-full bg-muted">
                     <MessageSquare class="size-7 text-muted-foreground" />
                 </div>
@@ -649,17 +738,19 @@
             </div>
         {:else}
             <!-- Messages Column -->
-            <div class="flex flex-1 flex-col overflow-hidden relative">
+            <div
+                class="chat-messages-container relative flex min-w-0 flex-1 flex-col overflow-hidden"
+            >
                 <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
 
                 {#if !inspectorOpen}
                     <Button
                         variant="outline"
                         size="icon-lg"
-                        class="absolute right-0 top-1.5 z-20 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
+                        class="absolute right-0 top-1.5 z-50 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                         title="Show chat context"
                         aria-label="Show chat context"
-                        onclick={() => (inspectorOpen = true)}
+                        onclick={openInspector}
                     >
                         <ChevronLeft class="size-4" />
                     </Button>
@@ -678,7 +769,8 @@
                 <div
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
-                    class="relative z-10 flex flex-1 flex-col overflow-y-auto px-4 py-4"
+                    inert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
+                    class="relative z-10 flex flex-1 flex-col overflow-y-auto px-4 pt-8 pb-4"
                     style="scrollbar-gutter: stable; padding-bottom: {messageBottomInset}px; overflow-anchor: {streamReserveHeight >
                     0
                         ? 'none'
@@ -686,7 +778,8 @@
                 >
                     <div
                         bind:this={messagesContentEl}
-                        class="flex flex-none flex-col gap-6 md:gap-4 {$displayMessages.length === 0
+                        class="chat-messages-content flex flex-none flex-col gap-6 {$displayMessages.length ===
+                        0
                             ? 'min-h-full'
                             : ''}"
                     >
@@ -769,6 +862,7 @@
                     bind:attachmentIds={pendingAttachments}
                     maxAttachments={MAX_ATTACHMENTS}
                     {showScrollToBottom}
+                    overlayInert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
                     onHeightChange={(height) => (composerHeight = height)}
                     onSend={() => void handleSendMessage()}
                     onGenerate={handleGenerateResponse}
@@ -779,29 +873,43 @@
                 />
             </div>
 
-            {#if inspectorOpen}
-                <button
-                    type="button"
-                    class="absolute inset-0 z-30 bg-black/35 lg:hidden"
-                    aria-label="Close chat context"
-                    onclick={() => (inspectorOpen = false)}
-                ></button>
-                <div
-                    class="app-chat-runtime-panel relative w-[360px] shrink-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-40"
-                >
-                    <Button
-                        variant="outline"
-                        size="icon-lg"
-                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
-                        title="Hide chat context"
-                        aria-label="Hide chat context"
-                        onclick={() => (inspectorOpen = false)}
-                    >
-                        <ChevronRight class="size-4" />
-                    </Button>
+            <button
+                type="button"
+                class="app-chat-panel-backdrop absolute inset-0 z-30 hidden bg-black/35"
+                data-open={inspectorOpen}
+                aria-hidden={!inspectorOpen}
+                aria-label="Close chat context"
+                tabindex={inspectorOpen ? 0 : -1}
+                onclick={closeInspector}
+            ></button>
+            <div
+                class="app-chat-panel-stage relative shrink-0"
+                data-open={inspectorOpen}
+                aria-hidden={!inspectorOpen}
+                inert={!inspectorOpen}
+            >
+                <div class="app-chat-runtime-panel relative h-full w-[360px] shrink-0">
                     <ChatRuntimePanel chatId={$activeChat.id} onSelectInlay={addAttachment} />
                 </div>
-            {/if}
+            </div>
+            <div
+                class="app-chat-panel-close absolute top-1.5 z-50"
+                data-open={inspectorOpen}
+                aria-hidden={!inspectorOpen}
+                inert={!inspectorOpen}
+            >
+                <Button
+                    variant="outline"
+                    size="icon-lg"
+                    class="size-11 rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
+                    tabindex={inspectorOpen ? 0 : -1}
+                    title="Hide chat context"
+                    aria-label="Hide chat context"
+                    onclick={closeInspector}
+                >
+                    <ChevronRight class="size-4" />
+                </Button>
+            </div>
         {/if}
     </div>
 </div>
@@ -810,3 +918,108 @@
 {#if $activeChat}
     <ChatPersonaPicker chatId={$activeChat.id} />
 {/if}
+
+<style>
+    .chat-view-container {
+        container: chat-view / inline-size;
+    }
+
+    .chat-view-container[data-layout-transition-suppressed='true']
+        :is(
+            .app-chat-panel-stage,
+            .app-chat-runtime-panel,
+            .app-chat-panel-close,
+            .app-chat-panel-backdrop
+        ) {
+        transition: none !important;
+    }
+
+    .chat-messages-container {
+        container: chat-messages / inline-size;
+    }
+
+    @container chat-messages (min-width: 32rem) {
+        .chat-messages-content {
+            gap: 1rem;
+        }
+    }
+
+    .app-chat-panel-stage {
+        width: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .app-chat-panel-stage[data-open='true'] {
+        width: 360px;
+        pointer-events: auto;
+    }
+
+    .app-chat-panel-close {
+        right: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+            right 240ms cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 120ms ease-out;
+    }
+
+    .app-chat-panel-close[data-open='true'] {
+        right: 360px;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .app-chat-panel-backdrop {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease-out;
+    }
+
+    .app-chat-panel-backdrop[data-open='true'] {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @container chat-view (max-width: 1023.98px) {
+        .app-chat-panel-backdrop {
+            display: block;
+        }
+
+        .app-chat-panel-stage {
+            position: absolute;
+            inset-block: 0;
+            right: 0;
+            z-index: 40;
+            width: clamp(
+                0px,
+                calc(100cqw - 6.25rem - var(--safe-area-left) - var(--safe-area-right)),
+                22.75rem
+            );
+            transform: translateX(100%);
+            transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .app-chat-panel-stage[data-open='true'] {
+            width: clamp(
+                0px,
+                calc(100cqw - 6.25rem - var(--safe-area-left) - var(--safe-area-right)),
+                22.75rem
+            );
+            transform: translateX(0);
+        }
+
+        .app-chat-runtime-panel {
+            width: clamp(
+                0px,
+                calc(100cqw - 6.25rem - var(--safe-area-left) - var(--safe-area-right)),
+                22.75rem
+            );
+        }
+
+        .app-chat-panel-close {
+            display: none;
+        }
+    }
+</style>

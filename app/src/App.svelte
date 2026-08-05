@@ -57,9 +57,21 @@
     let errorMsg = $state('');
     let cryptoIssue = $state<WebCryptoAvailabilityIssue | null>(null);
     let sidebarCollapsed = $state(false);
+    let chatPanelOpen = $state(false);
+    let restoreRoomPanelAfterCompactConflict = false;
+    let compactShell = $state(false);
+    let shellTransitionSuppressed = $state(false);
     // Match Tailwind's `max-lg` range, including fractional CSS viewport widths.
     const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
     let compactShellMedia: MediaQueryList | undefined;
+    let shellTransitionFrame: number | undefined;
+    let shellTransitionRestoreFrame: number | undefined;
+    const appSidebarVisible = $derived(
+        $route.view !== 'settings' &&
+            $route.view !== 'characterStudio' &&
+            $route.view !== 'moduleStudio' &&
+            $route.view !== 'personaStudio'
+    );
     const environmentIssue = getEnvironmentConfigIssue();
     const logger = createLogger('route:page');
 
@@ -68,26 +80,69 @@
     }
 
     function navigateFromSidebar(r: RouteState) {
-        if (compactShellMedia?.matches ?? window.matchMedia(COMPACT_SHELL_QUERY).matches) {
-            sidebarCollapsed = true;
-        }
+        if (compactShell) sidebarCollapsed = true;
         navigate(r);
     }
 
+    function isCompactShell(): boolean {
+        return compactShell;
+    }
+
+    function handleSidebarToggle(): void {
+        const opening = sidebarCollapsed;
+        restoreRoomPanelAfterCompactConflict = false;
+        if (opening && isCompactShell()) chatPanelOpen = false;
+        sidebarCollapsed = !sidebarCollapsed;
+    }
+
+    function handleChatPanelOpen(): void {
+        if (isCompactShell() && !sidebarCollapsed) {
+            restoreRoomPanelAfterCompactConflict = true;
+            sidebarCollapsed = true;
+        }
+        chatPanelOpen = true;
+    }
+
+    function handleChatPanelClose(): void {
+        chatPanelOpen = false;
+        restoreRoomPanelAfterCompactConflict = false;
+    }
+
     function handleCompactShellChange(event: MediaQueryListEvent): void {
-        sidebarCollapsed = event.matches;
+        compactShell = event.matches;
+        suppressShellTransitions();
+        if (event.matches && !sidebarCollapsed && chatPanelOpen) {
+            restoreRoomPanelAfterCompactConflict = true;
+            sidebarCollapsed = true;
+        } else if (!event.matches && restoreRoomPanelAfterCompactConflict) {
+            restoreRoomPanelAfterCompactConflict = false;
+            sidebarCollapsed = false;
+        }
+    }
+
+    function suppressShellTransitions(): void {
+        if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);
+        if (shellTransitionRestoreFrame !== undefined) {
+            cancelAnimationFrame(shellTransitionRestoreFrame);
+        }
+
+        shellTransitionSuppressed = true;
+        shellTransitionFrame = requestAnimationFrame(() => {
+            shellTransitionFrame = undefined;
+            shellTransitionRestoreFrame = requestAnimationFrame(() => {
+                shellTransitionRestoreFrame = undefined;
+                shellTransitionSuppressed = false;
+            });
+        });
     }
 
     function handleShellKeydown(event: KeyboardEvent): void {
-        if (
-            event.defaultPrevented ||
-            event.key !== 'Escape' ||
-            sidebarCollapsed ||
-            !compactShellMedia?.matches
-        ) {
-            return;
+        if (event.defaultPrevented || event.key !== 'Escape') return;
+        if (chatPanelOpen) {
+            handleChatPanelClose();
+        } else if (compactShell && !sidebarCollapsed) {
+            sidebarCollapsed = true;
         }
-        sidebarCollapsed = true;
     }
 
     // Restore route from URL on boot
@@ -129,6 +184,10 @@
     let navigationVersion = 0;
     $effect(() => {
         const r = $route;
+        if (r.view !== 'room') {
+            chatPanelOpen = false;
+            restoreRoomPanelAfterCompactConflict = false;
+        }
         if (!ready || !prevRoute) {
             prevRoute = r;
             return;
@@ -202,7 +261,8 @@
             if (cryptoIssue) return;
 
             compactShellMedia = window.matchMedia(COMPACT_SHELL_QUERY);
-            sidebarCollapsed = compactShellMedia.matches;
+            compactShell = compactShellMedia.matches;
+            sidebarCollapsed = compactShell;
             compactShellMedia.addEventListener('change', handleCompactShellChange);
             startSyncStatusTracking();
             await clock.init(appKV);
@@ -237,6 +297,10 @@
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);
+        if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);
+        if (shellTransitionRestoreFrame !== undefined) {
+            cancelAnimationFrame(shellTransitionRestoreFrame);
+        }
         _cleanupHash?.();
     });
 </script>
@@ -281,6 +345,7 @@
 
 <main
     class="app-shell flex min-h-0 overflow-hidden bg-background text-foreground"
+    data-layout-transition-suppressed={shellTransitionSuppressed}
     aria-busy={!ready && !environmentIssue && !cryptoIssue && !errorMsg}
 >
     {#if environmentIssue}
@@ -322,29 +387,36 @@
             <p class="text-sm text-muted-foreground" role="status">Loading KeiAI...</p>
         </div>
     {:else}
-        {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'moduleStudio' && $route.view !== 'personaStudio'}
+        {#if appSidebarVisible}
             <!-- Sidebar -->
             <AppSidebar
                 collapsed={sidebarCollapsed}
+                compact={compactShell}
                 route={$route}
-                onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
+                onToggle={handleSidebarToggle}
                 onNavigate={navigateFromSidebar}
                 hasPanel={$route.view === 'room' && Boolean($activeRoom)}
             >
                 {#snippet panel()}
-                    <RoomPanel
-                        route={$route}
-                        onClose={() => (sidebarCollapsed = true)}
-                        onNavigate={navigateFromSidebar}
-                    />
+                    <RoomPanel route={$route} onNavigate={navigateFromSidebar} />
                 {/snippet}
             </AppSidebar>
         {/if}
 
         <!-- Main Content -->
-        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+            class="flex min-h-0 flex-1 flex-col overflow-hidden"
+            inert={appSidebarVisible && compactShell && !sidebarCollapsed && $route.view !== 'room'}
+        >
             {#if $route.view === 'room' && $route.roomId}
-                <ChatView roomId={$route.roomId} chatId={$route.chatId} />
+                <ChatView
+                    roomId={$route.roomId}
+                    chatId={$route.chatId}
+                    bind:inspectorOpen={chatPanelOpen}
+                    onRequestInspectorOpen={handleChatPanelOpen}
+                    onRequestInspectorClose={handleChatPanelClose}
+                    roomOverlayOpen={compactShell && !sidebarCollapsed}
+                />
             {:else if $route.view === 'characterStudio' && $route.charId}
                 <CharacterStudio charId={$route.charId} characterTab={$route.characterTab} />
             {:else if $route.view === 'moduleStudio' && $route.moduleId}

@@ -1,7 +1,6 @@
 <script lang="ts">
     import {
         Check,
-        ChevronLeft,
         Edit3,
         Folder,
         FolderOpen,
@@ -56,11 +55,10 @@
 
     interface Props {
         route: RouteState;
-        onClose: () => void;
         onNavigate: (route: RouteState) => void;
     }
 
-    let { route, onClose, onNavigate }: Props = $props();
+    let { route, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
     let editingChatId = $state<string | null>(null);
@@ -235,8 +233,8 @@
 </script>
 
 {#if $activeRoom}
-    <div class="relative flex">
-        <div class="app-sidebar-room-panel flex w-[360px] flex-col bg-sidebar">
+    <div class="app-sidebar-room-panel relative flex w-[360px] shrink-0">
+        <div class="flex w-full flex-col bg-sidebar">
             <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
                 {#if editingRoomName}
                     <form
@@ -622,15 +620,5 @@
                 </div>
             {/if}
         </div>
-        <Button
-            variant="outline"
-            size="icon-lg"
-            class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
-            title="Hide room panel"
-            aria-label="Hide room panel"
-            onclick={onClose}
-        >
-            <ChevronLeft class="size-4" />
-        </Button>
     </div>
 {/if}

@@ -10,6 +10,7 @@
         attachmentIds = $bindable([]),
         maxAttachments,
         showScrollToBottom = false,
+        overlayInert = false,
         onHeightChange,
         onSend,
         onGenerate,
@@ -22,6 +23,7 @@
         attachmentIds?: string[];
         maxAttachments: number;
         showScrollToBottom?: boolean;
+        overlayInert?: boolean;
         onHeightChange: (height: number) => void;
         onSend: () => void;
         onGenerate: () => void;
@@ -118,6 +120,7 @@
 <div
     role="region"
     aria-label="Message composer"
+    inert={overlayInert}
     class="absolute inset-x-0 bottom-0 z-20 isolate px-3 pb-3 pt-1 md:px-4"
     ondragenter={handleDragEnter}
     ondragover={handleDragOver}

@@ -239,7 +239,7 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
     .app-sidebar[data-compact-open='true'] {
         top: var(--safe-area-top);
         bottom: var(--safe-area-bottom);
@@ -260,6 +260,11 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
             calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
         );
     }
+}
+
+.app-shell[data-layout-transition-suppressed='true']
+    :is(.app-sidebar, .app-room-panel-stage, .app-sidebar-backdrop) {
+    transition: none !important;
 }
 
 @media (hover: none), (pointer: coarse) {

@@ -101,7 +101,7 @@ export const defaultSettings: AppSettings = {
     theme: 'system',
     chat: {
         saveMessagesOnSwipe: true,
-        expandStepsOnGeneration: true,
+        expandStepsOnGeneration: false,
         autoGenerateResponse: true
     },
     translation: {
