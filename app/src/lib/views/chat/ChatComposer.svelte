@@ -128,7 +128,7 @@
     ondrop={handleDrop}
 >
     <div
-        class="pointer-events-none absolute left-0 right-3.5 md:right-4 -top-8 bottom-0 -z-10 bg-gradient-to-b from-transparent via-background/45 to-background backdrop-blur-[1px] [mask-image:linear-gradient(to_bottom,transparent,black_62%)]"
+        class="pointer-events-none absolute left-0 right-3.5 md:right-4 -top-8 bottom-0 -z-10 bg-linear-to-b from-transparent via-background/45 to-background backdrop-blur-[1px] mask-[linear-gradient(to_bottom,transparent,black_62%)]"
         aria-hidden="true"
     ></div>
 
@@ -137,7 +137,7 @@
             <Button
                 variant="secondary"
                 size="icon"
-                class="flex size-10 items-center justify-center rounded-full border bg-background/80 shadow-md backdrop-blur transition-opacity hover:bg-accent"
+                class="flex items-center justify-center rounded-full border bg-background/80 shadow-md backdrop-blur transition-opacity hover:bg-accent"
                 onclick={onScrollToBottom}
                 aria-label="Scroll to bottom"
             >
@@ -148,11 +148,11 @@
 
     <div
         bind:this={composerElement}
-        class="relative mx-auto w-full max-w-4xl rounded-[1.5rem] border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20"
+        class="relative mx-auto w-full max-w-4xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20"
     >
         {#if isDragging}
             <div
-                class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[1.5rem] border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
+                class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
             >
                 Drop images, audio, or video to attach
             </div>

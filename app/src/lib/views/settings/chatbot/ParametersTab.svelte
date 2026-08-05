@@ -1,10 +1,13 @@
 <script lang="ts">
+    import { ChevronDown, ChevronRight } from 'lucide-svelte';
+    import { slide } from 'svelte/transition';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { appSettings, updatePreset } from '$lib/stores';
     import {
         type LLMParameter,
+        type LLMParameters,
         type LLMType,
         type LLMTypeDefinition,
         getLLMParameterName
@@ -90,20 +93,15 @@
     }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-5">
     <Card>
         <CardHeader>
-            <CardTitle class="text-base">Generation Parameters</CardTitle>
+            <CardTitle class="text-base">Chat Parameters</CardTitle>
         </CardHeader>
-        <CardContent class="grid grid-cols-2 gap-x-8 gap-y-4">
+        <CardContent class="grid grid-cols-3 gap-x-6 gap-y-3">
             {#each commonParams as param (param)}
                 <div class="flex flex-col gap-1.5">
-                    <div class="flex items-center justify-between">
-                        <Label class="text-xs">{getLLMParameterName(param)}</Label>
-                        <span class="text-[10px] font-mono text-muted-foreground">
-                            {preset.parameters.chat?.[param] ?? 'default'}
-                        </span>
-                    </div>
+                    <Label class="text-xs">{getLLMParameterName(param)}</Label>
                     <Input
                         type="number"
                         step="0.01"
@@ -118,75 +116,86 @@
     </Card>
 
     <section class="rounded-lg border bg-card p-4">
-        <button
-            type="button"
-            class="flex w-full items-center justify-between text-left text-sm font-medium hover:opacity-80 transition-opacity"
-            onclick={() => (advancedOpen = !advancedOpen)}
-        >
-            <span>Task Parameter Overrides</span>
-            <span class="text-xs text-muted-foreground">{advancedOpen ? 'Collapse' : 'Expand'}</span
+        <div class="flex items-center gap-2">
+            <button
+                type="button"
+                class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onclick={() => (advancedOpen = !advancedOpen)}
+                aria-label={advancedOpen ? 'Collapse' : 'Expand'}
             >
-        </button>
+                {#if advancedOpen}
+                    <ChevronDown class="size-3.5" />
+                {:else}
+                    <ChevronRight class="size-3.5" />
+                {/if}
+            </button>
+            <button
+                type="button"
+                class="text-sm font-medium text-foreground hover:opacity-80 transition-opacity"
+                onclick={() => (advancedOpen = !advancedOpen)}
+            >
+                Model Type Parameter Overrides
+            </button>
+        </div>
 
         {#if advancedOpen}
-            <div class="mt-4 flex flex-col gap-4">
+            <div class="mt-4 flex flex-col gap-3" transition:slide={{ duration: 150 }}>
                 {#each llmTypes as role (role.type)}
                     {@const params = preset.parameters[role.type]}
-                    <div class="rounded-md border p-4">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <h4 class="text-sm font-semibold">{role.type}</h4>
-                                {#if role.description}
-                                    <p class="mt-1 text-xs text-muted-foreground">
-                                        {role.description}
-                                    </p>
-                                {/if}
-                            </div>
-                            <label class="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Override</span>
-                                <input
-                                    type="checkbox"
-                                    checked={params !== undefined}
-                                    onchange={(e) =>
-                                        e.currentTarget.checked
-                                            ? enableOverride(role.type)
-                                            : disableOverride(role.type)}
-                                />
-                            </label>
-                        </div>
-
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="flex items-center justify-between text-base">
+                                <div>
+                                    <div>{role.type}</div>
+                                    {#if role.description}
+                                        <p class="mt-0.5 text-xs font-normal text-muted-foreground">
+                                            {role.description}
+                                        </p>
+                                    {/if}
+                                </div>
+                                <label
+                                    class="flex items-center gap-2 text-xs font-normal text-muted-foreground"
+                                >
+                                    <span>Override</span>
+                                    <input
+                                        type="checkbox"
+                                        class="size-5 shrink-0 rounded border-primary"
+                                        checked={params !== undefined}
+                                        onchange={(e) =>
+                                            e.currentTarget.checked
+                                                ? enableOverride(role.type)
+                                                : disableOverride(role.type)}
+                                    />
+                                </label>
+                            </CardTitle>
+                        </CardHeader>
                         {#if params !== undefined}
-                            <div class="mt-4 grid grid-cols-2 gap-x-8 gap-y-4">
-                                {#each commonParams as param (param)}
-                                    <div class="flex flex-col gap-1.5">
-                                        <div class="flex items-center justify-between">
+                            <div transition:slide={{ duration: 150 }}>
+                                <CardContent class="grid grid-cols-3 gap-x-6 gap-y-3">
+                                    {#each commonParams as param (param)}
+                                        <div class="flex flex-col gap-1.5">
                                             <Label class="text-xs"
                                                 >{getLLMParameterName(param)}</Label
                                             >
-                                            <span
-                                                class="text-[10px] font-mono text-muted-foreground"
-                                            >
-                                                {params[param] ?? 'default'}
-                                            </span>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                placeholder="Default"
+                                                value={params[param] ?? ''}
+                                                oninput={(e) =>
+                                                    updateParameter(
+                                                        role.type,
+                                                        param,
+                                                        e.currentTarget.value
+                                                    )}
+                                                class="h-8 text-sm"
+                                            />
                                         </div>
-                                        <Input
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="Use chat default"
-                                            value={params[param] ?? ''}
-                                            oninput={(e) =>
-                                                updateParameter(
-                                                    role.type,
-                                                    param,
-                                                    e.currentTarget.value
-                                                )}
-                                            class="h-8 text-sm"
-                                        />
-                                    </div>
-                                {/each}
+                                    {/each}
+                                </CardContent>
                             </div>
                         {/if}
-                    </div>
+                    </Card>
                 {/each}
             </div>
         {/if}

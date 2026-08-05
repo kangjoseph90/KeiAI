@@ -21,13 +21,13 @@
     } = $props();
 </script>
 
-<section class="space-y-6">
+<section class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle>Basic Information</CardTitle>
             <CardDescription>How the module is identified in the application.</CardDescription>
         </CardHeader>
-        <CardContent class="space-y-6">
+        <CardContent class="space-y-4">
             <div class="grid gap-1.5">
                 <Label for="module-name">Module Name</Label>
                 <Input

@@ -180,9 +180,9 @@
                     config={displayConfig}
                     mode="browse"
                     layout="grid"
-                    gridClass="grid grid-cols-2 gap-1 sm:grid-cols-3"
+                    gridClass="grid grid-cols-2 gap-2 sm:grid-cols-3"
                     childContainerClass="relative mt-1 border-l px-3"
-                    itemWrapperClass={() => 'min-w-0 p-1'}
+                    itemWrapperClass={() => 'min-w-0'}
                 >
                     {#snippet empty()}
                         <div
@@ -205,17 +205,17 @@
                         {@const isSelected = selectedIds.includes(resource.id)}
                         <button
                             type="button"
-                            class="group/item flex w-full min-w-0 items-center gap-3 rounded-md border p-2 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isAttached
+                            class="group/item flex w-full min-w-0 items-center gap-2 rounded-lg border border-foreground/15 bg-card p-2 text-left text-card-foreground transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isAttached
                                 ? 'border-transparent bg-muted/50 text-muted-foreground'
                                 : isSelected
                                   ? 'border-primary bg-primary/5 shadow-sm'
-                                  : 'border-transparent hover:border-border hover:bg-muted/40'}"
+                                  : 'hover:border-foreground/25 hover:bg-muted/40'}"
                             disabled={isAttached || adding}
                             aria-pressed={isSelected}
                             onclick={() => toggle(resource.id)}
                         >
                             <div
-                                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold text-foreground"
+                                class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold text-foreground"
                             >
                                 {#if resource.avatar}
                                     <AssetView

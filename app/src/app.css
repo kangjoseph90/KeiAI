@@ -277,7 +277,6 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
         opacity: 1 !important;
     }
 
-    [data-slot='button'][data-size^='icon'],
     .touch-target {
         min-width: 2.75rem;
         min-height: 2.75rem;

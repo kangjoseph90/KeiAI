@@ -29,6 +29,7 @@
     import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
     import type { Preset } from '$lib/services';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
@@ -168,125 +169,131 @@
             {/snippet}
             {#snippet item({ entity: preset })}
                 <div
-                    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {$activePreset?.id ===
-                    preset.id
-                        ? 'border-primary/80 ring-1 ring-primary/20'
-                        : ''}"
+                    class={$activePreset?.id === preset.id
+                        ? 'rounded-lg ring-1 ring-primary/20'
+                        : ''}
                 >
-                    <!-- 헤더 영역 -->
-                    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
-                        <div
-                            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
-                            aria-hidden="true"
-                        >
-                            <GripVertical class="size-4" />
-                        </div>
-                        <button
-                            type="button"
-                            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                            onclick={() => toggleExpanded(preset.id)}
-                            aria-label={expandedPresetIds[preset.id]
-                                ? 'Collapse preset'
-                                : 'Expand preset'}
-                        >
-                            {#if expandedPresetIds[preset.id]}
-                                <ChevronDown class="size-4" />
-                            {:else}
-                                <ChevronRight class="size-4" />
-                            {/if}
-                        </button>
-
-                        <!-- Borderless Name Input -->
-                        <Input
-                            value={preset.name}
-                            disabled={busyAction !== null}
-                            onchange={(e) =>
-                                updatePresetSafely(preset.id, { name: e.currentTarget.value })}
-                            aria-label="Preset name"
-                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
-                        />
-
-                        <!-- Active Status Badge -->
-                        {#if $activePreset?.id === preset.id}
-                            <Badge
-                                class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
-                                >Active</Badge
+                    <EditableListItem
+                        expanded={expandedPresetIds[preset.id]}
+                        busy={busyAction !== null}
+                    >
+                        {#snippet header()}
+                            <!-- 헤더 영역 -->
+                            <div
+                                class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                                aria-hidden="true"
                             >
-                        {/if}
-
-                        <!-- Actions -->
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            class="size-8 shrink-0 {$activePreset?.id === preset.id
-                                ? 'text-emerald-500 hover:text-emerald-600'
-                                : 'text-muted-foreground'}"
-                            title={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
-                            aria-label={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
-                            disabled={busyAction !== null}
-                            aria-busy={busyAction === `select:${preset.id}`}
-                            onclick={() => handleSelectPreset(preset.id)}
-                        >
-                            <Check class="size-4" />
-                        </Button>
-
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                            title="Export Preset"
-                            aria-label="Export Preset"
-                            disabled={busyAction !== null}
-                            aria-busy={busyAction === `export:${preset.id}`}
-                            onclick={() => handleExportPreset(preset.id)}
-                        >
-                            <Download class="size-4" />
-                        </Button>
-
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                            aria-label="Delete preset"
-                            disabled={busyAction !== null}
-                            aria-busy={busyAction === `delete:${preset.id}`}
-                            onclick={() => handleDeletePreset(preset.id, preset.name)}
-                        >
-                            <Trash2 class="size-4" />
-                        </Button>
-                    </div>
-
-                    <!-- 펼쳐지는 바디 영역 -->
-                    {#if expandedPresetIds[preset.id]}
-                        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-                            <!-- 1. Description -->
-                            <div class="space-y-1.5">
-                                <Label class="text-xs">Description</Label>
-                                <Input
-                                    class="h-8 text-xs bg-background"
-                                    placeholder="No description"
-                                    value={preset.description}
-                                    disabled={busyAction !== null}
-                                    onchange={(e) =>
-                                        updatePresetSafely(preset.id, {
-                                            description: e.currentTarget.value
-                                        })}
-                                />
+                                <GripVertical class="size-3.5" />
                             </div>
+                            <button
+                                type="button"
+                                class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                onclick={() => toggleExpanded(preset.id)}
+                                aria-label={expandedPresetIds[preset.id]
+                                    ? 'Collapse preset'
+                                    : 'Expand preset'}
+                            >
+                                {#if expandedPresetIds[preset.id]}
+                                    <ChevronDown class="size-3.5" />
+                                {:else}
+                                    <ChevronRight class="size-3.5" />
+                                {/if}
+                            </button>
 
-                            <div class="space-y-1.5">
-                                <Label class="text-xs">Default Variables</Label>
-                                <KeyValueEditor
-                                    emptyMessage="No initial variables defined."
-                                    data={preset.defaultVariables}
-                                    onUpdateValue={(key, val) =>
-                                        handleUpdateVariableValue(preset, key, val)}
-                                    onAdd={(key, val) => handleAddVariable(preset, key, val)}
-                                    onRemove={(key) => handleRemoveVariable(preset, key)}
-                                />
+                            <!-- Borderless Name Input -->
+                            <Input
+                                value={preset.name}
+                                disabled={busyAction !== null}
+                                onchange={(e) =>
+                                    updatePresetSafely(preset.id, { name: e.currentTarget.value })}
+                                aria-label="Preset name"
+                                class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                            />
+
+                            <!-- Active Status Badge -->
+                            {#if $activePreset?.id === preset.id}
+                                <Badge
+                                    class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
+                                    >Active</Badge
+                                >
+                            {/if}
+
+                            <!-- Actions -->
+                            <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                class="shrink-0 {$activePreset?.id === preset.id
+                                    ? 'text-emerald-500 hover:text-emerald-600'
+                                    : 'text-muted-foreground'}"
+                                title={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
+                                aria-label={$activePreset?.id === preset.id
+                                    ? 'Active'
+                                    : 'Use preset'}
+                                disabled={busyAction !== null}
+                                aria-busy={busyAction === `select:${preset.id}`}
+                                onclick={() => handleSelectPreset(preset.id)}
+                            >
+                                <Check class="size-3.5" />
+                            </Button>
+
+                            <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                class="shrink-0 text-muted-foreground hover:text-foreground"
+                                title="Export Preset"
+                                aria-label="Export Preset"
+                                disabled={busyAction !== null}
+                                aria-busy={busyAction === `export:${preset.id}`}
+                                onclick={() => handleExportPreset(preset.id)}
+                            >
+                                <Download class="size-3.5" />
+                            </Button>
+
+                            <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                class="shrink-0 text-muted-foreground hover:text-destructive"
+                                aria-label="Delete preset"
+                                disabled={busyAction !== null}
+                                aria-busy={busyAction === `delete:${preset.id}`}
+                                onclick={() => handleDeletePreset(preset.id, preset.name)}
+                            >
+                                <Trash2 class="size-3.5" />
+                            </Button>
+                        {/snippet}
+
+                        <!-- 펼쳐지는 바디 영역 -->
+                        {#snippet details()}
+                            <div class="flex flex-col gap-3">
+                                <!-- 1. Description -->
+                                <div class="space-y-1.5">
+                                    <Label class="text-xs">Description</Label>
+                                    <Input
+                                        class="h-8 text-xs bg-background"
+                                        placeholder="No description"
+                                        value={preset.description}
+                                        disabled={busyAction !== null}
+                                        onchange={(e) =>
+                                            updatePresetSafely(preset.id, {
+                                                description: e.currentTarget.value
+                                            })}
+                                    />
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <Label class="text-xs">Default Variables</Label>
+                                    <KeyValueEditor
+                                        emptyMessage="No initial variables defined."
+                                        data={preset.defaultVariables}
+                                        onUpdateValue={(key, val) =>
+                                            handleUpdateVariableValue(preset, key, val)}
+                                        onAdd={(key, val) => handleAddVariable(preset, key, val)}
+                                        onRemove={(key) => handleRemoveVariable(preset, key)}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    {/if}
+                        {/snippet}
+                    </EditableListItem>
                 </div>
             {/snippet}
         </EntityList>

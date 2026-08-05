@@ -14,6 +14,7 @@
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import type { FolderDef } from '$lib/types/refs';
@@ -242,8 +243,6 @@
         config={panel}
         mode="manage"
         layout="list"
-        listClass="flex w-full flex-col gap-2"
-        childContainerClass="relative ml-4 my-1 border-l px-3 py-2"
         {onCreateFolder}
         {onUpdateFolder}
         {onDeleteFolder}
@@ -251,39 +250,42 @@
     >
         {#snippet empty()}<EmptyListPlaceholder message="No custom toggles." />{/snippet}
         {#snippet item({ entity }: { entity: ToggleItem })}
-            <div
-                class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md"
+            <EditableListItem
+                expanded={entity.kind === 'control' &&
+                    entity.control.type === 'select' &&
+                    expandedSelects.has(entity.id)}
+                {busy}
             >
-                <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                {#snippet header()}
                     <div
-                        class="flex h-8 w-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground active:cursor-grabbing select-none"
+                        class="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground active:cursor-grabbing select-none"
                         aria-hidden="true"
                     >
-                        <GripVertical class="size-4" />
+                        <GripVertical class="size-3.5" />
                     </div>
 
                     <DropdownMenu.Root>
                         <DropdownMenu.Trigger>
                             <button
                                 type="button"
-                                class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 {typeIconClass(
+                                class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {typeIconClass(
                                     itemType(entity)
                                 )}"
                                 aria-label="Change toggle type"
                                 disabled={busy}
                             >
                                 {#if itemType(entity) === 'checkbox'}
-                                    <SquareCheck class="size-4" />
+                                    <SquareCheck class="size-3.5" />
                                 {:else if itemType(entity) === 'select'}
-                                    <List class="size-4" />
+                                    <List class="size-3.5" />
                                 {:else if itemType(entity) === 'text'}
-                                    <Type class="size-4" />
+                                    <Type class="size-3.5" />
                                 {:else if itemType(entity) === 'textarea'}
-                                    <AlignLeft class="size-4" />
+                                    <AlignLeft class="size-3.5" />
                                 {:else if itemType(entity) === 'caption'}
-                                    <MessageSquareText class="size-4" />
+                                    <MessageSquareText class="size-3.5" />
                                 {:else}
-                                    <Minus class="size-4" />
+                                    <Minus class="size-3.5" />
                                 {/if}
                             </button>
                         </DropdownMenu.Trigger>
@@ -317,7 +319,7 @@
 
                     {#if entity.kind === 'control'}
                         <input
-                            class="h-8 min-w-0 rounded-lg border bg-background px-2 font-mono text-xs shadow-sm sm:w-36"
+                            class="h-7 min-w-0 rounded-lg border bg-background px-2 font-mono text-xs shadow-sm sm:w-36"
                             value={entity.key}
                             disabled={busy}
                             onchange={(event) =>
@@ -325,7 +327,7 @@
                             placeholder="key"
                         />
                         <input
-                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium shadow-none outline-none"
+                            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium shadow-none outline-none"
                             value={entity.label}
                             disabled={busy}
                             onchange={(event) =>
@@ -334,7 +336,7 @@
                         />
                     {:else}
                         <input
-                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium shadow-none outline-none"
+                            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium shadow-none outline-none"
                             value={entity.kind === 'text' ? entity.text : (entity.label ?? '')}
                             disabled={busy}
                             onchange={(event) =>
@@ -351,7 +353,7 @@
                         <Button
                             variant="outline"
                             size="sm"
-                            class="h-8 shrink-0 text-xs"
+                            class="h-7 shrink-0 px-2 text-[11px]"
                             disabled={busy}
                             onclick={() => toggleSelectEditor(entity.id)}
                             aria-expanded={expandedSelects.has(entity.id)}
@@ -364,57 +366,59 @@
                     {/if}
                     <Button
                         variant="ghost"
-                        size="icon"
-                        class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        size="icon-sm"
+                        class="shrink-0 text-muted-foreground hover:text-destructive"
                         disabled={busy}
                         onclick={() => remove(entity)}
                         aria-label="Delete toggle"
                     >
-                        <Trash2 class="size-4" />
+                        <Trash2 class="size-3.5" />
                     </Button>
-                </div>
+                {/snippet}
 
-                {#if entity.kind === 'control' && entity.control.type === 'select' && expandedSelects.has(entity.id)}
-                    <div class="flex flex-col gap-2 border-t bg-muted/20 p-4">
-                        <p class="text-xs font-medium text-muted-foreground">Options</p>
-                        {#each entity.control.options as option (option.id)}
-                            <div class="flex items-center gap-2">
-                                <input
-                                    class="h-8 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs shadow-sm"
-                                    value={option.label}
-                                    disabled={busy}
-                                    onchange={(event) =>
-                                        updateSelectOption(
-                                            entity,
-                                            option.id,
-                                            event.currentTarget.value
-                                        )}
-                                    aria-label="Option label"
-                                />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                                    disabled={busy || entity.control.options.length <= 1}
-                                    onclick={() => removeSelectOption(entity, option.id)}
-                                    aria-label="Delete option"
-                                >
-                                    <Trash2 class="size-4" />
-                                </Button>
-                            </div>
-                        {/each}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            class="mt-1 w-fit gap-1.5"
-                            disabled={busy}
-                            onclick={() => addSelectOption(entity)}
-                        >
-                            <Plus class="size-4" /> Add option
-                        </Button>
-                    </div>
-                {/if}
-            </div>
+                {#snippet details()}
+                    {#if entity.kind === 'control' && entity.control.type === 'select'}
+                        <div class="flex flex-col gap-2">
+                            <p class="text-xs font-medium text-muted-foreground">Options</p>
+                            {#each entity.control.options as option (option.id)}
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        class="h-8 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs shadow-sm"
+                                        value={option.label}
+                                        disabled={busy}
+                                        onchange={(event) =>
+                                            updateSelectOption(
+                                                entity,
+                                                option.id,
+                                                event.currentTarget.value
+                                            )}
+                                        aria-label="Option label"
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        disabled={busy || entity.control.options.length <= 1}
+                                        onclick={() => removeSelectOption(entity, option.id)}
+                                        aria-label="Delete option"
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
+                                </div>
+                            {/each}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                class="mt-1 w-fit gap-1.5"
+                                disabled={busy}
+                                onclick={() => addSelectOption(entity)}
+                            >
+                                <Plus class="size-4" /> Add option
+                            </Button>
+                        </div>
+                    {/if}
+                {/snippet}
+            </EditableListItem>
         {/snippet}
     </EntityList>
 </div>

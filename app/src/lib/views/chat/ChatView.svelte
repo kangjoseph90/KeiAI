@@ -712,6 +712,16 @@
         if (onRequestInspectorClose) onRequestInspectorClose();
         else inspectorOpen = false;
     }
+
+    function handleCloseInspectorBackdropClick(): void {
+        const hasOpenOverlay = Boolean(
+            document.querySelector(
+                '[data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="dialog-content"], [role="menu"]'
+            )
+        );
+        if (hasOpenOverlay) return;
+        closeInspector();
+    }
 </script>
 
 <div
@@ -747,7 +757,7 @@
                     <Button
                         variant="outline"
                         size="icon-lg"
-                        class="absolute right-0 top-1.5 z-50 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
+                        class="absolute right-0 top-1.5 z-50 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                         title="Show chat context"
                         aria-label="Show chat context"
                         onclick={openInspector}
@@ -880,7 +890,7 @@
                 aria-hidden={!inspectorOpen}
                 aria-label="Close chat context"
                 tabindex={inspectorOpen ? 0 : -1}
-                onclick={closeInspector}
+                onclick={handleCloseInspectorBackdropClick}
             ></button>
             <div
                 class="app-chat-panel-stage relative shrink-0"
@@ -888,7 +898,7 @@
                 aria-hidden={!inspectorOpen}
                 inert={!inspectorOpen}
             >
-                <div class="app-chat-runtime-panel relative h-full w-[360px] shrink-0">
+                <div class="app-chat-runtime-panel relative h-full w-90 shrink-0">
                     <ChatRuntimePanel chatId={$activeChat.id} onSelectInlay={addAttachment} />
                 </div>
             </div>
@@ -901,7 +911,7 @@
                 <Button
                     variant="outline"
                     size="icon-lg"
-                    class="size-11 rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
+                    class="rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                     tabindex={inspectorOpen ? 0 : -1}
                     title="Hide chat context"
                     aria-label="Hide chat context"

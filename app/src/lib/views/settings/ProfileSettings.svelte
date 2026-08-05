@@ -159,7 +159,7 @@
         </CardDescription>
     </CardHeader>
     <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
-        <div class="mb-2 flex items-center gap-4 sm:gap-6">
+        <div class="mb-1 flex items-center gap-4 sm:gap-6">
             <div class="shrink-0">
                 <button
                     type="button"

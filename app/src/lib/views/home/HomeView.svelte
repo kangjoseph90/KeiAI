@@ -460,6 +460,10 @@
     function initial(nameValue: string): string {
         return (nameValue.trim().charAt(0) || '?').toUpperCase();
     }
+
+    function libraryLayoutClass(gridClass: string, listClass: string): string {
+        return libraryEntityLayout === 'list' ? listClass : gridClass;
+    }
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} />
@@ -508,7 +512,7 @@
                             autofocus
                         />
                         <div
-                            class="flex shrink-0 rounded-md border bg-muted/30 p-1 max-sm:[&>*]:flex-1"
+                            class="flex shrink-0 rounded-md border bg-muted/30 p-1 max-sm:*:flex-1"
                         >
                             <Button
                                 type="button"
@@ -532,7 +536,7 @@
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
-                    <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
+                    <div class="flex w-full gap-2 sm:w-auto max-sm:*:flex-1">
                         <Button
                             variant="outline"
                             class="gap-2"
@@ -548,7 +552,7 @@
                     </div>
                 {/if}
             {:else if tab === 'characters'}
-                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:*:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -568,7 +572,7 @@
                     </Button>
                 </div>
             {:else if tab === 'modules'}
-                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:*:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -589,7 +593,7 @@
                     </Button>
                 </div>
             {:else}
-                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:*:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -681,7 +685,10 @@
                         entities={filteredRooms()}
                         config={$appSettings.rooms}
                         layout={libraryEntityLayout}
-                        childContainerClass="relative ml-6 p-3 my-1"
+                        childContainerClass={libraryLayoutClass(
+                            'relative ml-6 p-3 my-1',
+                            'relative ml-3 my-1 px-2 py-1.5'
+                        )}
                         onItemClick={(room) => openRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('rooms', name, parentId, sortOrder)}
@@ -720,11 +727,25 @@
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <div
-                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
+                                class={libraryLayoutClass(
+                                    'flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group',
+                                    'flex w-full min-h-12 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50 group'
+                                )}
                             >
-                                <div class="flex w-full items-center gap-3">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'flex w-full items-center gap-3',
+                                        'flex min-w-0 flex-1 items-center gap-3'
+                                    )}
+                                >
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
-                                        <RoomAvatar {room} class="size-12 shrink-0" />
+                                        <RoomAvatar
+                                            {room}
+                                            class={libraryLayoutClass(
+                                                'size-12 shrink-0',
+                                                'size-10 shrink-0'
+                                            )}
+                                        />
                                         <div class="min-w-0">
                                             <h2
                                                 class="truncate text-sm font-semibold text-foreground"
@@ -752,7 +773,10 @@
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class={libraryLayoutClass(
+                                        'mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground',
+                                        'ml-auto flex shrink-0 items-center gap-1 pt-0 text-xs text-muted-foreground'
+                                    )}
                                 >
                                     <DoorOpen class="size-3.5" />
                                     Open room
@@ -773,7 +797,10 @@
                         entities={filteredMultiRooms()}
                         config={$appSettings.multiRooms}
                         layout={libraryEntityLayout}
-                        childContainerClass="relative ml-6 p-3 my-1"
+                        childContainerClass={libraryLayoutClass(
+                            'relative ml-6 p-3 my-1',
+                            'relative ml-3 my-1 px-2 py-1.5'
+                        )}
                         onItemClick={(room) => openMultiRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('multiRooms', name, parentId, sortOrder)}
@@ -831,13 +858,24 @@
                                       ).length
                                     : 0}
                             <div
-                                class="flex min-h-40 w-full flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class={libraryLayoutClass(
+                                    'flex min-h-40 w-full flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50',
+                                    'flex min-h-12 w-full items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50'
+                                )}
                             >
-                                <div class="flex w-full items-center gap-3">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'flex w-full items-center gap-3',
+                                        'flex min-w-0 flex-1 items-center gap-3'
+                                    )}
+                                >
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
                                             role="img"
-                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"
+                                            class={libraryLayoutClass(
+                                                'flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground',
+                                                'flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground'
+                                            )}
                                             title={meta?.visibility === 'public'
                                                 ? 'Public multi room'
                                                 : 'Private multi room'}
@@ -873,9 +911,17 @@
                                         <Settings2 class="size-4" />
                                     </Button>
                                 </div>
-                                <div class="mt-auto w-full space-y-3 pt-4 text-xs">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'mt-auto w-full space-y-3 pt-4 text-xs',
+                                        'ml-auto flex shrink-0 items-center gap-2 pt-0 text-xs'
+                                    )}
+                                >
                                     <div
-                                        class="flex w-full items-center gap-1.5 text-muted-foreground"
+                                        class={libraryLayoutClass(
+                                            'flex w-full items-center gap-1.5 text-muted-foreground',
+                                            'flex items-center gap-1.5 text-muted-foreground'
+                                        )}
                                     >
                                         <span class="flex min-w-0 items-center gap-1.5">
                                             <span class="whitespace-nowrap">
@@ -902,7 +948,10 @@
                         entities={filteredCharacters()}
                         config={$appSettings.characters}
                         layout={libraryEntityLayout}
-                        childContainerClass="relative ml-6 p-3 my-1"
+                        childContainerClass={libraryLayoutClass(
+                            'relative ml-6 p-3 my-1',
+                            'relative ml-3 my-1 px-2 py-1.5'
+                        )}
                         onItemClick={(character) => navigateToCharacterStudio(character.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('characters', name, parentId, sortOrder)}
@@ -940,12 +989,23 @@
                         {/snippet}
                         {#snippet item({ entity: character })}
                             <div
-                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class={libraryLayoutClass(
+                                    'flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50',
+                                    'flex w-full min-h-12 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50'
+                                )}
                             >
-                                <div class="flex w-full items-center gap-3">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'flex w-full items-center gap-3',
+                                        'flex min-w-0 flex-1 items-center gap-3'
+                                    )}
+                                >
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
-                                            class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                            class={libraryLayoutClass(
+                                                'flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold',
+                                                'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold'
+                                            )}
                                         >
                                             {#if character.avatar}
                                                 <AssetView
@@ -992,7 +1052,10 @@
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class={libraryLayoutClass(
+                                        'mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground',
+                                        'ml-auto flex shrink-0 items-center gap-1 pt-0 text-xs text-muted-foreground'
+                                    )}
                                 >
                                     <UserRound class="size-3.5" />
                                     Open studio
@@ -1005,7 +1068,10 @@
                         entities={filteredModules()}
                         config={$appSettings.modules}
                         layout={libraryEntityLayout}
-                        childContainerClass="relative ml-6 p-3 my-1"
+                        childContainerClass={libraryLayoutClass(
+                            'relative ml-6 p-3 my-1',
+                            'relative ml-3 my-1 px-2 py-1.5'
+                        )}
                         onItemClick={(mod) => navigateToModuleStudio(mod.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('modules', name, parentId, sortOrder)}
@@ -1043,14 +1109,23 @@
                         {#snippet item({ entity: mod })}
                             {@const enabled = $appSettings.modules.refs[mod.id]?.enabled ?? true}
                             <div
-                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 {enabled
-                                    ? ''
-                                    : 'opacity-60'}"
+                                class="{libraryLayoutClass(
+                                    'flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50',
+                                    'flex w-full min-h-12 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50'
+                                )} {enabled ? '' : 'opacity-60'}"
                             >
-                                <div class="flex w-full items-center gap-3">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'flex w-full items-center gap-3',
+                                        'flex min-w-0 flex-1 items-center gap-3'
+                                    )}
+                                >
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
-                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                            class={libraryLayoutClass(
+                                                'flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold',
+                                                'flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold'
+                                            )}
                                         >
                                             <Package class="size-5 text-muted-foreground" />
                                         </div>
@@ -1103,7 +1178,10 @@
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class={libraryLayoutClass(
+                                        'mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground',
+                                        'ml-auto flex shrink-0 items-center gap-1 pt-0 text-xs text-muted-foreground'
+                                    )}
                                 >
                                     <Package class="size-3.5" />
                                     Open studio
@@ -1116,7 +1194,10 @@
                         entities={filteredPersonas()}
                         config={$appSettings.personas}
                         layout={libraryEntityLayout}
-                        childContainerClass="relative ml-6 p-3 my-1"
+                        childContainerClass={libraryLayoutClass(
+                            'relative ml-6 p-3 my-1',
+                            'relative ml-3 my-1 px-2 py-1.5'
+                        )}
                         onItemClick={(persona) => navigateToPersonaStudio(persona.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('personas', name, parentId, sortOrder)}
@@ -1154,12 +1235,23 @@
                         {/snippet}
                         {#snippet item({ entity: persona })}
                             <div
-                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class={libraryLayoutClass(
+                                    'flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50',
+                                    'flex w-full min-h-12 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50'
+                                )}
                             >
-                                <div class="flex w-full items-center gap-3">
+                                <div
+                                    class={libraryLayoutClass(
+                                        'flex w-full items-center gap-3',
+                                        'flex min-w-0 flex-1 items-center gap-3'
+                                    )}
+                                >
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
-                                            class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                            class={libraryLayoutClass(
+                                                'flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold',
+                                                'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold'
+                                            )}
                                         >
                                             {#if persona.avatar}
                                                 <AssetView
@@ -1205,7 +1297,10 @@
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class={libraryLayoutClass(
+                                        'mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground',
+                                        'ml-auto flex shrink-0 items-center gap-1 pt-0 text-xs text-muted-foreground'
+                                    )}
                                 >
                                     <UserRound class="size-3.5" />
                                     Open studio

@@ -12,7 +12,7 @@ export const COLOR_CLASSES: Record<string, string> = {
 export function getFolderColorClass(color?: string): string {
     return (
         (color && COLOR_CLASSES[color]) ||
-        'text-muted-foreground fill-muted-foreground/10 border-muted bg-muted/5'
+        'text-muted-foreground fill-muted-foreground/10 border-foreground/15 bg-muted/5'
     );
 }
 

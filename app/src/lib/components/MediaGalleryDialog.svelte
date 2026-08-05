@@ -205,7 +205,7 @@
                 <Button
                     variant="secondary"
                     size="icon"
-                    class="absolute left-3 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full shadow-md"
+                    class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md"
                     aria-label="Previous asset"
                     onclick={() => navigate(-1)}
                 >
@@ -214,7 +214,7 @@
                 <Button
                     variant="secondary"
                     size="icon"
-                    class="absolute right-3 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full shadow-md"
+                    class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md"
                     aria-label="Next asset"
                     onclick={() => navigate(1)}
                 >

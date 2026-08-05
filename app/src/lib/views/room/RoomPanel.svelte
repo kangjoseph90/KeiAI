@@ -5,10 +5,8 @@
         Folder,
         FolderOpen,
         MessageSquare,
-        Pin,
         Plus,
         Search,
-        Settings,
         Trash2,
         User,
         X
@@ -233,8 +231,8 @@
 </script>
 
 {#if $activeRoom}
-    <div class="app-sidebar-room-panel relative flex w-[360px] shrink-0">
-        <div class="flex w-full flex-col bg-sidebar">
+    <div class="app-sidebar-room-panel relative flex h-full w-90 shrink-0">
+        <div class="flex h-full w-full flex-col bg-sidebar">
             <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
                 {#if editingRoomName}
                     <form
@@ -257,8 +255,7 @@
                         />
                         <Button
                             type="submit"
-                            size="icon"
-                            class="size-8"
+                            size="icon-sm"
                             aria-label="Save room name"
                             disabled={panelAction !== null}
                             aria-busy={panelAction === 'rename-room'}
@@ -268,8 +265,7 @@
                         <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
-                            class="size-8"
+                            size="icon-sm"
                             aria-label="Cancel room rename"
                             disabled={panelAction !== null}
                             onclick={() => {
@@ -287,8 +283,8 @@
                     {#if !$isMultiRoom}
                         <Button
                             variant="ghost"
-                            size="icon"
-                            class="size-8 shrink-0 text-muted-foreground"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground"
                             title="Rename room"
                             aria-label="Rename room"
                             disabled={panelAction !== null}
@@ -310,7 +306,7 @@
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        class="size-6 text-muted-foreground hover:text-foreground"
+                        class="text-muted-foreground hover:text-foreground"
                         title="Add characters"
                         aria-label="Add characters"
                         disabled={panelAction !== null}
@@ -355,9 +351,9 @@
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
                             <div
-                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
+                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-lg border border-foreground/15 bg-card p-2 text-center transition-[border-color,background-color] {selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:bg-sidebar-accent'}"
+                                    : 'hover:border-foreground/25 hover:bg-sidebar-accent'}"
                                 title={character.name}
                             >
                                 <div
@@ -395,36 +391,6 @@
                                 onSetDefault={() => handleSetDefaultCharacter(character.id)}
                                 onRemove={() => handleRemoveCharacter(character.id)}
                             />
-                            <button
-                                class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
-                                title="Open character studio"
-                                aria-label={`Open ${character.name} studio`}
-                                onclick={() => handleOpenCharacter(character.id)}
-                            >
-                                <Settings class="size-3" />
-                            </button>
-                            <button
-                                class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
-                                    ? 'text-primary opacity-100'
-                                    : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
-                                title="Set default character"
-                                aria-label={`Set ${character.name} as default character`}
-                                disabled={!$activeChat || panelAction !== null}
-                                aria-busy={panelAction === `default-character:${character.id}`}
-                                onclick={() => handleSetDefaultCharacter(character.id)}
-                            >
-                                <Pin class="size-3" />
-                            </button>
-                            <button
-                                class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
-                                title="Remove from room"
-                                aria-label={`Remove ${character.name} from room`}
-                                disabled={panelAction !== null}
-                                aria-busy={panelAction === `remove-character:${character.id}`}
-                                onclick={() => handleRemoveCharacter(character.id)}
-                            >
-                                <X class="size-3" />
-                            </button>
                         </div>
                     {/snippet}
                 </EntityList>
@@ -443,8 +409,8 @@
                 </div>
                 <Button
                     variant="ghost"
-                    size="icon"
-                    class="size-8 shrink-0"
+                    size="icon-sm"
+                    class="shrink-0"
                     title="New chat"
                     aria-label="New chat"
                     disabled={panelAction !== null}
@@ -547,8 +513,7 @@
                                         />
                                         <Button
                                             type="submit"
-                                            size="icon"
-                                            class="size-7"
+                                            size="icon-sm"
                                             aria-label="Save chat name"
                                             disabled={panelAction !== null}
                                             aria-busy={panelAction === `rename-chat:${chat.id}`}
@@ -558,8 +523,7 @@
                                         <Button
                                             type="button"
                                             variant="ghost"
-                                            size="icon"
-                                            class="size-7"
+                                            size="icon-sm"
                                             aria-label="Cancel chat rename"
                                             disabled={panelAction !== null}
                                             onclick={() => {
@@ -580,8 +544,11 @@
                                                 {chat.title || 'Untitled Chat'}
                                             </span>
                                         </div>
-                                        <button
-                                            class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="touch-visible text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                                             title="Rename chat"
                                             aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
                                             disabled={panelAction !== null}
@@ -591,18 +558,21 @@
                                                     chat.title || 'Untitled Chat'
                                                 )}
                                         >
-                                            <Edit3 class="size-3" />
-                                        </button>
-                                        <button
-                                            class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                            <Edit3 class="size-3.5" />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="touch-visible text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100 focus-visible:opacity-100"
                                             title="Delete chat"
                                             aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
                                             disabled={panelAction !== null}
                                             aria-busy={panelAction === `delete-chat:${chat.id}`}
                                             onclick={() => handleDeleteChat(chat.id)}
                                         >
-                                            <Trash2 class="size-3" />
-                                        </button>
+                                            <Trash2 class="size-3.5" />
+                                        </Button>
                                     </div>
                                 {/if}
                             </div>

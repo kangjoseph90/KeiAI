@@ -20,6 +20,7 @@
         onClose: () => void;
         closeLabel: string;
         identity?: Snippet<[sizeClass: string]>;
+        titleExtra?: Snippet;
         children: Snippet;
     }
 
@@ -34,6 +35,7 @@
         onClose,
         closeLabel,
         identity,
+        titleExtra,
         children
     }: Props = $props();
 
@@ -50,7 +52,7 @@
                 : 'flex'}"
             aria-label={`${workspaceName} sections`}
         >
-            <div class="flex h-16 shrink-0 items-center gap-3 border-b px-4 md:hidden">
+            <div class="flex h-16 shrink-0 items-center gap-3 border-b pr-4 pl-6 md:hidden">
                 {#if identity}
                     {@render identity('size-9')}
                 {/if}
@@ -114,24 +116,26 @@
                 : 'hidden'}"
         >
             <div
-                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+                class="flex h-16 w-full max-w-4xl shrink-0 items-center border-b px-4 md:mt-4 md:border-b-0 md:px-8"
             >
                 <Button
                     variant="ghost"
                     size="icon"
-                    class="md:hidden"
+                    class="-ml-2 md:hidden"
                     onclick={onBack}
                     aria-label={`Back to ${workspaceName} sections`}
                 >
                     <ChevronLeft class="size-5" />
                 </Button>
-                {#if identity}
-                    <div class="md:hidden">{@render identity('size-8')}</div>
-                {/if}
-                <div class="min-w-0 flex-1 px-2 md:px-0">
-                    <h1 class="truncate text-sm font-semibold md:text-xl">{activeSectionLabel}</h1>
+                <div class="flex min-w-0 flex-1 items-center gap-2 px-1 md:px-0">
+                    <h1 class="truncate text-base font-semibold md:text-xl">
+                        {activeSectionLabel}
+                    </h1>
+                    {#if titleExtra}
+                        {@render titleExtra()}
+                    {/if}
                     {#if entityName}
-                        <p class="hidden truncate text-xs text-muted-foreground md:block">
+                        <p class="truncate text-xs text-muted-foreground md:hidden">
                             {entityName}
                         </p>
                     {/if}

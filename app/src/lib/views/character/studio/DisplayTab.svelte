@@ -14,12 +14,12 @@
     } = $props();
 </script>
 
-<section class="space-y-6">
+<section class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle>Chat Display</CardTitle>
         </CardHeader>
-        <CardContent class="space-y-6">
+        <CardContent class="space-y-4">
             <div class="grid gap-1.5">
                 <Label for="character-background-html">Background HTML</Label>
                 <Textarea

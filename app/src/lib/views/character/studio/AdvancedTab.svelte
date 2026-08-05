@@ -8,6 +8,7 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import ExportTab from './ExportTab.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import SettingRow from '$lib/components/SettingRow.svelte';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
 
@@ -42,13 +43,13 @@
     }
 </script>
 
-<section class="space-y-6">
+<section class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle>Runtime & Access</CardTitle>
         </CardHeader>
-        <CardContent class="space-y-6">
-            <div class="flex items-center justify-between gap-4 rounded-md border p-4">
+        <CardContent class="space-y-4">
+            <SettingRow>
                 <div class="space-y-0.5">
                     <Label for="character-allow-low-level">Allow Low Level Access</Label>
                     <p class="text-xs text-muted-foreground">
@@ -62,7 +63,7 @@
                     checked={character.allowLowLevel}
                     onchange={(e) => onUpdate({ allowLowLevel: e.currentTarget.checked })}
                 />
-            </div>
+            </SettingRow>
 
             <div class="space-y-1.5">
                 <Label class="text-xs">Default Variables</Label>

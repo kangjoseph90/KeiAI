@@ -351,7 +351,7 @@
         <ScrollArea class="min-h-0 flex-1">
             <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                 {#if activeTab === 'profile'}
-                    <section class="space-y-6">
+                    <section class="space-y-5">
                         <Card>
                             <CardHeader>
                                 <CardTitle>Basic Information</CardTitle>
@@ -359,7 +359,7 @@
                                     How this persona appears in chats and prompt context.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent class="space-y-6">
+                            <CardContent class="space-y-4">
                                 <div class="flex items-center gap-4 sm:gap-6">
                                     <div class="shrink-0">
                                         {#if $activePersona.avatar}
@@ -513,10 +513,10 @@
                             {/snippet}
                             {#snippet item({ entity: ref })}
                                 <div
-                                    class="group flex cursor-zoom-in items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
+                                    class="group flex min-h-[3.25rem] items-center gap-2 rounded-lg border border-foreground/15 bg-card px-3 py-2 cursor-zoom-in text-card-foreground transition-colors hover:border-foreground/25"
                                 >
                                     <div
-                                        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+                                        class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
                                     >
                                         <AssetView
                                             asset={{
@@ -565,12 +565,11 @@
                                     <div
                                         class={editingId === ref.id
                                             ? 'flex items-center gap-1'
-                                            : 'touch-visible flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'}
+                                            : 'touch-visible flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'}
                                     >
                                         {#if editingId === ref.id}
                                             <Button
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Save"
                                                 aria-label={`Save ${ref.name} name`}
                                                 disabled={resourceAction !== null ||
@@ -579,35 +578,33 @@
                                                     `asset-rename:${ref.id}`}
                                                 onclick={() => saveRename(ref)}
                                             >
-                                                <Check class="size-3" />
+                                                <Check class="size-3.5" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Cancel"
                                                 aria-label={`Cancel renaming ${ref.name}`}
                                                 disabled={resourceAction !== null}
                                                 onclick={cancelRename}
                                             >
-                                                <X class="size-3" />
+                                                <X class="size-3.5" />
                                             </Button>
                                         {:else}
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Rename"
                                                 aria-label={`Rename ${ref.name}`}
                                                 disabled={resourceAction !== null}
                                                 onclick={() => startRename(ref)}
                                             >
-                                                <Pencil class="size-3" />
+                                                <Pencil class="size-3.5" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7 text-destructive hover:text-destructive"
+                                                class="text-destructive hover:text-destructive"
                                                 title="Delete"
                                                 aria-label={`Delete ${ref.name}`}
                                                 disabled={resourceAction !== null}
@@ -615,7 +612,7 @@
                                                     `asset-delete:${ref.id}`}
                                                 onclick={() => handleDeleteAsset(ref)}
                                             >
-                                                <Trash2 class="size-3" />
+                                                <Trash2 class="size-3.5" />
                                             </Button>
                                         {/if}
                                     </div>

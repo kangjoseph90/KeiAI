@@ -1,5 +1,6 @@
 <script lang="ts" generics="T extends { id: string }">
-    import { getContext, setContext, type Snippet } from 'svelte';
+    import { getContext, setContext, tick, type Snippet } from 'svelte';
+    import { flip } from 'svelte/animate';
     import {
         COLOR_CLASSES,
         COLOR_BG_CLASSES,
@@ -70,9 +71,9 @@
         layout = 'list',
         mode = 'manage',
         parentId = undefined,
-        gridClass = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 w-full',
-        listClass = 'flex flex-col w-full',
-        childContainerClass = 'relative ml-4 my-1 px-3 py-2',
+        gridClass = 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 w-full',
+        listClass = 'flex flex-col gap-1 w-full',
+        childContainerClass = 'relative ml-3 my-1 px-2 py-1.5',
         folderWrapperClass = undefined,
         itemWrapperClass = undefined,
         onCreateFolder = async () => {
@@ -101,6 +102,7 @@
         dragOverId: string | null;
         dragOverZone: 'before' | 'after' | 'overlap' | null;
         dropPending: boolean;
+        animateReorder: boolean;
         collapsedFolders: Record<string, boolean>;
     }
 
@@ -113,6 +115,7 @@
         dragOverId: null,
         dragOverZone: null,
         dropPending: false,
+        animateReorder: false,
         collapsedFolders: {}
     });
 
@@ -125,7 +128,7 @@
     let renameValue = $state('');
 
     interface VisualItem {
-        type: 'folder' | 'entity';
+        type: 'folder' | 'folder-contents' | 'entity';
         id: string;
         sortOrder: string | null;
         folder?: FolderDef;
@@ -170,6 +173,15 @@
                 folder: f,
                 childCount: childEntityCount + childFolderCount
             });
+
+            if (!(ctx.collapsedFolders[f.id] ?? true)) {
+                items.push({
+                    type: 'folder-contents',
+                    id: `${f.id}__contents`,
+                    sortOrder: f.sortOrder || null,
+                    folder: f
+                });
+            }
         }
 
         for (const ent of currentEntities) {
@@ -182,7 +194,14 @@
             });
         }
 
-        items.sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
+        items.sort((a, b) => {
+            const order = compareSortOrder(a.sortOrder, b.sortOrder);
+            if (order !== 0) return order;
+            if (a.folder?.id !== b.folder?.id) return 0;
+            if (a.type === 'folder') return -1;
+            if (b.type === 'folder') return 1;
+            return 0;
+        });
 
         for (const ent of unreferredEntities) {
             items.push({
@@ -265,8 +284,6 @@
         const rect = target.getBoundingClientRect();
         let zone: 'before' | 'after' | 'overlap' = forcedZone ?? 'overlap';
 
-        const isFolderOpen = node.type === 'folder' && !ctx.collapsedFolders[node.id];
-
         if (forcedZone) {
             ctx.dragOverId = node.id;
             ctx.dragOverZone = zone;
@@ -278,15 +295,19 @@
             if (pctY < 0.25) {
                 zone = 'before';
             } else if (pctY > 0.75) {
-                zone = isFolderOpen ? 'overlap' : 'after';
+                zone = 'after';
             }
         } else {
             const pctX = (clientX - rect.left) / rect.width;
             const pctY = (clientY - rect.top) / rect.height;
-            if (pctX < 0.25 || pctY < 0.25) {
+            if (pctX < 0.3) {
                 zone = 'before';
-            } else if (pctX > 0.75 || pctY > 0.75) {
-                zone = isFolderOpen ? 'overlap' : 'after';
+            } else if (pctX > 0.7) {
+                zone = 'after';
+            } else if (pctY < 0.3) {
+                zone = 'before';
+            } else if (pctY > 0.7) {
+                zone = 'after';
             }
         }
 
@@ -397,10 +418,21 @@
 
         const targetParentId =
             type === 'folder' ? config.folders[id]?.parentId : config.refs[id]?.folderId;
-        const siblings = buildVisualItems(targetParentId);
+        const siblings = buildVisualItems(targetParentId).filter(
+            (candidate) => candidate.type !== 'folder-contents'
+        );
         const node = siblings.find((candidate) => candidate.id === id && candidate.type === type);
-        const forcedZone: 'overlap' | undefined =
-            element.dataset.entityDndZone === 'folder-contents' ? 'overlap' : undefined;
+        let forcedZone: 'overlap' | 'after' | undefined = undefined;
+        if (element.dataset.entityDndZone === 'folder-contents') {
+            const rect = element.getBoundingClientRect();
+            const pctY = (clientY - rect.top) / rect.height;
+            const pctX = (clientX - rect.left) / rect.width;
+            if (layout === 'list') {
+                forcedZone = pctY > 0.8 ? 'after' : 'overlap';
+            } else {
+                forcedZone = pctY > 0.8 || pctX > 0.8 ? 'after' : 'overlap';
+            }
+        }
         return node ? { element, node, targetParentId, siblings, forcedZone } : null;
     }
 
@@ -423,14 +455,17 @@
             return;
         }
         ctx.dropPending = true;
+        ctx.animateReorder = true;
         try {
             await dropOnTarget(target.node, target.targetParentId, target.siblings);
+            await tick();
         } catch (error) {
             toast.error({
                 title: 'Could not move item',
                 description: getErrorMessage(error)
             });
         } finally {
+            ctx.animateReorder = false;
             ctx.dropPending = false;
         }
     }
@@ -560,7 +595,7 @@
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        class="size-7 hover:bg-muted-foreground/10 text-inherit"
+                        class="hover:bg-muted-foreground/10 text-inherit"
                         aria-label={`Actions for ${f.name}`}
                     >
                         <MoreVertical class="size-3.5" />
@@ -623,13 +658,13 @@
 
 {#snippet defaultFolder(payload: FolderSnippetPayload)}
     {@const { folder: f, collapsed, toggle, childCount, parts } = payload}
-    {#if collapsed && layout === 'grid'}
+    {#if layout === 'grid'}
         <div
             role="button"
             tabindex="0"
             aria-expanded={!collapsed}
             aria-label={f.name}
-            class="relative group/folder flex w-full min-h-28 flex-col items-start rounded-lg border bg-card border-border text-foreground hover:bg-muted/50 p-4 text-left select-none cursor-pointer"
+            class="relative group/folder flex w-full min-h-32 flex-col items-start rounded-lg border bg-card border-border text-foreground hover:bg-muted/50 p-4 text-left select-none cursor-pointer"
             onclick={toggle}
             onkeydown={(event) => {
                 if (event.target !== event.currentTarget) return;
@@ -655,8 +690,13 @@
                 </div>
             </div>
             <div class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground">
-                <FolderOpen strokeWidth={2.5} class="size-3.5" />
-                Open folder
+                {#if collapsed}
+                    <FolderOpen strokeWidth={2.5} class="size-3.5" />
+                    Open folder
+                {:else}
+                    <Folder strokeWidth={2.5} class="size-3.5" />
+                    Close folder
+                {/if}
             </div>
         </div>
     {:else}
@@ -665,7 +705,7 @@
             tabindex="0"
             aria-expanded={!collapsed}
             aria-label={f.name}
-            class="relative group/folder flex items-center justify-between rounded-md border p-2 text-sm select-none cursor-pointer transition-all duration-200 w-full {getFolderColorClass(
+            class="relative group/folder flex min-h-13 w-full cursor-pointer select-none items-center justify-between rounded-lg border border-foreground/15 px-3 py-2 text-sm transition-[border-color,background-color] hover:border-foreground/25 {getFolderColorClass(
                 f.color
             )}"
             onclick={toggle}
@@ -700,23 +740,23 @@
 )}
     {#if ctx.dragOverId === activeId}
         {#if ctx.dragOverZone === 'before'}
-            {#if layout === 'grid' && nodeType === 'entity'}
+            {#if layout === 'grid'}
                 <div
-                    class="absolute top-0 bottom-0 left-0 w-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
+                    class="absolute top-0 bottom-0 -left-0.5 w-0.5 bg-primary/60 z-50 pointer-events-none rounded-full"
                 ></div>
             {:else}
                 <div
-                    class="absolute top-0 left-0 right-0 h-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
+                    class="absolute top-0 left-0 right-0 h-0.5 bg-primary/60 z-50 pointer-events-none rounded-full"
                 ></div>
             {/if}
-        {:else if ctx.dragOverZone === 'after' && (nodeType === 'entity' || isCollapsed)}
-            {#if layout === 'grid' && nodeType === 'entity'}
+        {:else if ctx.dragOverZone === 'after' && (nodeType === 'entity' || isCollapsed || layout === 'grid')}
+            {#if layout === 'grid'}
                 <div
-                    class="absolute top-0 bottom-0 right-0 w-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
+                    class="absolute top-0 bottom-0 -right-0.5 w-0.5 bg-primary/60 z-50 pointer-events-none rounded-full"
                 ></div>
             {:else}
                 <div
-                    class="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
+                    class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/60 z-50 pointer-events-none rounded-full"
                 ></div>
             {/if}
         {/if}
@@ -729,11 +769,16 @@
 >
     <div class={layout === 'grid' ? gridClass : listClass}>
         {#each visualItems as visualNode (visualNode.id)}
-            {#if visualNode.type === 'folder'}
-                {@const isCollapsed = ctx.collapsedFolders[visualNode.id] ?? true}
-                {@const f = visualNode.folder!}
+            <div
+                animate:flip={{ duration: ctx.animateReorder ? 150 : 0 }}
+                class={layout === 'grid' && visualNode.type === 'folder-contents'
+                    ? 'col-span-full w-full'
+                    : 'w-full'}
+            >
+                {#if visualNode.type === 'folder'}
+                    {@const isCollapsed = ctx.collapsedFolders[visualNode.id] ?? true}
+                    {@const f = visualNode.folder!}
 
-                <div class={layout === 'grid' && !isCollapsed ? 'col-span-full' : ''}>
                     <div
                         role="none"
                         data-entity-dnd-id={visualNode.id}
@@ -742,7 +787,7 @@
                             disabled: mode === 'browse' || ctx.dropPending,
                             onStart: () => {
                                 ctx.draggedId = visualNode.id;
-                                ctx.draggedType = visualNode.type;
+                                ctx.draggedType = 'folder';
                                 ctx.draggedParentId = parentId;
                             },
                             onMove: handlePointerDragMove,
@@ -751,10 +796,10 @@
                         }}
                         class={folderWrapperClass
                             ? folderWrapperClass(f, isCollapsed)
-                            : `relative transition-all duration-200 drop-target w-full ${layout === 'grid' ? 'p-1.5' : 'py-0.5'}`}
+                            : 'relative w-full drop-target'}
                     >
                         <div
-                            class="relative w-full rounded transition-all duration-200
+                            class="relative w-full rounded transition-[background-color,box-shadow] duration-150
                             {ctx.dragOverId === f.id && ctx.dragOverZone === 'overlap'
                                 ? 'ring-2 ring-primary/60 bg-primary/5'
                                 : ''}"
@@ -774,12 +819,9 @@
 
                         {@render dragIndicator(f.id, 'folder', isCollapsed)}
                     </div>
-                </div>
-
-                {#if !isCollapsed}
-                    <!-- Nested recursive call for children -->
-                    <div class={layout === 'grid' ? 'col-span-full' : ''}>
-                        <!-- Nested content uses symmetric horizontal padding; indentation comes from margin. -->
+                {:else if visualNode.type === 'folder-contents'}
+                    {@const f = visualNode.folder!}
+                    <div class="w-full overflow-hidden">
                         <div
                             role="none"
                             data-entity-dnd-id={f.id}
@@ -807,53 +849,53 @@
                                 folder={folderSnippet}
                                 empty={emptySnippet}
                             />
-                            {#if ctx.dragOverId === f.id && ctx.dragOverZone === 'after'}
+                            {#if layout === 'list' && ctx.dragOverId === f.id && ctx.dragOverZone === 'after'}
                                 <div
-                                    class="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
+                                    class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/60 z-50 pointer-events-none rounded-full"
                                 ></div>
                             {/if}
                         </div>
                     </div>
-                {/if}
-            {:else}
-                <!-- Entity Row or Grid Card -->
-                {@const entity = visualNode.entity!}
-                <div
-                    data-entity-dnd-id={visualNode.id}
-                    data-entity-dnd-type="entity"
-                    use:pointerDrag={{
-                        disabled: mode === 'browse' || ctx.dropPending,
-                        onStart: () => {
-                            ctx.draggedId = visualNode.id;
-                            ctx.draggedType = visualNode.type;
-                            ctx.draggedParentId = parentId;
-                        },
-                        onMove: handlePointerDragMove,
-                        onDrop: handlePointerDrop,
-                        onCancel: resetDragState
-                    }}
-                    onclick={(e) => {
-                        if (!isInteractiveDragTarget(e.target) && onItemClick) {
-                            onItemClick(entity);
-                        }
-                    }}
-                    role="none"
-                    class="{itemWrapperClass
-                        ? itemWrapperClass(entity)
-                        : `relative transition-all duration-200 drop-target w-full ${layout === 'grid' ? 'p-1.5' : 'py-0.5'}`} select-none"
-                >
+                {:else}
+                    <!-- Entity Row or Grid Card -->
+                    {@const entity = visualNode.entity!}
                     <div
-                        class="relative w-full rounded transition-all duration-200
-                        {ctx.dragOverId === entity.id && ctx.dragOverZone === 'overlap'
-                            ? 'ring-2 ring-primary/60 bg-primary/10 rounded scale-[1.01]'
-                            : ''}"
+                        data-entity-dnd-id={visualNode.id}
+                        data-entity-dnd-type="entity"
+                        use:pointerDrag={{
+                            disabled: mode === 'browse' || ctx.dropPending,
+                            onStart: () => {
+                                ctx.draggedId = visualNode.id;
+                                ctx.draggedType = 'entity';
+                                ctx.draggedParentId = parentId;
+                            },
+                            onMove: handlePointerDragMove,
+                            onDrop: handlePointerDrop,
+                            onCancel: resetDragState
+                        }}
+                        onclick={(e) => {
+                            if (!isInteractiveDragTarget(e.target) && onItemClick) {
+                                onItemClick(entity);
+                            }
+                        }}
+                        role="none"
+                        class="{itemWrapperClass
+                            ? itemWrapperClass(entity)
+                            : 'relative w-full drop-target'} select-none"
                     >
-                        {@render itemSnippet({ entity })}
-                    </div>
+                        <div
+                            class="relative w-full rounded transition-[background-color,box-shadow] duration-150
+                            {ctx.dragOverId === entity.id && ctx.dragOverZone === 'overlap'
+                                ? 'ring-2 ring-primary/60 bg-primary/5'
+                                : ''}"
+                        >
+                            {@render itemSnippet({ entity })}
+                        </div>
 
-                    {@render dragIndicator(entity.id, 'entity')}
-                </div>
-            {/if}
+                        {@render dragIndicator(entity.id, 'entity')}
+                    </div>
+                {/if}
+            </div>
         {/each}
         {#if visualItems.length === 0 && emptySnippet}
             <div class="col-span-full w-full">
@@ -864,10 +906,6 @@
 </div>
 
 <style>
-    .drop-target {
-        position: relative;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
     :global(.drag-active) .drop-target > * {
         pointer-events: none !important;
     }

@@ -22,7 +22,8 @@
         const ids = new Set(roomCharIds());
         const found = $characters.filter((character) => ids.has(character.id));
         const refs = room.characters?.refs || {};
-        return sortByRefs(found, refs);
+        const sorted = sortByRefs(found, refs);
+        return sorted.slice().sort((a, b) => (a.avatar ? 1 : 0) - (b.avatar ? 1 : 0));
     });
 
     function initial(name: string): string {
@@ -34,7 +35,7 @@
     {#if roomChars().length === 0}
         <!-- Fallback: Room Initials -->
         <div
-            class="flex size-full items-center justify-center rounded-md bg-muted text-sm font-semibold text-foreground border border-transparent"
+            class="flex size-full items-center justify-center rounded-md bg-card text-sm font-semibold text-foreground border border-border ring-1 ring-black/10 dark:ring-white/15 shadow-xs"
         >
             {initial(room.name)}
         </div>
@@ -42,7 +43,7 @@
         <!-- Single Character Avatar -->
         {@const char = roomChars()[0]}
         <div
-            class="flex size-full items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold text-foreground border border-transparent"
+            class="flex size-full items-center justify-center overflow-hidden rounded-md bg-card text-sm font-semibold text-foreground border border-border ring-1 ring-black/10 dark:ring-white/15 shadow-xs"
         >
             {#if char.avatar}
                 <AssetView
@@ -67,7 +68,7 @@
         {@const char1 = roomChars()[0]}
         {@const char2 = roomChars()[1]}
         <div
-            class="absolute left-[9%] right-[9%] top-0 bottom-[18%] z-10 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1 group-hover:-translate-x-0.5 group-hover:-rotate-6"
+            class="absolute left-[9%] right-[9%] top-0 bottom-[18%] z-10 rounded-md border border-border ring-1 ring-black/10 dark:ring-white/15 bg-card shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1 group-hover:-translate-x-0.5 group-hover:-rotate-6"
         >
             {#if char1.avatar}
                 <AssetView
@@ -88,7 +89,7 @@
             {/if}
         </div>
         <div
-            class="absolute left-[9%] right-[9%] top-[18%] bottom-0 z-20 rounded-md border border-background bg-muted shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1 group-hover:translate-x-0.5 group-hover:rotate-6"
+            class="absolute left-[9%] right-[9%] top-[18%] bottom-0 z-20 rounded-md border border-border ring-1 ring-black/15 dark:ring-white/20 bg-card shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1 group-hover:translate-x-0.5 group-hover:rotate-6"
         >
             {#if char2.avatar}
                 <AssetView
@@ -114,7 +115,7 @@
         {@const char2 = roomChars()[1]}
         {@const char3 = roomChars()[2]}
         <div
-            class="absolute left-[14%] right-[14%] top-0 bottom-[28%] z-10 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1.5 group-hover:-translate-x-0.5 group-hover:-rotate-12"
+            class="absolute left-[14%] right-[14%] top-0 bottom-[28%] z-10 rounded-md border border-border ring-1 ring-black/10 dark:ring-white/15 bg-card shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1.5 group-hover:-translate-x-0.5 group-hover:-rotate-12"
         >
             {#if char1.avatar}
                 <AssetView
@@ -135,7 +136,7 @@
             {/if}
         </div>
         <div
-            class="absolute left-[14%] right-[14%] top-[14%] bottom-[14%] z-20 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:rotate-3"
+            class="absolute left-[14%] right-[14%] top-[14%] bottom-[14%] z-20 rounded-md border border-border ring-1 ring-black/10 dark:ring-white/15 bg-card shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:rotate-3"
         >
             {#if char2.avatar}
                 <AssetView
@@ -157,13 +158,13 @@
         </div>
         {#if roomChars().length > 3}
             <div
-                class="absolute left-[14%] right-[14%] top-[28%] bottom-0 z-30 rounded-md border border-background bg-muted text-foreground shadow-md flex items-center justify-center text-[9px] font-bold transition-all duration-300 group-hover:translate-y-1.5 group-hover:translate-x-0.5 group-hover:-rotate-3"
+                class="absolute left-[14%] right-[14%] top-[28%] bottom-0 z-30 rounded-md border border-border ring-1 ring-black/15 dark:ring-white/20 bg-card text-foreground shadow-md flex items-center justify-center text-[9px] font-bold transition-all duration-300 group-hover:translate-y-1.5 group-hover:translate-x-0.5 group-hover:-rotate-3"
             >
                 +{roomChars().length - 2}
             </div>
         {:else}
             <div
-                class="absolute left-[14%] right-[14%] top-[28%] bottom-0 z-30 rounded-md border border-background bg-muted shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1.5 group-hover:translate-x-0.5 group-hover:-rotate-3"
+                class="absolute left-[14%] right-[14%] top-[28%] bottom-0 z-30 rounded-md border border-border ring-1 ring-black/15 dark:ring-white/20 bg-card shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1.5 group-hover:translate-x-0.5 group-hover:-rotate-3"
             >
                 {#if char3.avatar}
                     <AssetView

@@ -12,28 +12,19 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="mb-6 flex min-w-0 shrink-0 items-center justify-between gap-2 pt-4 md:pt-0">
-        <div class="flex w-full min-w-0 overflow-x-auto rounded-lg bg-muted/50 p-1 md:w-auto">
-            {#each ['model', 'parameters', 'custom'] as tab (tab)}
-                <button
-                    class="min-w-0 flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-4 {activeTab ===
-                    tab
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'}"
-                    onclick={() => (activeTab = tab as Tab)}
-                >
-                    {tab === 'custom'
-                        ? 'Custom Models'
-                        : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-            {/each}
-        </div>
-
-        {#if $activePreset}
-            <Badge variant="outline" class="hidden font-mono text-xs sm:inline-flex"
-                >{$activePreset.name}</Badge
+    <div class="mb-4 flex min-w-0 shrink-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
+        {#each ['model', 'parameters', 'custom'] as tab (tab)}
+            <button
+                type="button"
+                class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeTab ===
+                tab
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (activeTab = tab as Tab)}
             >
-        {/if}
+                {tab === 'custom' ? 'Custom Models' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+        {/each}
     </div>
 
     {#if !$activePreset && activeTab !== 'custom'}
@@ -45,7 +36,7 @@
         </div>
     {:else}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <div class="flex flex-col gap-6 pb-8">
+            <div class="flex flex-col gap-5 pb-8">
                 {#if activeTab === 'model'}
                     <ModelTab preset={$activePreset!} />
                 {:else if activeTab === 'parameters'}

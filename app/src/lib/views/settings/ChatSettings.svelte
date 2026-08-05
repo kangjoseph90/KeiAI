@@ -12,13 +12,13 @@
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
-    type Tab = 'prompt' | 'scripts' | 'toggles' | 'presets';
-    let activeTab = $state<Tab>('prompt');
+    type Tab = 'workflow' | 'scripts' | 'toggles' | 'presets';
+    let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
     let selectedPromptNodeId = $state<string | null>(null);
 
     const tabs: Array<{ id: Tab; label: string }> = [
-        { id: 'prompt', label: 'Prompt' },
+        { id: 'workflow', label: 'Workflow' },
         { id: 'scripts', label: 'Scripts' },
         { id: 'toggles', label: 'Toggles' },
         { id: 'presets', label: 'Presets' }
@@ -60,32 +60,25 @@
 
     function handleEditPrompt(nodeId: string) {
         selectedPromptNodeId = nodeId;
-        activeTab = 'prompt';
+        activeTab = 'workflow';
         chatWorkflowEditorOpen = false;
     }
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="mb-6 flex min-w-0 shrink-0 items-center justify-between gap-2 pt-4 md:pt-0">
-        <div class="flex w-full min-w-0 overflow-x-auto rounded-lg bg-muted/50 p-1 md:w-auto">
-            {#each tabs as tab (tab.id)}
-                <button
-                    class="min-w-0 flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-4 {activeTab ===
-                    tab.id
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'}"
-                    onclick={() => (activeTab = tab.id)}
-                >
-                    {tab.label}
-                </button>
-            {/each}
-        </div>
-
-        {#if $activePreset}
-            <Badge variant="outline" class="hidden font-mono text-xs sm:inline-flex"
-                >{$activePreset.name}</Badge
+    <div class="mb-4 flex min-w-0 shrink-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
+        {#each tabs as tab (tab.id)}
+            <button
+                type="button"
+                class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeTab ===
+                tab.id
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'}"
+                onclick={() => (activeTab = tab.id)}
             >
-        {/if}
+                {tab.label}
+            </button>
+        {/each}
     </div>
 
     {#if !$activePreset && activeTab !== 'presets'}
@@ -97,11 +90,11 @@
         </div>
     {:else if activeTab === 'presets'}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <div class="flex flex-col gap-6 pb-8">
+            <div class="flex flex-col gap-5 pb-8">
                 <PresetsTab />
             </div>
         </ScrollArea>
-    {:else if $activePreset && activeTab === 'prompt'}
+    {:else if $activePreset && activeTab === 'workflow'}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
             <WorkflowPromptTab
                 workflow={$activePreset.chatWorkflow}
@@ -114,7 +107,7 @@
         </ScrollArea>
     {:else if $activePreset}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <div class="flex flex-col gap-6 pb-8">
+            <div class="flex flex-col gap-5 pb-8">
                 {#if activeTab === 'scripts'}
                     <ScriptsTab preset={$activePreset} />
                 {:else if activeTab === 'toggles'}

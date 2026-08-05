@@ -31,7 +31,7 @@
 
 <div
     role="none"
-    class="pointer-events-none absolute inset-0 z-10 lg:hidden"
+    class="pointer-events-none absolute inset-0 z-10"
     onclick={(event) => event.stopPropagation()}
 >
     {#if isDefault}
@@ -45,12 +45,14 @@
         </span>
     {/if}
 
-    <div class="pointer-events-auto absolute -right-1 -top-1">
+    <div
+        class="pointer-events-auto absolute -right-1 -top-1 touch-visible opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+    >
         <DropdownMenu.Root>
             <DropdownMenu.Trigger>
                 <button
                     type="button"
-                    class="relative flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border after:absolute after:-inset-2 after:content-['']"
+                    class="relative flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border after:absolute after:-inset-2 after:content-[''] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={`Actions for ${name}`}
                     {disabled}
                 >

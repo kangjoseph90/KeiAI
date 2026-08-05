@@ -90,13 +90,13 @@
     }
 </script>
 
-<section class="space-y-6">
+<section class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle>Basic Information</CardTitle>
             <CardDescription>How the character is identified in the application.</CardDescription>
         </CardHeader>
-        <CardContent class="space-y-6">
+        <CardContent class="space-y-4">
             <div class="flex items-center gap-4 sm:gap-6">
                 <div class="shrink-0">
                     {#if character.avatar}

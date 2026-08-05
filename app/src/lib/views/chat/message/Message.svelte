@@ -494,7 +494,7 @@
 
     <!-- Content Column -->
     <div
-        class="chat-message-content col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%_-_1rem)] flex-none flex-col gap-1 {imageAttachments.length >
+        class="chat-message-content col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%-1rem)] flex-none flex-col gap-1 {imageAttachments.length >
             0 || audioAttachments.length > 0
             ? 'w-full'
             : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"

@@ -217,6 +217,15 @@
             creatingUser = false;
         }
     }
+    function handleBackdropClick(): void {
+        const hasOpenOverlay = Boolean(
+            document.querySelector(
+                '[data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="dialog-content"], [role="menu"]'
+            )
+        );
+        if (hasOpenOverlay) return;
+        onToggle();
+    }
 </script>
 
 {#snippet syncStatusRow(label: string, status: SyncStatus)}
@@ -238,7 +247,7 @@
     aria-hidden={collapsed}
     aria-label="Close navigation"
     tabindex={collapsed ? -1 : 0}
-    onclick={onToggle}
+    onclick={handleBackdropClick}
 ></button>
 
 <aside
@@ -254,7 +263,6 @@
             <Button
                 variant={route.view === 'home' ? 'secondary' : 'ghost'}
                 size="icon"
-                class="size-9"
                 title="Library"
                 aria-label="Library"
                 onclick={() => onNavigate({ view: 'home' })}
@@ -267,7 +275,6 @@
             <Button
                 variant={route.view === 'multiRoom' || $isMultiRoom ? 'secondary' : 'ghost'}
                 size="icon"
-                class="size-10"
                 title="Multi Rooms"
                 aria-label="Multi Rooms"
                 onclick={() => onNavigate({ view: 'multiRoom' })}
@@ -337,7 +344,6 @@
                         <Button
                             variant="ghost"
                             size="icon"
-                            class="size-9"
                             title={syncLabel}
                             aria-label={`View sync status: ${syncLabel}`}
                             aria-busy={retryingSync || syncState === 'syncing'}
@@ -395,7 +401,6 @@
             <Button
                 variant="ghost"
                 size="icon"
-                class="size-9"
                 title="Settings"
                 aria-label="Settings"
                 onclick={() => onNavigate({ view: 'settings' })}
@@ -407,7 +412,7 @@
                     <Button
                         variant="ghost"
                         size="icon"
-                        class="size-9 overflow-hidden rounded-md"
+                        class="overflow-hidden rounded-md"
                         title={$activeUser?.name ?? 'Current user'}
                         aria-label={`Current user: ${$activeUser?.name ?? 'Unknown'}`}
                     >
@@ -493,14 +498,14 @@
     </div>
 
     {#if hasPanel}
-        <div class="app-room-panel-stage shrink-0" aria-hidden={collapsed} inert={collapsed}>
+        <div class="app-room-panel-stage h-full shrink-0" aria-hidden={collapsed} inert={collapsed}>
             {@render panel?.()}
         </div>
         {#if !collapsed}
             <Button
                 variant="outline"
                 size="icon-lg"
-                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
+                class="absolute left-full top-1.5 z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
                 title="Hide room panel"
                 aria-label="Hide room panel"
                 onclick={onToggle}
@@ -512,7 +517,7 @@
             <Button
                 variant="outline"
                 size="icon-lg"
-                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
+                class="absolute left-full top-1.5 z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
                 title="Show room panel"
                 aria-label="Show room panel"
                 onclick={onToggle}
@@ -527,7 +532,7 @@
     <Button
         variant="outline"
         size="icon-lg"
-        class="fixed left-[var(--safe-area-left)] top-[calc(var(--safe-area-top)+0.375rem)] z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
+        class="fixed left-(--safe-area-left) top-[calc(var(--safe-area-top)+0.375rem)] z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
         title={hasPanel ? 'Show room panel' : 'Show sidebar'}
         aria-label={hasPanel ? 'Show room panel' : 'Show sidebar'}
         onclick={onToggle}

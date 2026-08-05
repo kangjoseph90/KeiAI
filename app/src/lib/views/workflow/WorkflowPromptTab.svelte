@@ -20,6 +20,7 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import WorkflowNumberField from './WorkflowNumberField.svelte';
     import WorkflowStringField from './WorkflowStringField.svelte';
@@ -203,29 +204,30 @@
                     onReorder={(id, sortOrder) => applyBlockEdit(id, { sortOrder })}
                 >
                     {#snippet item({ entity: block })}
-                        <div
-                            class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {block.enabled
-                                ? ''
-                                : 'opacity-55'}"
+                        <EditableListItem
+                            muted={!block.enabled}
+                            expanded={expandedBlocks.has(block.id)}
+                            busy={deletingBlockId === block.id}
                         >
-                            <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                            {#snippet header()}
                                 <div
-                                    class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                                    class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
                                     aria-hidden="true"
                                 >
-                                    <GripVertical class="size-4" />
+                                    <GripVertical class="size-3.5" />
                                 </div>
                                 <button
-                                    class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    type="button"
+                                    class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                     onclick={() => toggleBlock(block.id)}
                                     aria-label={expandedBlocks.has(block.id)
                                         ? 'Collapse block'
                                         : 'Expand block'}
                                 >
                                     {#if expandedBlocks.has(block.id)}
-                                        <ChevronDown class="size-4" />
+                                        <ChevronDown class="size-3.5" />
                                     {:else}
-                                        <ChevronRight class="size-4" />
+                                        <ChevronRight class="size-3.5" />
                                     {/if}
                                 </button>
 
@@ -233,7 +235,7 @@
                                     <DropdownMenu.Trigger>
                                         <button
                                             type="button"
-                                            class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 {block.type ===
+                                            class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {block.type ===
                                             'message'
                                                 ? 'bg-violet-500/10 text-violet-600 dark:text-violet-300'
                                                 : block.type === 'history'
@@ -242,11 +244,11 @@
                                             aria-label="Change block type"
                                         >
                                             {#if block.type === 'message'}
-                                                <MessageSquareText class="size-4" />
+                                                <MessageSquareText class="size-3.5" />
                                             {:else if block.type === 'history'}
-                                                <MessagesSquare class="size-4" />
+                                                <MessagesSquare class="size-3.5" />
                                             {:else}
-                                                <BookOpen class="size-4" />
+                                                <BookOpen class="size-3.5" />
                                             {/if}
                                         </button>
                                     </DropdownMenu.Trigger>
@@ -277,40 +279,40 @@
                                 <Input
                                     value={block.name}
                                     aria-label="Block name"
-                                    class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0"
+                                    class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0"
                                     oninput={(e) =>
                                         applyBlockEdit(block.id, { name: e.currentTarget.value })}
                                 />
                                 <Button
-                                    size="icon"
+                                    size="icon-sm"
                                     variant="ghost"
-                                    class="size-8 shrink-0 text-muted-foreground"
+                                    class="shrink-0 text-muted-foreground"
                                     title={block.enabled ? 'Disable block' : 'Enable block'}
                                     aria-label={block.enabled ? 'Disable block' : 'Enable block'}
                                     onclick={() =>
                                         applyBlockEdit(block.id, { enabled: !block.enabled })}
                                 >
                                     {#if block.enabled}
-                                        <Eye class="size-4" />
+                                        <Eye class="size-3.5" />
                                     {:else}
-                                        <EyeOff class="size-4" />
+                                        <EyeOff class="size-3.5" />
                                     {/if}
                                 </Button>
                                 <Button
-                                    size="icon"
+                                    size="icon-sm"
                                     variant="ghost"
-                                    class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                    class="shrink-0 text-muted-foreground hover:text-destructive"
                                     title="Delete block"
                                     aria-label="Delete block"
                                     disabled={deletingBlockId !== null}
                                     aria-busy={deletingBlockId === block.id}
                                     onclick={() => removeBlock(block)}
-                                    ><Trash2 class="size-4" /></Button
+                                    ><Trash2 class="size-3.5" /></Button
                                 >
-                            </div>
+                            {/snippet}
 
-                            {#if expandedBlocks.has(block.id)}
-                                <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
+                            {#snippet details()}
+                                <div class="flex flex-col gap-4">
                                     {#if block.type === 'message'}
                                         <div class="space-y-1.5">
                                             <Label class="text-xs">Role</Label>
@@ -430,8 +432,8 @@
                                         </div>
                                     {/if}
                                 </div>
-                            {/if}
-                        </div>
+                            {/snippet}
+                        </EditableListItem>
                     {/snippet}
 
                     {#snippet empty()}

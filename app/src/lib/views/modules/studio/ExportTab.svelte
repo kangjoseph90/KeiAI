@@ -17,13 +17,13 @@
     } = $props();
 </script>
 
-<section class="space-y-6">
+<section class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle>Export Module</CardTitle>
         </CardHeader>
         <CardContent class="divide-y p-0">
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm font-medium">Risu CHARX</p>
                     <p class="mt-1 text-xs text-muted-foreground">
@@ -39,7 +39,7 @@
                     <Download class="size-4" /> Export CHARX
                 </Button>
             </div>
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm font-medium">Legacy Risu Module</p>
                     <p class="mt-1 text-xs text-muted-foreground">
@@ -56,7 +56,7 @@
                 </Button>
             </div>
             {#if showLightExport}
-                <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <p class="text-sm font-medium">Kei Light</p>
                         <p class="mt-1 text-xs text-muted-foreground">
@@ -77,7 +77,7 @@
                     </Button>
                 </div>
             {/if}
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm font-medium">Kei Baked</p>
                     <p class="mt-1 text-xs text-muted-foreground">
