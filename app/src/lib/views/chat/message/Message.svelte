@@ -548,7 +548,8 @@
 <!-- Message Container -->
 <div
     bind:this={messageElement}
-    class="chat-message group grid w-full max-w-4xl flex-none content-start self-center gap-x-2 {isUser
+    data-message-id={message.id}
+    class="chat-message group grid w-full max-w-5xl flex-none content-start self-center gap-x-2 {isUser
         ? 'is-user grid-cols-[minmax(0,1fr)_2rem]'
         : 'grid-cols-[2rem_minmax(0,1fr)]'}"
     role="group"
@@ -913,6 +914,10 @@
 
         .chat-message-content {
             margin: 0;
+            max-width: 90%;
+        }
+
+        .chat-message.is-user .chat-message-content {
             max-width: 75%;
         }
 

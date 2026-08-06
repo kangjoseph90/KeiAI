@@ -375,7 +375,7 @@
     role="region"
     aria-label="Message composer"
     inert={overlayInert}
-    class="absolute inset-x-0 bottom-0 z-20 isolate px-3 pb-3 pt-1 md:px-4"
+    class="absolute inset-x-0 bottom-0 z-20 isolate px-3 pb-4 pt-1 md:px-4"
     ondragenter={handleDragEnter}
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
@@ -402,7 +402,7 @@
 
     <div
         bind:this={composerElement}
-        class="relative mx-auto w-full max-w-4xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
+        class="relative mx-auto w-full max-w-3xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
     >
         {#if isDragging && !dictationBusy}
             <div

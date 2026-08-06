@@ -48,18 +48,19 @@
     let showScrollToBottom = $state(false);
     let hasMoreOlder = $state(true);
     let hasMoreNewer = $state(false);
-    let previousActiveChatId = $state<string | undefined>();
+    let previousActiveChatId: string | undefined;
     let composerHeight = $state(0);
     let messagesContentEl: HTMLElement | undefined = $state();
     let chatViewElement: HTMLElement | undefined = $state();
     let chatLayoutTransitionSuppressed = $state(false);
     let chatPanelOverlayMode = $state(false);
     let streamReserveHeight = $state(0);
-    let reserveContentHeight = 0;
     let previousGeneratingMessageId: string | null = null;
     let previousBottomOffset = 0;
     let isAdjustingStreamReserve = false;
-    let chatViewEpoch = 0;
+    let selectionBottomPinned = false;
+    let generationScrollFrame: number | undefined;
+    let generationScrollAnchoringSuppressed = $state(false);
     let previousChatPanelOverlayMode: boolean | undefined;
     let chatLayoutTransitionFrame: number | undefined;
     let chatLayoutTransitionRestoreFrame: number | undefined;
@@ -79,15 +80,21 @@
         const task = $chatTasks.get(activeChatId);
         return task?.status === 'generating' ? task.messageId : null;
     });
+    const displayedGeneratingMessageId = $derived.by(() => {
+        const messageId = generatingMessageId;
+        return messageId && $displayMessages.some((message) => message.id === messageId)
+            ? messageId
+            : null;
+    });
 
     onDestroy(() => {
-        chatViewEpoch += 1;
         if (chatLayoutTransitionFrame !== undefined) {
             cancelAnimationFrame(chatLayoutTransitionFrame);
         }
         if (chatLayoutTransitionRestoreFrame !== undefined) {
             cancelAnimationFrame(chatLayoutTransitionRestoreFrame);
         }
+        cancelGenerationScroll();
     });
 
     $effect(() => {
@@ -140,66 +147,40 @@
         const element = messagesContentEl;
         if (!element) return;
 
-        const observer = new ResizeObserver(handleMessagesResize);
+        const observer = new ResizeObserver(() => {
+            if (!selectionBottomPinned || !scrollContainerEl) return;
+            scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight;
+            previousBottomOffset = 0;
+            showScrollToBottom = false;
+        });
         observer.observe(element);
-        syncReserveContentHeight();
         return () => observer.disconnect();
     });
 
     $effect(() => {
-        const messageId = generatingMessageId;
-        const activeChatId = $activeChat?.id;
-        if (!messageId) {
-            previousGeneratingMessageId = null;
-            return;
-        }
-        if (!activeChatId) return;
-        if (messageId === previousGeneratingMessageId) return;
+        const messageId = displayedGeneratingMessageId;
+        const bottomInset = messageBottomInset;
+        if (!messageId) return;
 
-        previousGeneratingMessageId = messageId;
-        void tick().then(() => {
-            if ($activeChat?.id !== activeChatId || generatingMessageId !== messageId) return;
-            void prepareGenerationViewport(activeChatId, messageId);
-        });
+        const messageElement = getDisplayedMessageElement(messageId);
+        const scrollElement = scrollContainerEl;
+        if (!messageElement || !scrollElement) return;
+
+        const syncReserve = (): void => {
+            if (generatingMessageId !== messageId || messageBottomInset !== bottomInset) return;
+            setGeneratingReserveHeight(messageElement, bottomInset);
+        };
+
+        const observer = new ResizeObserver(syncReserve);
+        observer.observe(messageElement);
+        observer.observe(scrollElement);
+        syncReserve();
+
+        return () => {
+            observer.disconnect();
+        };
     });
 
-    async function prepareGenerationViewport(activeChatId: string, messageId: string) {
-        chatViewEpoch += 1;
-        const epoch = chatViewEpoch;
-        const isViewportCurrent = () => $activeChat?.id === activeChatId && chatViewEpoch === epoch;
-        const isCurrent = () => isViewportCurrent() && generatingMessageId === messageId;
-        paginationDirection = null;
-
-        await tick();
-        if (!isCurrent() || !scrollContainerEl) return;
-
-        if (!hasDisplayedMessage(messageId)) {
-            paginationDirection = 'newer';
-            try {
-                await loadInitialMessages(activeChatId, MESSAGE_WINDOW_SIZE, isCurrent);
-                if (!isCurrent()) return;
-                hasMoreOlder = true;
-                hasMoreNewer = false;
-                await tick();
-            } catch (error) {
-                logger.error('Failed to load the generating message:', error);
-                return;
-            } finally {
-                if (isViewportCurrent()) paginationDirection = null;
-            }
-        }
-
-        if (!isCurrent() || !scrollContainerEl || !hasDisplayedMessage(messageId)) return;
-        const reserveHeight = calculateStreamReserveHeight();
-        syncReserveContentHeight();
-        streamReserveHeight = Math.max(streamReserveHeight, reserveHeight);
-        await tick();
-        if (!isCurrent() || !scrollContainerEl) return;
-        previousBottomOffset = getDistanceFromBottom(scrollContainerEl);
-        scrollToBottom();
-    }
-
-    // Reset state and scroll to bottom when active chat changes
     $effect(() => {
         const activeChatId = $activeChat?.id;
         if (
@@ -210,33 +191,101 @@
         ) {
             consumeCompletedTasks(activeChatId);
         }
-        if (activeChatId === previousActiveChatId) return;
+    });
+
+    $effect(() => {
+        const activeChatId = $activeChat?.id;
+        const messageId = generatingMessageId;
+        const chatChanged = activeChatId !== previousActiveChatId;
+        const generationChanged = messageId !== previousGeneratingMessageId;
+        if (!chatChanged && !generationChanged) return;
 
         previousActiveChatId = activeChatId;
-        chatViewEpoch += 1;
-        hasMoreOlder = true;
-        hasMoreNewer = false;
-        paginationDirection = null;
-        clearStreamReserve();
-        previousGeneratingMessageId = null;
-        previousBottomOffset = 0;
+        previousGeneratingMessageId = messageId;
+        cancelGenerationScroll();
 
-        void tick().then(() => {
-            if ($activeChat?.id !== activeChatId || !scrollContainerEl) return;
+        if (chatChanged) {
+            hasMoreOlder = true;
+            hasMoreNewer = false;
+            paginationDirection = null;
+            clearStreamReserve();
+            previousBottomOffset = 0;
+            selectionBottomPinned = Boolean(activeChatId);
+        }
+
+        if (!activeChatId) return;
+        if (messageId) {
+            void prepareGenerationViewport(
+                activeChatId,
+                messageId,
+                chatChanged ? 'instant' : 'smooth'
+            );
+        } else if (chatChanged) {
+            void scrollSelectedChatToBottom();
+        }
+    });
+
+    async function prepareGenerationViewport(
+        activeChatId: string,
+        messageId: string,
+        behavior: 'instant' | 'smooth'
+    ) {
+        selectionBottomPinned = false;
+        generationScrollAnchoringSuppressed = behavior === 'smooth';
+        paginationDirection = null;
+
+        await tick();
+        if (!scrollContainerEl) {
+            cancelGenerationScroll();
+            return;
+        }
+
+        if (!hasDisplayedMessage(messageId)) {
+            paginationDirection = 'newer';
+            try {
+                await loadInitialMessages(activeChatId, MESSAGE_WINDOW_SIZE);
+                hasMoreOlder = true;
+                hasMoreNewer = false;
+                await tick();
+            } catch (error) {
+                logger.error('Failed to load the generating message:', error);
+                cancelGenerationScroll();
+                return;
+            } finally {
+                paginationDirection = null;
+            }
+        }
+
+        if (!scrollContainerEl || !hasDisplayedMessage(messageId)) {
+            cancelGenerationScroll();
+            return;
+        }
+        reconcileGeneratingReserveHeight(messageId, messageBottomInset);
+        await tick();
+        if (!scrollContainerEl) {
+            cancelGenerationScroll();
+            return;
+        }
+
+        if (behavior === 'smooth') {
+            previousBottomOffset = getDistanceFromBottom(scrollContainerEl);
+            animateGenerationScrollToBottom();
+        } else {
+            generationScrollAnchoringSuppressed = false;
             scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight;
             previousBottomOffset = 0;
-        });
-    });
+            showScrollToBottom = false;
+        }
+    }
 
     async function handleScroll() {
         if (!scrollContainerEl || !$activeChat || isAdjustingStreamReserve) return;
 
+        const scrollElement = scrollContainerEl;
         const activeChatId = $activeChat.id;
-        const epoch = chatViewEpoch;
-        const isCurrent = () => $activeChat?.id === activeChatId && chatViewEpoch === epoch;
 
-        let { scrollTop } = scrollContainerEl;
-        let { scrollHeight, clientHeight } = scrollContainerEl;
+        let { scrollTop } = scrollElement;
+        let { scrollHeight, clientHeight } = scrollElement;
         let distanceFromBottom = Math.max(0, scrollHeight - clientHeight - scrollTop);
 
         if (streamReserveHeight > 0 && !generatingMessageId) {
@@ -248,16 +297,15 @@
                 try {
                     streamReserveHeight = Math.max(0, streamReserveHeight - consumed);
                     await tick();
-                    if (!isCurrent() || !scrollContainerEl) return;
                     const nextBottomOffset = Math.max(0, distanceFromBottom - consumed);
                     const nextMaxScrollTop = Math.max(
                         0,
-                        scrollContainerEl.scrollHeight - scrollContainerEl.clientHeight
+                        scrollElement.scrollHeight - scrollElement.clientHeight
                     );
-                    scrollContainerEl.scrollTop = Math.max(0, nextMaxScrollTop - nextBottomOffset);
-                    scrollTop = scrollContainerEl.scrollTop;
-                    scrollHeight = scrollContainerEl.scrollHeight;
-                    clientHeight = scrollContainerEl.clientHeight;
+                    scrollElement.scrollTop = Math.max(0, nextMaxScrollTop - nextBottomOffset);
+                    scrollTop = scrollElement.scrollTop;
+                    scrollHeight = scrollElement.scrollHeight;
+                    clientHeight = scrollElement.clientHeight;
                     distanceFromBottom = Math.max(0, scrollHeight - clientHeight - scrollTop);
                 } finally {
                     isAdjustingStreamReserve = false;
@@ -282,15 +330,13 @@
             const previousTop = scrollTop;
 
             try {
-                const loaded = await loadOlderMessages(activeChatId, MESSAGE_PAGE_SIZE, isCurrent);
+                const loaded = await loadOlderMessages(activeChatId, MESSAGE_PAGE_SIZE);
                 await tick();
-                if (!isCurrent()) return;
 
-                if (loaded > 0 && scrollContainerEl) {
-                    scrollContainerEl.scrollTop =
-                        previousTop + (scrollContainerEl.scrollHeight - previousHeight);
-                    previousBottomOffset = getDistanceFromBottom(scrollContainerEl);
-                    syncReserveContentHeight();
+                if (loaded > 0) {
+                    scrollElement.scrollTop =
+                        previousTop + (scrollElement.scrollHeight - previousHeight);
+                    previousBottomOffset = getDistanceFromBottom(scrollElement);
                 }
 
                 if (loaded === 0) {
@@ -300,16 +346,13 @@
                 const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
                 if (overflow > 0) {
                     await dropNewerMessages(activeChatId, overflow);
-                    if (!isCurrent()) return;
                     hasMoreNewer = true;
                     await tick();
-                    if (!isCurrent()) return;
-                    syncReserveContentHeight();
                 }
             } catch (err) {
                 logger.error('Failed to load older messages:', err);
             } finally {
-                if (isCurrent()) paginationDirection = null;
+                paginationDirection = null;
             }
         } else if (
             !generatingMessageId &&
@@ -320,9 +363,8 @@
             paginationDirection = 'newer';
 
             try {
-                const loaded = await loadNewerMessages(activeChatId, MESSAGE_PAGE_SIZE, isCurrent);
+                const loaded = await loadNewerMessages(activeChatId, MESSAGE_PAGE_SIZE);
                 await tick();
-                if (!isCurrent()) return;
 
                 if (loaded === 0) {
                     hasMoreNewer = false;
@@ -330,22 +372,19 @@
 
                 const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
                 if (overflow > 0) {
-                    const previousHeight = scrollContainerEl?.scrollHeight ?? 0;
-                    const previousTop = scrollContainerEl?.scrollTop ?? 0;
+                    const previousHeight = scrollElement.scrollHeight;
+                    const previousTop = scrollElement.scrollTop;
                     await dropOlderMessages(activeChatId, overflow);
-                    if (!isCurrent()) return;
                     hasMoreOlder = true;
                     await tick();
-                    if (!isCurrent() || !scrollContainerEl) return;
-                    scrollContainerEl.scrollTop =
-                        previousTop + (scrollContainerEl.scrollHeight - previousHeight);
-                    previousBottomOffset = getDistanceFromBottom(scrollContainerEl);
-                    syncReserveContentHeight();
+                    scrollElement.scrollTop =
+                        previousTop + (scrollElement.scrollHeight - previousHeight);
+                    previousBottomOffset = getDistanceFromBottom(scrollElement);
                 }
             } catch (err) {
                 logger.error('Failed to load newer messages:', err);
             } finally {
-                if (isCurrent()) paginationDirection = null;
+                paginationDirection = null;
             }
         }
     }
@@ -359,9 +398,62 @@
         }
     }
 
-    function calculateStreamReserveHeight(): number {
+    function animateGenerationScrollToBottom(): void {
+        const element = scrollContainerEl;
+        if (!element) {
+            cancelGenerationScroll();
+            return;
+        }
+
+        if (generationScrollFrame !== undefined) {
+            cancelAnimationFrame(generationScrollFrame);
+        }
+
+        generationScrollAnchoringSuppressed = true;
+        const startTop = element.scrollTop;
+        const targetTop = Math.max(0, element.scrollHeight - element.clientHeight);
+        const startedAt = performance.now();
+        const duration = 250;
+
+        const step = (now: number): void => {
+            const progress = Math.min(1, (now - startedAt) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            element.scrollTop = startTop + (targetTop - startTop) * eased;
+
+            if (progress < 1) {
+                generationScrollFrame = requestAnimationFrame(step);
+                return;
+            }
+
+            generationScrollFrame = undefined;
+            generationScrollAnchoringSuppressed = false;
+            previousBottomOffset = getDistanceFromBottom(element);
+            showScrollToBottom = false;
+        };
+
+        generationScrollFrame = requestAnimationFrame(step);
+    }
+
+    function cancelGenerationScroll(): void {
+        if (generationScrollFrame !== undefined) {
+            cancelAnimationFrame(generationScrollFrame);
+            generationScrollFrame = undefined;
+        }
+        generationScrollAnchoringSuppressed = false;
+    }
+
+    async function scrollSelectedChatToBottom(): Promise<void> {
+        await tick();
+        if (!scrollContainerEl) return;
+
+        scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight;
+        previousBottomOffset = 0;
+        showScrollToBottom = false;
+    }
+
+    function calculateGeneratingMinHeight(bottomInset: number): number {
         if (!scrollContainerEl) return 0;
-        const availableHeight = Math.max(0, scrollContainerEl.clientHeight - messageBottomInset);
+        const availableHeight = Math.max(0, scrollContainerEl.clientHeight - bottomInset);
         if (availableHeight === 0) return 0;
         return Math.min(
             MAX_STREAM_RESERVE_HEIGHT,
@@ -378,29 +470,35 @@
         return $displayMessages.some((message) => message.id === messageId);
     }
 
-    function handleMessagesResize(): void {
-        if (!messagesContentEl) return;
-        const nextHeight = messagesContentEl.getBoundingClientRect().height;
-
-        if (paginationDirection !== null || streamReserveHeight <= 0) {
-            reserveContentHeight = nextHeight;
-            return;
-        }
-
-        const growth = Math.max(0, nextHeight - reserveContentHeight);
-        reserveContentHeight = Math.max(reserveContentHeight, nextHeight);
-        if (growth > 0) {
-            streamReserveHeight = Math.max(0, streamReserveHeight - growth);
-        }
+    function reconcileGeneratingReserveHeight(messageId: string, bottomInset: number): void {
+        const messageElement = getDisplayedMessageElement(messageId);
+        if (messageElement) setGeneratingReserveHeight(messageElement, bottomInset);
     }
 
-    function syncReserveContentHeight(): void {
-        reserveContentHeight = messagesContentEl?.getBoundingClientRect().height ?? 0;
+    function setGeneratingReserveHeight(messageElement: HTMLElement, bottomInset: number): void {
+        streamReserveHeight = Math.max(
+            0,
+            calculateGeneratingMinHeight(bottomInset) -
+                messageElement.getBoundingClientRect().height
+        );
+    }
+
+    function getDisplayedMessageElement(messageId: string): HTMLElement | null {
+        if (!messagesContentEl) return null;
+        return (
+            Array.from(messagesContentEl.querySelectorAll<HTMLElement>('[data-message-id]')).find(
+                (element) => element.dataset.messageId === messageId
+            ) ?? null
+        );
     }
 
     function clearStreamReserve(): void {
         streamReserveHeight = 0;
-        syncReserveContentHeight();
+    }
+
+    function releaseSelectionBottomPin(): void {
+        selectionBottomPinned = false;
+        cancelGenerationScroll();
     }
 
     const defaultCharacter = $derived.by(() => {
@@ -484,11 +582,17 @@
                 <!-- Messages -->
                 <div
                     bind:this={scrollContainerEl}
+                    role="log"
+                    aria-label="Chat messages"
                     onscroll={handleScroll}
+                    onwheel={releaseSelectionBottomPin}
+                    ontouchstart={releaseSelectionBottomPin}
+                    onpointerdown={releaseSelectionBottomPin}
                     inert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
                     class="relative z-10 flex flex-1 flex-col overflow-y-auto px-4 pt-8 pb-4"
                     style="scrollbar-gutter: stable; padding-bottom: {messageBottomInset}px; overflow-anchor: {streamReserveHeight >
-                    0
+                        0 &&
+                    (!generatingMessageId || generationScrollAnchoringSuppressed)
                         ? 'none'
                         : 'auto'};"
                 >
