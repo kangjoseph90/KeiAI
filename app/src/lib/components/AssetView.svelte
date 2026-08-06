@@ -14,6 +14,7 @@
         style = '',
         fallback = 'icon', // 'icon' | 'none'
         mode = 'thumbnail',
+        focus = 'center',
         children
     }: {
         asset: AssetReadLocator | null | undefined;
@@ -22,6 +23,7 @@
         style?: string;
         fallback?: 'icon' | 'none';
         mode?: 'thumbnail' | 'player';
+        focus?: 'center' | 'top';
         children?: import('svelte').Snippet;
     } = $props();
 
@@ -208,7 +210,7 @@
                 {alt}
                 class={mode === 'player'
                     ? 'h-auto max-h-full w-auto max-w-full object-contain'
-                    : 'size-full object-cover'}
+                    : cn('size-full object-cover', focus === 'top' && 'object-top')}
                 onerror={handleMediaError}
                 draggable="false"
             />

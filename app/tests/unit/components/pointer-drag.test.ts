@@ -72,26 +72,34 @@ describe('pointerDrag', () => {
         action?.destroy?.();
     });
 
-    it('prevents touch scrolling only after long-press activation', async () => {
-        const addEventListener = vi.spyOn(window, 'addEventListener');
-        const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    it('registers touch scrolling prevention before the gesture but blocks only after activation', async () => {
+        const addEventListener = vi.spyOn(node, 'addEventListener');
+        const removeEventListener = vi.spyOn(node, 'removeEventListener');
         const action = pointerDrag(node, options);
 
-        node.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
-        expect(addEventListener).not.toHaveBeenCalledWith(
-            'touchmove',
-            expect.any(Function),
-            expect.anything()
-        );
-
-        await vi.advanceTimersByTimeAsync(280);
         expect(addEventListener).toHaveBeenCalledWith('touchmove', expect.any(Function), {
             passive: false
         });
 
+        node.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+        const pendingTouchMove = new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true
+        });
+        node.dispatchEvent(pendingTouchMove);
+        expect(pendingTouchMove.defaultPrevented).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(280);
+        const activeTouchMove = new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true
+        });
+        node.dispatchEvent(activeTouchMove);
+        expect(activeTouchMove.defaultPrevented).toBe(true);
+
         window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
-        expect(removeEventListener).toHaveBeenCalledWith('touchmove', expect.any(Function));
         action?.destroy?.();
+        expect(removeEventListener).toHaveBeenCalledWith('touchmove', expect.any(Function));
     });
 
     it('starts a touch drag after a long press and drops at the pointer position', async () => {
@@ -109,7 +117,7 @@ describe('pointerDrag', () => {
             })
         );
         const touchMove = new TouchEvent('touchmove', { bubbles: true, cancelable: true });
-        window.dispatchEvent(touchMove);
+        node.dispatchEvent(touchMove);
 
         expect(touchMove.defaultPrevented).toBe(true);
         window.dispatchEvent(

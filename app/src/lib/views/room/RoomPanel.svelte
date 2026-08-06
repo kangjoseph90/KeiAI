@@ -1,7 +1,6 @@
 <script lang="ts">
     import {
         Check,
-        ChevronLeft,
         Edit3,
         Folder,
         FolderOpen,
@@ -9,13 +8,13 @@
         Pin,
         Plus,
         Search,
-        Settings,
         Trash2,
-        User,
+        UserRound,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -28,6 +27,7 @@
         createChat,
         createRoomFolder,
         deleteChat,
+        deleteRoom,
         deleteRoomFolder,
         isMultiRoom,
         modules,
@@ -56,11 +56,10 @@
 
     interface Props {
         route: RouteState;
-        onClose: () => void;
         onNavigate: (route: RouteState) => void;
     }
 
-    let { route, onClose, onNavigate }: Props = $props();
+    let { route, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
     let editingChatId = $state<string | null>(null);
@@ -197,6 +196,23 @@
         editingRoomName = true;
     }
 
+    async function handleDeleteRoom(): Promise<void> {
+        if (!$activeRoom || $isMultiRoom) return;
+        const roomId = $activeRoom.id;
+        const roomName = $activeRoom.name;
+        await runPanelAction('delete-room', 'Could not delete room', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete room?',
+                description: `Delete room "${roomName}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeRoom?.id !== roomId) return;
+            await deleteRoom(roomId);
+            onNavigate({ view: 'home' });
+        });
+    }
+
     async function handleDeleteChat(chatId: string): Promise<void> {
         if (!$activeRoom) return;
         const roomId = $activeRoom.id;
@@ -235,8 +251,8 @@
 </script>
 
 {#if $activeRoom}
-    <div class="relative flex">
-        <div class="app-sidebar-room-panel flex w-[360px] flex-col bg-sidebar">
+    <div class="app-sidebar-room-panel relative flex h-full w-90 shrink-0">
+        <div class="flex h-full w-full flex-col bg-sidebar">
             <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
                 {#if editingRoomName}
                     <form
@@ -259,8 +275,7 @@
                         />
                         <Button
                             type="submit"
-                            size="icon"
-                            class="size-8"
+                            size="icon-sm"
                             aria-label="Save room name"
                             disabled={panelAction !== null}
                             aria-busy={panelAction === 'rename-room'}
@@ -270,8 +285,8 @@
                         <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
-                            class="size-8"
+                            size="icon-sm"
+                            aria-label="Cancel room rename"
                             disabled={panelAction !== null}
                             onclick={() => {
                                 editingRoomName = false;
@@ -285,17 +300,36 @@
                     <p class="min-w-0 flex-1 truncate text-sm font-semibold">
                         {$activeRoom.name}
                     </p>
+                    {#if $isMultiRoom}
+                        <span
+                            class="shrink-0 rounded-full border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                        >
+                            Multi Room
+                        </span>
+                    {/if}
                     {#if !$isMultiRoom}
                         <Button
                             variant="ghost"
-                            size="icon"
-                            class="size-8 shrink-0 text-muted-foreground"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground"
                             title="Rename room"
                             aria-label="Rename room"
                             disabled={panelAction !== null}
                             onclick={startRenameRoom}
                         >
                             <Edit3 class="size-3.5" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground hover:text-destructive"
+                            title="Delete room"
+                            aria-label={`Delete ${$activeRoom.name}`}
+                            disabled={panelAction !== null}
+                            aria-busy={panelAction === 'delete-room'}
+                            onclick={handleDeleteRoom}
+                        >
+                            <Trash2 class="size-3.5" />
                         </Button>
                     {/if}
                 {/if}
@@ -306,12 +340,12 @@
                     <p
                         class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
-                        <User class="size-3" /> Characters
+                        <UserRound class="size-3" /> Characters
                     </p>
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        class="size-6 text-muted-foreground hover:text-foreground"
+                        class="text-muted-foreground hover:text-foreground"
                         title="Add characters"
                         aria-label="Add characters"
                         disabled={panelAction !== null}
@@ -324,9 +358,10 @@
                     entities={$roomCharacters}
                     config={$activeRoom.characters}
                     layout="grid"
-                    gridClass="grid grid-cols-3 gap-2"
-                    listClass="grid grid-cols-3 gap-2"
-                    childContainerClass="relative my-1 px-2 py-1.5"
+                    gridClass="room-panel-character-grid grid gap-2"
+                    listClass="room-panel-character-grid grid gap-2"
+                    gridOverlapInset={0.18}
+                    childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
                     onItemClick={(character) => {
                         if ($activeChat) {
                             void handleSelectCharacter(character.id);
@@ -347,23 +382,64 @@
                         )}
                 >
                     {#snippet empty()}
-                        <div class="col-span-3">
+                        <div class="col-span-full">
                             <EmptyListPlaceholder message="No characters." />
+                        </div>
+                    {/snippet}
+                    {#snippet folder({ folder: f, collapsed, toggle, parts })}
+                        <div
+                            role="button"
+                            tabindex="0"
+                            aria-expanded={!collapsed}
+                            aria-label={f.name}
+                            class="group/folder relative w-full cursor-pointer select-none"
+                            onclick={toggle}
+                            onkeydown={(event) => {
+                                if (event.target !== event.currentTarget) return;
+                                if (event.key !== 'Enter' && event.key !== ' ') return;
+                                event.preventDefault();
+                                toggle();
+                            }}
+                        >
+                            <MediaEntityCard
+                                name={f.name}
+                                align="center"
+                                density="compact"
+                                interactive={false}
+                                class="hover:border-foreground/25 hover:bg-sidebar-accent"
+                                footerClass="py-1"
+                            >
+                                {#snippet visual()}
+                                    {@render parts.icon({
+                                        folder: f,
+                                        collapsed,
+                                        sizeClass: 'size-10 rounded-lg [&_svg]:size-4'
+                                    })}
+                                {/snippet}
+                                {#snippet nameContent()}
+                                    {@render parts.name({ folder: f })}
+                                {/snippet}
+                                {#snippet action()}
+                                    {@render parts.actions({ folder: f })}
+                                {/snippet}
+                            </MediaEntityCard>
                         </div>
                     {/snippet}
                     {#snippet item({ entity: character })}
                         {@const selected = $chatSelections?.characterId === character.id}
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
-                            <div
-                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
+                            <MediaEntityCard
+                                name={character.name}
+                                align="center"
+                                density="compact"
+                                interactive={false}
+                                footerClass="py-1"
+                                class={selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:bg-sidebar-accent'}"
-                                title={character.name}
+                                    : 'hover:border-foreground/25 hover:bg-sidebar-accent'}
                             >
-                                <div
-                                    class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
-                                >
+                                {#snippet visual()}
                                     {#if character.avatar}
                                         <AssetView
                                             asset={{
@@ -377,13 +453,30 @@
                                             }}
                                             alt={character.name}
                                             class="size-full object-cover"
+                                            focus="top"
                                         />
                                     {:else}
                                         {initial(character.name)}
                                     {/if}
-                                </div>
-                                <span class="w-full truncate text-[11px]">{character.name}</span>
-                            </div>
+                                {/snippet}
+                                {#snippet nameContent()}
+                                    <span
+                                        class="inline-flex max-w-full min-w-0 items-center justify-center gap-1"
+                                    >
+                                        {#if isDefault}
+                                            <span
+                                                role="img"
+                                                class="inline-flex size-3 shrink-0 items-center justify-center text-primary"
+                                                title="Default character"
+                                                aria-label={`${character.name} is the default character`}
+                                            >
+                                                <Pin class="size-3" />
+                                            </span>
+                                        {/if}
+                                        <span class="min-w-0 truncate">{character.name}</span>
+                                    </span>
+                                {/snippet}
+                            </MediaEntityCard>
                             <ParticipantCardMenu
                                 kind="character"
                                 name={character.name}
@@ -396,36 +489,6 @@
                                 onSetDefault={() => handleSetDefaultCharacter(character.id)}
                                 onRemove={() => handleRemoveCharacter(character.id)}
                             />
-                            <button
-                                class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
-                                title="Open character studio"
-                                aria-label={`Open ${character.name} studio`}
-                                onclick={() => handleOpenCharacter(character.id)}
-                            >
-                                <Settings class="size-3" />
-                            </button>
-                            <button
-                                class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
-                                    ? 'text-primary opacity-100'
-                                    : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
-                                title="Set default character"
-                                aria-label={`Set ${character.name} as default character`}
-                                disabled={!$activeChat || panelAction !== null}
-                                aria-busy={panelAction === `default-character:${character.id}`}
-                                onclick={() => handleSetDefaultCharacter(character.id)}
-                            >
-                                <Pin class="size-3" />
-                            </button>
-                            <button
-                                class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
-                                title="Remove from room"
-                                aria-label={`Remove ${character.name} from room`}
-                                disabled={panelAction !== null}
-                                aria-busy={panelAction === `remove-character:${character.id}`}
-                                onclick={() => handleRemoveCharacter(character.id)}
-                            >
-                                <X class="size-3" />
-                            </button>
                         </div>
                     {/snippet}
                 </EntityList>
@@ -444,8 +507,8 @@
                 </div>
                 <Button
                     variant="ghost"
-                    size="icon"
-                    class="size-8 shrink-0"
+                    size="icon-sm"
+                    class="shrink-0"
                     title="New chat"
                     aria-label="New chat"
                     disabled={panelAction !== null}
@@ -481,10 +544,19 @@
                             <EmptyListPlaceholder message="No chats yet." />
                         {/snippet}
                         {#snippet folder({ folder: f, collapsed, toggle, parts })}
-                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                             <div
+                                role="button"
+                                tabindex="0"
+                                aria-expanded={!collapsed}
+                                aria-label={f.name}
                                 class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
                                 onclick={toggle}
+                                onkeydown={(event) => {
+                                    if (event.target !== event.currentTarget) return;
+                                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                                    event.preventDefault();
+                                    toggle();
+                                }}
                             >
                                 <div class="flex items-center gap-2 min-w-0 flex-1">
                                     {#if collapsed}
@@ -539,8 +611,7 @@
                                         />
                                         <Button
                                             type="submit"
-                                            size="icon"
-                                            class="size-7"
+                                            size="icon-sm"
                                             aria-label="Save chat name"
                                             disabled={panelAction !== null}
                                             aria-busy={panelAction === `rename-chat:${chat.id}`}
@@ -550,8 +621,8 @@
                                         <Button
                                             type="button"
                                             variant="ghost"
-                                            size="icon"
-                                            class="size-7"
+                                            size="icon-sm"
+                                            aria-label="Cancel chat rename"
                                             disabled={panelAction !== null}
                                             onclick={() => {
                                                 editingChatId = null;
@@ -571,8 +642,11 @@
                                                 {chat.title || 'Untitled Chat'}
                                             </span>
                                         </div>
-                                        <button
-                                            class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="touch-visible text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                                             title="Rename chat"
                                             aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
                                             disabled={panelAction !== null}
@@ -582,18 +656,21 @@
                                                     chat.title || 'Untitled Chat'
                                                 )}
                                         >
-                                            <Edit3 class="size-3" />
-                                        </button>
-                                        <button
-                                            class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                            <Edit3 class="size-3.5" />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="touch-visible text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100 focus-visible:opacity-100"
                                             title="Delete chat"
                                             aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
                                             disabled={panelAction !== null}
                                             aria-busy={panelAction === `delete-chat:${chat.id}`}
                                             onclick={() => handleDeleteChat(chat.id)}
                                         >
-                                            <Trash2 class="size-3" />
-                                        </button>
+                                            <Trash2 class="size-3.5" />
+                                        </Button>
                                     </div>
                                 {/if}
                             </div>
@@ -622,15 +699,21 @@
                 </div>
             {/if}
         </div>
-        <Button
-            variant="outline"
-            size="icon-lg"
-            class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
-            title="Hide room panel"
-            aria-label="Hide room panel"
-            onclick={onClose}
-        >
-            <ChevronLeft class="size-4" />
-        </Button>
     </div>
 {/if}
+
+<style>
+    .app-sidebar-room-panel {
+        container: room-panel / inline-size;
+    }
+
+    :global(.room-panel-character-grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @container room-panel (min-width: 20rem) {
+        :global(.room-panel-character-grid) {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+</style>

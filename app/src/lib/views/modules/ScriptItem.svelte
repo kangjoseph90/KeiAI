@@ -1,7 +1,9 @@
 <script lang="ts">
+    import { slide } from 'svelte/transition';
     import type { Script } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
     import { Badge } from '$lib/components/ui/badge';
@@ -76,29 +78,24 @@
     }
 </script>
 
-<div
-    aria-busy={busy}
-    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.enabled
-        ? ''
-        : 'opacity-55'}"
->
-    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+<EditableListItem {expanded} {busy} muted={!item.enabled}>
+    {#snippet header()}
         <div
-            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
             aria-hidden="true"
         >
-            <GripVertical class="size-4" />
+            <GripVertical class="size-3.5" />
         </div>
         <button
             type="button"
-            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
             aria-label={expanded ? 'Collapse script' : 'Expand script'}
         >
             {#if expanded}
-                <ChevronDown class="size-4" />
+                <ChevronDown class="size-3.5" />
             {:else}
-                <ChevronRight class="size-4" />
+                <ChevronRight class="size-3.5" />
             {/if}
         </button>
 
@@ -106,95 +103,95 @@
             disabled={busy}
             value={item.name}
             aria-label="Script name"
-            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
         <Badge variant="secondary" class="text-xs shrink-0">{item.phase}</Badge>
 
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground"
+            class="shrink-0 text-muted-foreground"
             title={item.enabled ? 'Disable script' : 'Enable script'}
             aria-label={item.enabled ? 'Disable script' : 'Enable script'}
             disabled={busy}
             onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
             {#if item.enabled}
-                <Eye class="size-4" />
+                <Eye class="size-3.5" />
             {:else}
-                <EyeOff class="size-4" />
+                <EyeOff class="size-3.5" />
             {/if}
         </Button>
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+            class="shrink-0 text-muted-foreground hover:text-destructive"
             title="Delete script"
             aria-label="Delete script"
             disabled={busy}
             onclick={handleDelete}
         >
-            <Trash2 class="size-4" />
+            <Trash2 class="size-3.5" />
         </Button>
-    </div>
+    {/snippet}
 
-    {#if expanded}
-        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-            <div class="space-y-1.5">
-                <Label class="text-xs">Phase</Label>
-                <div class="flex flex-wrap gap-1">
-                    {#each PHASE_OPTIONS as phase (phase)}
-                        <button
-                            class="px-2.5 py-1 text-xs rounded-md border transition-colors {item.phase ===
-                            phase
-                                ? 'bg-secondary text-secondary-foreground font-medium border-secondary shadow-sm'
-                                : 'hover:bg-accent hover:text-accent-foreground border-input bg-background'}"
-                            disabled={busy}
-                            onclick={() => handleUpdate({ phase })}
-                        >
-                            {phase}
-                        </button>
-                    {/each}
-                </div>
+    {#snippet details()}
+        <div class="space-y-1.5">
+            <Label class="text-xs">Phase</Label>
+            <div class="flex flex-wrap gap-1">
+                {#each PHASE_OPTIONS as phase (phase)}
+                    <button
+                        class="px-2.5 py-1 text-xs rounded-md border transition-colors {item.phase ===
+                        phase
+                            ? 'bg-secondary text-secondary-foreground font-medium border-secondary shadow-sm'
+                            : 'hover:bg-accent hover:text-accent-foreground border-input bg-background'}"
+                        disabled={busy}
+                        onclick={() => handleUpdate({ phase })}
+                    >
+                        {phase}
+                    </button>
+                {/each}
             </div>
+        </div>
 
-            <div class="space-y-1.5">
-                <Label class="text-xs">Regex</Label>
-                <Input
-                    disabled={busy}
-                    class="bg-background text-sm font-mono leading-relaxed"
-                    value={item.regex}
-                    onchange={(e) => handleUpdate({ regex: e.currentTarget.value })}
-                />
-            </div>
-            <div class="space-y-1.5">
-                <Label class="text-xs">Replacement</Label>
-                <Textarea
-                    disabled={busy}
-                    class="bg-background text-sm font-mono leading-relaxed min-h-[100px]"
-                    value={item.replacement}
-                    onchange={(e) => handleUpdate({ replacement: e.currentTarget.value })}
-                />
-            </div>
+        <div class="space-y-1.5">
+            <Label class="text-xs">Regex</Label>
+            <Input
+                disabled={busy}
+                class="bg-background text-sm font-mono leading-relaxed"
+                value={item.regex}
+                onchange={(e) => handleUpdate({ regex: e.currentTarget.value })}
+            />
+        </div>
+        <div class="space-y-1.5">
+            <Label class="text-xs">Replacement</Label>
+            <Textarea
+                disabled={busy}
+                class="bg-background text-sm font-mono leading-relaxed min-h-25"
+                value={item.replacement}
+                onchange={(e) => handleUpdate({ replacement: e.currentTarget.value })}
+            />
+        </div>
 
-            <div class="space-y-1.5">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
-                    onclick={() => (advancedOpen = !advancedOpen)}
-                >
-                    Advanced Settings
-                    {#if advancedOpen}
-                        <ChevronUp class="size-3" />
-                    {:else}
-                        <ChevronDown class="size-3" />
-                    {/if}
-                </Button>
-
+        <div class="space-y-1.5">
+            <Button
+                variant="ghost"
+                size="sm"
+                class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
+                onclick={() => (advancedOpen = !advancedOpen)}
+            >
+                Advanced Settings
                 {#if advancedOpen}
+                    <ChevronUp class="size-3" />
+                {:else}
+                    <ChevronDown class="size-3" />
+                {/if}
+            </Button>
+
+            {#if advancedOpen}
+                <div transition:slide={{ duration: 150 }}>
                     <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border sm:grid-cols-3">
                         <div class="space-y-1.5">
                             <Label class="text-xs">Flag</Label>
@@ -232,8 +229,8 @@
                             />
                         </div>
                     </div>
-                {/if}
-            </div>
+                </div>
+            {/if}
         </div>
-    {/if}
-</div>
+    {/snippet}
+</EditableListItem>

@@ -83,8 +83,8 @@
                         <Button
                             {disabled}
                             variant="ghost"
-                            size="icon"
-                            class="size-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             onclick={() => onRemove(key)}
                             aria-label={`Delete ${key}`}
                         >

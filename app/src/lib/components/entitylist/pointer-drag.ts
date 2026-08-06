@@ -74,7 +74,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
     let suppressClickUntil = 0;
     let previousBodyUserSelect: string | null = null;
     let sessionListenersAttached = false;
-    let touchMoveListenerAttached = false;
 
     function addSessionListeners(): void {
         if (sessionListenersAttached) return;
@@ -85,12 +84,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         window.addEventListener('blur', handleBlur);
     }
 
-    function addTouchMoveListener(): void {
-        if (touchMoveListenerAttached) return;
-        touchMoveListenerAttached = true;
-        window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    }
-
     function removeSessionListeners(): void {
         if (sessionListenersAttached) {
             sessionListenersAttached = false;
@@ -98,10 +91,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
             window.removeEventListener('pointerup', finish);
             window.removeEventListener('pointercancel', cancel);
             window.removeEventListener('blur', handleBlur);
-        }
-        if (touchMoveListenerAttached) {
-            touchMoveListenerAttached = false;
-            window.removeEventListener('touchmove', handleTouchMove);
         }
     }
 
@@ -172,7 +161,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         active = true;
         clearTimer();
         node.setPointerCapture?.(pointerId);
-        if (pointerType !== 'mouse') addTouchMoveListener();
         suppressSelection();
         node.classList.add('pointer-drag-source');
         ghost = node.cloneNode(true) as HTMLElement;
@@ -287,6 +275,10 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
     }
 
     node.addEventListener('pointerdown', handlePointerDown);
+    // This must exist before a touch gesture starts. Some mobile browsers hand the
+    // gesture to native scrolling when no blocking listener was present at touchstart,
+    // then cancel the pointer stream as soon as the held finger moves.
+    node.addEventListener('touchmove', handleTouchMove, { passive: false });
     node.addEventListener('click', handleClick, true);
     node.addEventListener('contextmenu', handleContextMenu);
 
@@ -298,6 +290,7 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         destroy() {
             cancel();
             node.removeEventListener('pointerdown', handlePointerDown);
+            node.removeEventListener('touchmove', handleTouchMove);
             node.removeEventListener('click', handleClick, true);
             node.removeEventListener('contextmenu', handleContextMenu);
         }

@@ -43,6 +43,7 @@ export interface AppSettingsContent {
     chat: {
         saveMessagesOnSwipe: boolean;
         expandStepsOnGeneration: boolean;
+        autoGenerateResponse: boolean;
     };
     translation: {
         targetLanguage: string;
@@ -100,7 +101,8 @@ export const defaultSettings: AppSettings = {
     theme: 'system',
     chat: {
         saveMessagesOnSwipe: true,
-        expandStepsOnGeneration: true
+        expandStepsOnGeneration: false,
+        autoGenerateResponse: true
     },
     translation: {
         targetLanguage: '',

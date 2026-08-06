@@ -164,7 +164,7 @@
             {/if}
         </CardDescription>
     </CardHeader>
-    <CardContent class="flex flex-col gap-5" aria-busy={loading}>
+    <CardContent class="flex flex-col gap-4" aria-busy={loading}>
         {#if errorMsg}
             <div
                 class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"
@@ -183,7 +183,7 @@
 
         {#if displayRecovery}
             <div
-                class="rounded-md bg-amber-500/15 p-4 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                class="rounded-md bg-amber-500/15 p-3 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20"
             >
                 <div class="mb-2 flex items-center gap-2 font-bold">
                     <ShieldAlert class="size-5 shrink-0" />
@@ -194,7 +194,7 @@
                     data.
                 </p>
                 <div
-                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all sm:text-xl sm:tracking-widest dark:border-amber-900 dark:bg-amber-950/50"
+                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all dark:border-amber-900 dark:bg-amber-950/50"
                 >
                     {displayRecovery}
                 </div>
@@ -202,7 +202,7 @@
         {/if}
 
         {#if !$isLoggedIn}
-            <section class="space-y-4">
+            <section class="space-y-3">
                 <div class="grid grid-cols-2 rounded-md border p-1">
                     <button
                         class="rounded px-3 py-2 text-sm font-medium {authView === 'signup'
@@ -223,51 +223,66 @@
                 </div>
 
                 {#if authView === 'signup'}
-                    <div class="space-y-3">
+                    <form
+                        onsubmit={(e) => {
+                            e.preventDefault();
+                            handleCreateAccount();
+                        }}
+                        class="space-y-3"
+                    >
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1">
-                                <Label>Username</Label>
+                                <Label for="account-signup-username">Username</Label>
                                 <Input
+                                    id="account-signup-username"
                                     bind:value={username}
                                     type="text"
                                     placeholder="your-name"
                                     disabled={loading}
+                                    autocomplete="username"
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Email (optional)</Label>
+                                <Label for="account-signup-email">Email (optional)</Label>
                                 <Input
+                                    id="account-signup-email"
                                     bind:value={email}
                                     type="email"
                                     placeholder="updates@example.com"
                                     disabled={loading}
+                                    autocomplete="email"
                                 />
                             </div>
                         </div>
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1">
-                                <Label>Password</Label>
+                                <Label for="account-signup-password">Password</Label>
                                 <Input
+                                    id="account-signup-password"
                                     bind:value={password}
                                     type="password"
                                     placeholder="Password"
                                     disabled={loading}
+                                    autocomplete="new-password"
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Confirm Password</Label>
+                                <Label for="account-signup-confirm-password">Confirm Password</Label
+                                >
                                 <Input
+                                    id="account-signup-confirm-password"
                                     bind:value={confirmPassword}
                                     type="password"
                                     placeholder="Confirm password"
                                     disabled={loading}
+                                    autocomplete="new-password"
                                 />
                             </div>
                         </div>
-                        <Button class="w-full" disabled={loading} onclick={handleCreateAccount}>
+                        <Button type="submit" class="w-full" disabled={loading}>
                             <UserPlus class="mr-2 size-4" /> Create Account
                         </Button>
-                    </div>
+                    </form>
                 {:else}
                     <div class="flex flex-wrap gap-2">
                         <Button
@@ -294,77 +309,103 @@
                     </div>
 
                     {#if loginMethod === 'password'}
-                        <div class="space-y-3">
+                        <form
+                            onsubmit={(e) => {
+                                e.preventDefault();
+                                handlePasswordLogin();
+                            }}
+                            class="space-y-3"
+                        >
                             <div class="space-y-1">
-                                <Label>Username</Label>
+                                <Label for="account-login-username">Username</Label>
                                 <Input
+                                    id="account-login-username"
                                     bind:value={username}
                                     type="text"
                                     placeholder="your-name"
                                     disabled={loading}
+                                    autocomplete="username"
                                 />
                             </div>
                             <div class="space-y-1">
-                                <Label>Password</Label>
+                                <Label for="account-login-password">Password</Label>
                                 <Input
+                                    id="account-login-password"
                                     bind:value={password}
                                     type="password"
                                     placeholder="Password"
                                     disabled={loading}
+                                    autocomplete="current-password"
                                 />
                             </div>
-                            <Button class="w-full" disabled={loading} onclick={handlePasswordLogin}>
+                            <Button type="submit" class="w-full" disabled={loading}>
                                 <Link class="mr-2 size-4" /> Log In
                             </Button>
-                        </div>
+                        </form>
                     {:else if loginMethod === 'recovery'}
-                        <div class="space-y-3">
+                        <form
+                            onsubmit={(e) => {
+                                e.preventDefault();
+                                handleRecover();
+                            }}
+                            class="space-y-3"
+                        >
                             <div class="space-y-1">
-                                <Label>Recovery Code</Label>
+                                <Label for="account-recovery-code">Recovery Code</Label>
                                 <Input
+                                    id="account-recovery-code"
                                     bind:value={recoveryCode}
                                     type="text"
                                     placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
                                     disabled={loading}
+                                    autocomplete="off"
                                 />
                             </div>
                             <div class="grid gap-3 sm:grid-cols-2">
                                 <div class="space-y-1">
-                                    <Label>New Password</Label>
+                                    <Label for="account-recovery-new-password">New Password</Label>
                                     <Input
+                                        id="account-recovery-new-password"
                                         bind:value={newPassword}
                                         type="password"
                                         placeholder="New password"
                                         disabled={loading}
+                                        autocomplete="new-password"
                                     />
                                 </div>
                                 <div class="space-y-1">
-                                    <Label>Confirm Password</Label>
+                                    <Label for="account-recovery-confirm-password"
+                                        >Confirm Password</Label
+                                    >
                                     <Input
+                                        id="account-recovery-confirm-password"
                                         bind:value={confirmPassword}
                                         type="password"
                                         placeholder="Confirm password"
                                         disabled={loading}
+                                        autocomplete="new-password"
                                     />
                                 </div>
                             </div>
-                            <Button class="w-full" disabled={loading} onclick={handleRecover}>
+                            <Button type="submit" class="w-full" disabled={loading}>
                                 <Key class="mr-2 size-4" /> Recover Account
                             </Button>
                             <Button
+                                type="button"
                                 variant="ghost"
                                 class="w-full text-destructive hover:text-destructive"
                                 disabled={loading}
                                 onclick={() => (loginMethod = 'delete_remote')}
                             >
-                                Delete remote account instead
+                                Force Delete Remote Backup
                             </Button>
-                        </div>
+                        </form>
                     {:else if loginMethod === 'pairing'}
                         <div class="space-y-3">
                             <div class="space-y-1">
-                                <Label>Pairing Code</Label>
+                                <Label for="account-pairing-code">Pairing Code</Label>
                                 <Input
+                                    id="account-pairing-code"
                                     bind:value={pairingCodeInput}
                                     type="text"
                                     placeholder="XXXXXXXX"
@@ -377,14 +418,15 @@
                         </div>
                     {:else}
                         <div
-                            class="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4"
+                            class="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-3"
                         >
                             <h3 class="font-bold flex items-center gap-2 text-destructive">
                                 <AlertTriangle class="size-4" /> Delete Remote Account
                             </h3>
                             <div class="space-y-1">
-                                <Label>Recovery Code</Label>
+                                <Label for="account-delete-recovery-code">Recovery Code</Label>
                                 <Input
+                                    id="account-delete-recovery-code"
                                     bind:value={recoveryCode}
                                     type="text"
                                     placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
@@ -412,7 +454,7 @@
                 {/if}
             </section>
         {:else}
-            <section class="space-y-4">
+            <section class="space-y-3">
                 <div class="flex flex-wrap gap-2">
                     <Button
                         variant={accountView === 'security' ? 'secondary' : 'outline'}
@@ -434,31 +476,44 @@
                 </div>
 
                 {#if accountView === 'security'}
-                    <div class="space-y-3">
+                    <form
+                        onsubmit={(e) => {
+                            e.preventDefault();
+                            handleChangePassword();
+                        }}
+                        class="space-y-3"
+                    >
                         <div class="space-y-1">
-                            <Label>Current Password</Label>
-                            <Input bind:value={password} type="password" disabled={loading} />
+                            <Label for="account-current-password">Current Password</Label>
+                            <Input
+                                id="account-current-password"
+                                bind:value={password}
+                                type="password"
+                                disabled={loading}
+                                autocomplete="current-password"
+                            />
                         </div>
                         <div class="space-y-1">
-                            <Label>New Password</Label>
-                            <Input bind:value={newPassword} type="password" disabled={loading} />
+                            <Label for="account-new-password">New Password</Label>
+                            <Input
+                                id="account-new-password"
+                                bind:value={newPassword}
+                                type="password"
+                                disabled={loading}
+                                autocomplete="new-password"
+                            />
                         </div>
-                        <Button
-                            variant="outline"
-                            class="w-full"
-                            disabled={loading}
-                            onclick={handleChangePassword}
-                        >
+                        <Button type="submit" variant="outline" class="w-full" disabled={loading}>
                             Change Password
                         </Button>
-                    </div>
+                    </form>
                 {:else if accountView === 'devices'}
                     <div class="space-y-3">
                         <Button class="w-full" disabled={loading} onclick={handleGeneratePairing}>
                             Generate Pairing Code
                         </Button>
                         {#if generatedPairingCode}
-                            <div class="rounded-md border bg-secondary/20 p-4 text-center">
+                            <div class="rounded-md border bg-secondary/20 p-3 text-center">
                                 <Label>Pairing Code</Label>
                                 <div class="mt-2 text-2xl font-mono tracking-widest font-bold">
                                     {generatedPairingCode}

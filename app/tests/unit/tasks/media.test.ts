@@ -24,7 +24,7 @@ vi.mock('$lib/stores', () => ({
 
 vi.mock('$lib/services', () => ({
     PagedMessages: {
-        createBefore: mocks.createPagedMessages
+        createThrough: mocks.createPagedMessages
     }
 }));
 
@@ -75,7 +75,7 @@ describe('media tasks', () => {
                 }
             }
         });
-        mocks.createPagedMessages.mockResolvedValue({ length: 2 });
+        mocks.createPagedMessages.mockResolvedValue({ length: 3 });
         mocks.runtimeStream.mockImplementation(async function* () {
             yield '<|inlay|>["audio-1","image-1"]<|/inlay|>';
         });
@@ -89,7 +89,9 @@ describe('media tasks', () => {
     it('stores only image outputs from the image generation workflow', async () => {
         await runImageGeneration('message-1');
 
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
+        );
         expect(mocks.updateMessageSwipe).toHaveBeenCalledWith('message-1', 'swipe-1', {
             imageAttachments: ['image-1']
         });
@@ -104,6 +106,9 @@ describe('media tasks', () => {
     it('stores only audio outputs from the TTS workflow', async () => {
         await runTTS('message-1');
 
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
+        );
         expect(mocks.updateMessageSwipe).toHaveBeenCalledWith('message-1', 'swipe-1', {
             audioAttachments: ['audio-1']
         });

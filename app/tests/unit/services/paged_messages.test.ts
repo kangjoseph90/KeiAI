@@ -4,6 +4,7 @@ import { MessageService, type Message } from '$lib/services/content/message';
 
 vi.mock('$lib/services/content/message', () => ({
     MessageService: {
+        get: vi.fn(),
         countByChat: vi.fn(),
         countByChatBefore: vi.fn(),
         getMessagesAfter: vi.fn(),
@@ -37,10 +38,15 @@ function mockPages(messages: Message[]): void {
             messages.slice(offset, offset + limit)
     );
     vi.mocked(MessageService.getMessagesBefore).mockImplementation(
-        async (_chatId, _cursorSortOrder, limit = 50, offset = 0) => {
-            const end = messages.length - offset;
+        async (_chatId, cursorSortOrder, limit = 50, offset = 0) => {
+            const cursor = cursorSortOrder ?? '\uffff';
+            const boundedMessages =
+                cursor === 'a-target'
+                    ? messages
+                    : messages.filter((message) => message.sortOrder < cursor);
+            const end = boundedMessages.length - offset;
             const start = Math.max(0, end - limit);
-            return messages.slice(start, end);
+            return boundedMessages.slice(start, end);
         }
     );
 }
@@ -52,6 +58,9 @@ describe('PagedMessages', () => {
         vi.clearAllMocks();
         vi.mocked(MessageService.countByChat).mockResolvedValue(messages.length);
         vi.mocked(MessageService.countByChatBefore).mockResolvedValue(messages.length);
+        vi.mocked(MessageService.get).mockImplementation(
+            async (id) => messages.find((message) => message.id === id) ?? null
+        );
         mockPages(messages);
     });
 
@@ -63,6 +72,76 @@ describe('PagedMessages', () => {
         expect(paged.length).toBe(10);
         expect(paged.beforeSortOrder).toBe('a-target');
         expect(MessageService.countByChatBefore).toHaveBeenCalledWith('chat-1', 'a-target');
+    });
+
+    it('creates an inclusive view with the target at the normalized last index', async () => {
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValueOnce(6);
+
+        const paged = await PagedMessages.createThrough(messages[6], { pageSize: 4 });
+
+        expect(paged.length).toBe(7);
+        await expect(paged.at(6)).resolves.toMatchObject({
+            message: { id: 'msg-6' },
+            index: 6
+        });
+        await expect(paged.at(-1)).resolves.toMatchObject({
+            message: { id: 'msg-6' },
+            index: 6
+        });
+    });
+
+    it('slices the target after the paged messages without shifting the previous page', async () => {
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValueOnce(6);
+
+        const paged = await PagedMessages.createThrough(messages[6], { pageSize: 4 });
+
+        const result = await paged.slice(3, 7);
+
+        expect(result.map((entry) => entry.message)).toEqual(messages.slice(3, 7));
+        expect(result.map((entry) => entry.index)).toEqual([3, 4, 5, 6]);
+        expect(MessageService.getMessagesBefore).toHaveBeenCalledWith('chat-1', 'a6', 2, 0);
+    });
+
+    it('refreshes the separately held target when its index is invalidated', async () => {
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValueOnce(6);
+        const paged = await PagedMessages.createThrough(messages[6]);
+        const updatedTarget: Message = {
+            ...messages[6],
+            swipes: {
+                ...messages[6].swipes,
+                [messages[6].activeSwipeId]: {
+                    ...messages[6].swipes[messages[6].activeSwipeId],
+                    parts: [{ type: 'text', text: 'updated target' }]
+                }
+            }
+        };
+        vi.mocked(MessageService.get).mockResolvedValue(updatedTarget);
+
+        await paged.at(-1);
+        paged.invalidate(6);
+
+        await expect(paged.at(6)).resolves.toMatchObject({
+            message: {
+                id: 'msg-6',
+                swipes: {
+                    'swipe-6': { parts: [{ type: 'text', text: 'updated target' }] }
+                }
+            }
+        });
+        expect(MessageService.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('supports an inclusive target with no preceding messages', async () => {
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValueOnce(0);
+        const target = makeMessage(0);
+        const paged = await PagedMessages.createThrough(target, { pageSize: 4 });
+
+        await expect(paged.at(0)).resolves.toEqual({ message: target, index: 0 });
+        await expect(paged.at(-1)).resolves.toEqual({ message: target, index: 0 });
+        await expect(paged.toArray()).resolves.toEqual([{ message: target, index: 0 }]);
+        expect(MessageService.get).not.toHaveBeenCalled();
+        expect(MessageService.getMessagesAfter).not.toHaveBeenCalled();
+        expect(MessageService.getMessagesBefore).not.toHaveBeenCalled();
     });
 
     it('reads positive and negative indexes', async () => {

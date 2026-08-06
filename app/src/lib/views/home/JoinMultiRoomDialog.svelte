@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Globe2, KeyRound, Search, Users } from 'lucide-svelte';
+    import { Globe2, KeyRound, Search, UsersRound } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         Dialog,
@@ -71,7 +71,7 @@
     <DialogContent class="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
             <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Users class="size-3.5" /> Multi Rooms
+                <UsersRound class="size-3.5" /> Multi Rooms
             </div>
             <DialogTitle class="text-lg">Join a shared room</DialogTitle>
             <DialogDescription>

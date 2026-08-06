@@ -11,9 +11,16 @@
         Languages,
         Network,
         DatabaseZap,
-        Trash2
+        Trash2,
+        BrainCircuit,
+        Brain,
+        Layers,
+        LayoutGrid,
+        Wand2,
+        Shapes
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import SettingRow from '$lib/components/SettingRow.svelte';
     import { WorkspaceShell } from '$lib/components/layout';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -24,9 +31,11 @@
         CardTitle,
         CardDescription
     } from '$lib/components/ui/card';
+    import { Badge } from '$lib/components/ui/badge';
     import {
         appSettings,
         updateSettings,
+        activePreset,
         activeRoom,
         activeChat,
         deleteActiveLocalUser,
@@ -55,9 +64,9 @@
     let maintenanceBusy = $state(false);
 
     const tabs = [
-        { id: 'models', label: 'Models', icon: Cpu },
-        { id: 'services', label: 'AI Services', icon: Sparkles },
+        { id: 'models', label: 'Models', icon: Layers },
         { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'services', label: 'Services', icon: LayoutGrid },
         { id: 'plugins', label: 'Plugins', icon: Puzzle },
         { id: 'language', label: 'Language', icon: Languages },
         { id: 'profile', label: 'Profile', icon: User },
@@ -160,6 +169,14 @@
     }
 </script>
 
+{#snippet titleExtra()}
+    {#if $activePreset && (activeTab === 'models' || activeTab === 'chat')}
+        <Badge variant="outline" class="font-mono text-xs shrink-0">
+            {$activePreset.name}
+        </Badge>
+    {/if}
+{/snippet}
+
 <WorkspaceShell
     workspaceName="Settings"
     sections={tabs}
@@ -169,22 +186,23 @@
     onBack={returnToTabs}
     onClose={backToChat}
     closeLabel="Close settings"
+    {titleExtra}
 >
     {#if activeTab === 'models'}
-        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">
+        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pt-3 pb-4 md:px-8 md:pb-8 md:pt-1">
             <ModelsSettings />
         </div>
-    {:else if activeTab === 'services'}
-        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">
-            <ServicesSettings />
-        </div>
     {:else if activeTab === 'chat'}
-        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">
+        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pt-3 pb-4 md:px-8 md:pb-8 md:pt-1">
             <ChatSettings />
+        </div>
+    {:else if activeTab === 'services'}
+        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pt-3 pb-4 md:px-8 md:pb-8 md:pt-1">
+            <ServicesSettings />
         </div>
     {:else}
         <ScrollArea class="min-h-0 flex-1">
-            <div class="max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
+            <div class="max-w-4xl space-y-5 p-4 md:px-8 md:pb-8 md:pt-4">
                 {#if activeTab === 'plugins'}
                     <PluginsView />
                 {:else if activeTab === 'language'}
@@ -196,7 +214,7 @@
                 {:else if activeTab === 'connections'}
                     <ConnectionsSettings />
                 {:else if activeTab === 'general'}
-                    <div class="space-y-6">
+                    <div class="space-y-5">
                         <Card>
                             <CardHeader>
                                 <CardTitle>Appearance</CardTitle>
@@ -205,9 +223,7 @@
                                 >
                             </CardHeader>
                             <CardContent class="space-y-4">
-                                <div
-                                    class="flex items-center justify-between p-4 border rounded-lg"
-                                >
+                                <SettingRow>
                                     <div class="space-y-0.5">
                                         <Label>Color Theme</Label>
                                         <p class="text-xs text-muted-foreground">
@@ -225,7 +241,7 @@
                                         <RefreshCw class="size-4" />
                                         Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
                                     </Button>
-                                </div>
+                                </SettingRow>
                             </CardContent>
                         </Card>
 
@@ -237,17 +253,43 @@
                                 >
                             </CardHeader>
                             <CardContent class="space-y-4">
-                                <div
-                                    class="flex items-center justify-between gap-4 p-4 border rounded-lg"
-                                >
+                                <SettingRow>
                                     <div class="space-y-0.5">
-                                        <Label>Save messages on swipe</Label>
+                                        <Label for="setting-auto-generate-response"
+                                            >Generate response after sending</Label
+                                        >
+                                        <p class="text-xs text-muted-foreground">
+                                            Automatically start generating a response after you send
+                                            a message.
+                                        </p>
+                                    </div>
+                                    <input
+                                        id="setting-auto-generate-response"
+                                        type="checkbox"
+                                        class="size-5 shrink-0 rounded border-primary"
+                                        checked={$appSettings?.chat?.autoGenerateResponse !== false}
+                                        disabled={settingsBusy}
+                                        onchange={(e) =>
+                                            updateSettingsSafely({
+                                                chat: {
+                                                    autoGenerateResponse: e.currentTarget.checked
+                                                }
+                                            })}
+                                    />
+                                </SettingRow>
+
+                                <SettingRow>
+                                    <div class="space-y-0.5">
+                                        <Label for="setting-save-messages-on-swipe"
+                                            >Save messages on swipe</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
                                             Save message history when swiping between alternative
                                             responses.
                                         </p>
                                     </div>
                                     <input
+                                        id="setting-save-messages-on-swipe"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary"
                                         checked={$appSettings?.chat?.saveMessagesOnSwipe !== false}
@@ -259,19 +301,20 @@
                                                 }
                                             })}
                                     />
-                                </div>
+                                </SettingRow>
 
-                                <div
-                                    class="flex items-center justify-between gap-4 p-4 border rounded-lg"
-                                >
+                                <SettingRow>
                                     <div class="space-y-0.5">
-                                        <Label>Expand trace steps during generation</Label>
+                                        <Label for="setting-expand-steps"
+                                            >Expand trace steps during generation</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
                                             Automatically expand reasoning steps when AI is
                                             generating responses.
                                         </p>
                                     </div>
                                     <input
+                                        id="setting-expand-steps"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary"
                                         checked={$appSettings?.chat?.expandStepsOnGeneration !==
@@ -284,7 +327,7 @@
                                                 }
                                             })}
                                     />
-                                </div>
+                                </SettingRow>
                             </CardContent>
                         </Card>
 

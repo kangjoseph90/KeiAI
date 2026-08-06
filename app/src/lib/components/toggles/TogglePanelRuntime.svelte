@@ -37,17 +37,21 @@
     mode="browse"
     layout="list"
     listClass="flex w-full flex-col gap-1.5"
-    childContainerClass="ml-2 border-l border-sidebar-border px-2 py-1"
-    folderWrapperClass={() => 'w-full py-0.5'}
-    itemWrapperClass={() => 'w-full py-0.5'}
+    childContainerClass="ml-2 border-l border-sidebar-border px-2"
+    folderWrapperClass={() => 'w-full'}
+    itemWrapperClass={() => 'w-full'}
 >
     {#snippet folder({ folder, collapsed, toggle })}
         <button
             type="button"
-            class="flex w-full items-center gap-1 rounded px-1 py-1 text-left text-xs font-medium hover:bg-sidebar-accent"
+            class="flex min-h-7 w-full items-center gap-2 rounded px-1.5 text-left text-xs font-medium hover:bg-sidebar-accent"
             onclick={toggle}
         >
-            {#if collapsed}<ChevronRight class="size-3" />{:else}<ChevronDown class="size-3" />{/if}
+            <ChevronRight
+                class="size-3 shrink-0 transition-transform duration-150 {collapsed
+                    ? ''
+                    : 'rotate-90'}"
+            />
             <span class="truncate">{folder.name}</span>
         </button>
     {/snippet}
@@ -57,7 +61,7 @@
                 {entity.text}
             </p>
         {:else if entity.kind === 'divider'}
-            <div class="flex items-center gap-2 py-1" aria-hidden="true">
+            <div class="flex items-center gap-2" aria-hidden="true">
                 <div class="h-px flex-1 bg-sidebar-border"></div>
                 {#if entity.label}
                     <span class="text-[10px] text-muted-foreground">{entity.label}</span>
@@ -68,7 +72,7 @@
             {@const value = getToggleValue(entity)}
             {#if entity.control.type === 'checkbox'}
                 <label
-                    class="flex cursor-pointer items-center justify-between gap-2 rounded px-1 py-1 text-xs hover:bg-sidebar-accent"
+                    class="flex min-h-7 cursor-pointer items-center justify-between gap-2 rounded px-1.5 text-xs hover:bg-sidebar-accent"
                 >
                     <span>{entity.label}</span>
                     <input
@@ -80,11 +84,11 @@
                 </label>
             {:else if entity.control.type === 'select'}
                 <label
-                    class="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-xs hover:bg-sidebar-accent"
+                    class="flex min-h-7 items-center justify-between gap-2 rounded px-1.5 text-xs hover:bg-sidebar-accent"
                 >
                     <span class="min-w-0 flex-1 truncate">{entity.label}</span>
                     <select
-                        class="h-7 w-36 max-w-[60%] shrink-0 select-text rounded border bg-background px-2 text-xs"
+                        class="h-7 w-36 max-w-[60%] shrink-0 select-text rounded border bg-background px-1.5 text-xs"
                         value={String(value)}
                         disabled={busyItemId !== null}
                         onchange={(event) => changeValue(entity.id, event.currentTarget.value)}
@@ -98,7 +102,7 @@
                 <label class="flex flex-col gap-1 px-1 py-1 text-xs">
                     <span>{entity.label}</span>
                     <textarea
-                        class="min-h-16 select-text resize-y rounded border bg-background px-2 py-1.5 text-xs"
+                        class="min-h-16 max-h-48 select-text resize-y rounded border bg-background px-2 py-1.5 text-xs"
                         value={String(value)}
                         disabled={busyItemId !== null}
                         onchange={(event) => changeValue(entity.id, event.currentTarget.value)}
@@ -106,11 +110,11 @@
                 </label>
             {:else}
                 <label
-                    class="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-xs hover:bg-sidebar-accent"
+                    class="flex min-h-7 items-center justify-between gap-2 rounded px-1.5 text-xs hover:bg-sidebar-accent"
                 >
                     <span class="min-w-0 flex-1 truncate">{entity.label}</span>
                     <input
-                        class="h-7 w-36 max-w-[60%] shrink-0 select-text rounded border bg-background px-2 text-xs"
+                        class="h-7 w-36 max-w-[60%] shrink-0 select-text rounded border bg-background px-1.5 text-xs"
                         value={String(value)}
                         disabled={busyItemId !== null}
                         onchange={(event) => changeValue(entity.id, event.currentTarget.value)}

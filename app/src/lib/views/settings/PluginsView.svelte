@@ -29,6 +29,7 @@
     } from 'lucide-svelte';
     import { pluginManager } from '$lib/plugins';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
@@ -230,31 +231,31 @@
                 <EmptyListPlaceholder message="No plugins defined." />
             {/snippet}
             {#snippet item({ entity: plugin })}
-                <div
-                    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {plugin.enabled
-                        ? ''
-                        : 'opacity-55'}"
+                <EditableListItem
+                    expanded={expandedPluginIds[plugin.id]}
+                    muted={!plugin.enabled}
+                    busy={busyAction !== null}
                 >
-                    <!-- 헤더 영역 -->
-                    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                    {#snippet header()}
+                        <!-- 헤더 영역 -->
                         <div
-                            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                            class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
                             aria-hidden="true"
                         >
-                            <GripVertical class="size-4" />
+                            <GripVertical class="size-3.5" />
                         </div>
                         <button
                             type="button"
-                            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             onclick={() => toggleExpanded(plugin.id)}
                             aria-label={expandedPluginIds[plugin.id]
                                 ? 'Collapse plugin'
                                 : 'Expand plugin'}
                         >
                             {#if expandedPluginIds[plugin.id]}
-                                <ChevronDown class="size-4" />
+                                <ChevronDown class="size-3.5" />
                             {:else}
-                                <ChevronRight class="size-4" />
+                                <ChevronRight class="size-3.5" />
                             {/if}
                         </button>
 
@@ -262,7 +263,7 @@
                             value={plugin.name}
                             disabled={busyAction !== null}
                             aria-label="Plugin name"
-                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
                             onchange={(e) =>
                                 updatePluginSafely(plugin.id, { name: e.currentTarget.value })}
                         />
@@ -283,9 +284,9 @@
                         {/if}
 
                         <Button
-                            size="icon"
+                            size="icon-sm"
                             variant="ghost"
-                            class="size-8 shrink-0 text-muted-foreground"
+                            class="shrink-0 text-muted-foreground"
                             title={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
                             aria-label={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
                             disabled={busyAction !== null}
@@ -293,58 +294,58 @@
                             onclick={() => handleToggleEnabled(plugin)}
                         >
                             {#if plugin.enabled}
-                                <Eye class="size-4" />
+                                <Eye class="size-3.5" />
                             {:else}
-                                <EyeOff class="size-4" />
+                                <EyeOff class="size-3.5" />
                             {/if}
                         </Button>
 
                         {#if plugin.enabled}
                             {#if loadedPluginIds.includes(plugin.id)}
                                 <Button
-                                    size="icon"
+                                    size="icon-sm"
                                     variant="ghost"
-                                    class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                    class="shrink-0 text-muted-foreground hover:text-destructive"
                                     title="Unload plug-in"
                                     aria-label="Unload plug-in"
                                     disabled={busyAction !== null}
                                     aria-busy={busyAction === `unload:${plugin.id}`}
                                     onclick={() => handleUnload(plugin.id)}
                                 >
-                                    <Square class="size-4" />
+                                    <Square class="size-3.5" />
                                 </Button>
                             {:else}
                                 <Button
-                                    size="icon"
+                                    size="icon-sm"
                                     variant="ghost"
-                                    class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                                    class="shrink-0 text-muted-foreground hover:text-foreground"
                                     title="Load plug-in"
                                     aria-label="Load plug-in"
                                     disabled={busyAction !== null}
                                     aria-busy={busyAction === `load:${plugin.id}`}
                                     onclick={() => handleLoad(plugin.id)}
                                 >
-                                    <Play class="size-4" />
+                                    <Play class="size-3.5" />
                                 </Button>
                             {/if}
                         {/if}
 
                         <Button
-                            size="icon"
+                            size="icon-sm"
                             variant="ghost"
-                            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                            class="shrink-0 text-muted-foreground hover:text-destructive"
                             aria-label="Delete plugin"
                             disabled={busyAction !== null}
                             aria-busy={busyAction === `delete:${plugin.id}`}
                             onclick={() => handleDelete(plugin)}
                         >
-                            <Trash2 class="size-4" />
+                            <Trash2 class="size-3.5" />
                         </Button>
-                    </div>
+                    {/snippet}
 
                     <!-- 펼쳐지는 바디 영역 -->
-                    {#if expandedPluginIds[plugin.id]}
-                        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
+                    {#snippet details()}
+                        <div class="flex flex-col gap-3">
                             <!-- 1. Description -->
                             <!-- 1. Description & Version -->
                             <div class="grid gap-3 sm:grid-cols-3">
@@ -403,8 +404,8 @@
                                 />
                             </div>
                         </div>
-                    {/if}
-                </div>
+                    {/snippet}
+                </EditableListItem>
             {/snippet}
         </EntityList>
     </div>

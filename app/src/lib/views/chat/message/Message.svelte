@@ -21,7 +21,7 @@
         Copy,
         Languages
     } from 'lucide-svelte';
-    import { onDestroy } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
@@ -139,6 +139,9 @@
     let messageStyleHtml = $state('');
     let messageStyleSignature = '';
     let messageStyleVersion = 0;
+    let messageElement = $state<HTMLDivElement | null>(null);
+    let translationMinHeight = $state(0);
+    let translationLockKey = '';
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -210,6 +213,38 @@
     let visibleStartIdx = $derived(findVisibleStartIndex(parts));
     let traceCount = $derived(visibleStartIdx);
     let lastTextIdx = $derived(findLastTextIndex(parts));
+
+    $effect(() => {
+        const task = translationTask;
+        const lastTextIndex = lastTextIdx;
+        const element = messageElement;
+        const isStreamingTranslation = showTranslation && task?.status === 'generating';
+
+        if (!isStreamingTranslation || !task) {
+            translationMinHeight = 0;
+            translationLockKey = '';
+            return;
+        }
+
+        const lockKey = `${message.id}:${task.sourceHash}`;
+        if (translationLockKey === lockKey || lastTextIndex < 0 || !element) return;
+
+        let cancelled = false;
+        void tick().then(() => {
+            if (cancelled || translationLockKey === lockKey) return;
+            const lastTextPart = element.querySelector<HTMLElement>(
+                '[data-translation-last-text="true"]'
+            );
+            if (!lastTextPart) return;
+
+            translationMinHeight = lastTextPart.getBoundingClientRect().height;
+            translationLockKey = lockKey;
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    });
 
     let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
@@ -429,8 +464,9 @@
 
 <!-- Message Container -->
 <div
-    class="group grid gap-x-2 md:flex md:gap-3 {isUser
-        ? 'grid-cols-[minmax(0,1fr)_2rem] md:flex-row-reverse'
+    bind:this={messageElement}
+    class="chat-message group grid w-full max-w-4xl flex-none content-start self-center gap-x-2 {isUser
+        ? 'is-user grid-cols-[minmax(0,1fr)_2rem]'
         : 'grid-cols-[2rem_minmax(0,1fr)]'}"
     role="group"
 >
@@ -444,6 +480,7 @@
                 asset={speakerAvatarLocator}
                 alt={speakerName}
                 class="size-full object-cover"
+                focus="top"
             />
         {:else}
             {speakerInitial}
@@ -451,19 +488,21 @@
     </div>
 
     <span
-        class="row-start-1 self-center truncate text-xs font-medium text-muted-foreground md:hidden {isUser
+        class="chat-message-mobile-name row-start-1 self-center truncate text-xs font-medium text-muted-foreground {isUser
             ? 'col-start-1 justify-self-end'
             : 'col-start-2'}">{speakerName}</span
     >
 
     <!-- Content Column -->
     <div
-        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%_-_1rem)] flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {imageAttachments.length >
+        class="chat-message-content col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%-1rem)] flex-none flex-col gap-1 {imageAttachments.length >
             0 || audioAttachments.length > 0
             ? 'w-full'
             : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"
     >
-        <span class="hidden text-xs font-medium text-muted-foreground md:block">{speakerName}</span>
+        <span class="chat-message-desktop-name hidden text-xs font-medium text-muted-foreground"
+            >{speakerName}</span
+        >
 
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}
@@ -574,7 +613,16 @@
                                 {#if isTrace}
                                     <span class="trace-dot"></span>
                                 {/if}
-                                <div class="trace-flat-body">
+                                <div
+                                    class="trace-flat-body"
+                                    data-translation-last-text={entry.index === lastTextIdx
+                                        ? 'true'
+                                        : undefined}
+                                    style:min-height={entry.index === lastTextIdx &&
+                                    translationMinHeight > 0
+                                        ? `${translationMinHeight}px`
+                                        : undefined}
+                                >
                                     {#if entry.part.type === 'thought'}
                                         <ThoughtPart
                                             text={entry.part.text}
@@ -667,9 +715,9 @@
                 </div>
             {/if}
 
-            <!-- Desktop: hover/focus. Mobile: always visible. -->
+            <!-- Wide containers: hover/focus. Narrow containers and touch: always visible. -->
             <div
-                class="touch-action-row flex max-w-full flex-row flex-nowrap items-center gap-0.5 transition-opacity md:gap-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {message.displayStatus !==
+                class="chat-message-actions touch-action-row flex max-w-full flex-row flex-nowrap items-center gap-0.5 transition-opacity {message.displayStatus !==
                 'completed'
                     ? 'pointer-events-none invisible select-none'
                     : ''}"
@@ -802,6 +850,41 @@
 </div>
 
 <style>
+    @container chat-messages (min-width: 32rem) {
+        .chat-message {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+
+        .chat-message.is-user {
+            flex-direction: row-reverse;
+        }
+
+        .chat-message-mobile-name {
+            display: none;
+        }
+
+        .chat-message-content {
+            margin: 0;
+            max-width: 75%;
+        }
+
+        .chat-message-desktop-name {
+            display: block;
+        }
+
+        .chat-message-actions {
+            gap: 0.25rem;
+            opacity: 0;
+        }
+
+        .chat-message:hover .chat-message-actions,
+        .chat-message:focus-within .chat-message-actions {
+            opacity: 1;
+        }
+    }
+
     .trace-flat-list {
         display: flex;
         flex-direction: column;

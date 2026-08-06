@@ -8,6 +8,7 @@
         CardHeader,
         CardTitle
     } from '$lib/components/ui/card';
+    import { Separator } from '$lib/components/ui/separator';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -173,6 +174,9 @@
     const feature = $derived(FEATURES.find((item) => item.id === activeFeature) ?? FEATURES[0]);
     const activeProvider = $derived(getActiveProvider($appSettings, activeFeature));
     const fields = $derived(getSettingsFields($appSettings, activeFeature));
+    const modelField = $derived(fields.find((f) => f.path[2] === 'modelId'));
+    const otherFields = $derived(fields.filter((f) => f.path[2] !== 'modelId'));
+    const hasModel = $derived(activeProvider === 'plugin' || modelField !== undefined);
     const activeWorkflow = $derived(
         activeFeature === 'imagegen'
             ? $appSettings?.imageGeneration.workflow
@@ -944,11 +948,11 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="mb-6 flex min-w-0 shrink-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
+    <div class="mb-4 flex min-w-0 shrink-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
         {#each FEATURES as item (item.id)}
             <button
                 type="button"
-                class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
+                class="min-w-max basis-24 grow shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
                 item.id
                     ? 'bg-background text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'}"
@@ -960,150 +964,178 @@
     </div>
 
     <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-        <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-5">
             <Card>
                 <CardHeader>
                     <CardTitle>{feature.label}</CardTitle>
                     <CardDescription>{feature.description}</CardDescription>
                 </CardHeader>
-                <CardContent class="space-y-6" aria-busy={saving}>
-                    <div class="space-y-2">
-                        <Label for="service-provider">Provider</Label>
-                        <select
-                            id="service-provider"
-                            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            value={activeProvider}
-                            disabled={saving}
-                            onchange={(event) =>
-                                updateActiveProvider(event.currentTarget.value as ServiceProvider)}
+                <CardContent class="flex flex-col gap-3" aria-busy={saving}>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div
+                            class="flex flex-col gap-1.5 {hasModel
+                                ? ''
+                                : 'col-span-1 sm:col-span-2'}"
                         >
-                            {#each getProviders(activeFeature) as provider (provider)}
-                                <option value={provider}
-                                    >{getProviderName(activeFeature, provider)}</option
-                                >
-                            {/each}
-                        </select>
-                    </div>
-
-                    {#if activeProvider === 'plugin'}
-                        <div class="space-y-2 border-t pt-6">
-                            <Label for="plugin-model">Model</Label>
+                            <Label for="service-provider">Provider</Label>
                             <select
-                                id="plugin-model"
-                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                value={$appSettings?.plugin[activeFeature].modelId ?? ''}
+                                id="service-provider"
+                                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                value={activeProvider}
                                 disabled={saving}
-                                onchange={(event) => updatePluginModel(event.currentTarget.value)}
+                                onchange={(event) =>
+                                    updateActiveProvider(
+                                        event.currentTarget.value as ServiceProvider
+                                    )}
                             >
-                                <option value="">Select a model...</option>
-                                {#each getPluginModels(activeFeature) as model (model.id)}
-                                    <option value={model.id}>{model.name}</option>
+                                {#each getProviders(activeFeature) as provider (provider)}
+                                    <option value={provider}
+                                        >{getProviderName(activeFeature, provider)}</option
+                                    >
                                 {/each}
                             </select>
                         </div>
-                    {/if}
 
-                    {#if fields.length > 0}
-                        <div class="border-t pt-6">
-                            <div class="grid gap-4 sm:grid-cols-2">
-                                {#each fields as field (field.id)}
-                                    <div
-                                        class="space-y-2 {field.id.endsWith('api-key') ||
-                                        field.path[2] === 'baseUrl' ||
-                                        field.multiline
-                                            ? 'sm:col-span-2'
-                                            : ''}"
+                        {#if activeProvider === 'plugin'}
+                            <div class="flex flex-col gap-1.5">
+                                <Label for="plugin-model">Model</Label>
+                                <select
+                                    id="plugin-model"
+                                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    value={$appSettings?.plugin[activeFeature].modelId ?? ''}
+                                    disabled={saving}
+                                    onchange={(event) =>
+                                        updatePluginModel(event.currentTarget.value)}
+                                >
+                                    <option value="">Select a model...</option>
+                                    {#each getPluginModels(activeFeature) as model (model.id)}
+                                        <option value={model.id}>{model.name}</option>
+                                    {/each}
+                                </select>
+                            </div>
+                        {:else if modelField}
+                            <div class="flex flex-col gap-1.5">
+                                <Label for={modelField.id}>{modelField.label}</Label>
+                                {#if modelField.options}
+                                    <select
+                                        id={modelField.id}
+                                        class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        value={modelField.value}
+                                        disabled={saving}
+                                        onchange={(event) =>
+                                            updateField(modelField, event.currentTarget.value)}
                                     >
-                                        <Label
-                                            for={field.id}
-                                            class="flex items-center justify-between"
+                                        {#each modelField.options as option (option)}
+                                            <option value={option}>{option}</option>
+                                        {/each}
+                                    </select>
+                                {:else}
+                                    <Input
+                                        id={modelField.id}
+                                        type="text"
+                                        value={modelField.value}
+                                        placeholder={modelField.placeholder}
+                                        disabled={saving}
+                                        onchange={(event) =>
+                                            updateField(modelField, event.currentTarget.value)}
+                                    />
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+
+                    {#if otherFields.length > 0}
+                        <Separator />
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            {#each otherFields as field (field.id)}
+                                <div
+                                    class="flex flex-col gap-1.5 {field.id.endsWith('api-key') ||
+                                    field.path[2] === 'baseUrl' ||
+                                    field.multiline
+                                        ? 'sm:col-span-2'
+                                        : ''}"
+                                >
+                                    <Label for={field.id}>
+                                        {field.secret
+                                            ? `${getProviderName(activeFeature, activeProvider)} API Key`
+                                            : field.label}
+                                    </Label>
+                                    {#if field.secret}
+                                        <form
+                                            onsubmit={(e) => e.preventDefault()}
+                                            class="flex gap-2"
                                         >
-                                            {field.secret
-                                                ? `${getProviderName(activeFeature, activeProvider)} API Key`
-                                                : field.label}
-                                            {#if field.secret}
-                                                <span
-                                                    class="text-[10px] font-normal uppercase text-muted-foreground"
-                                                    >Settings</span
-                                                >
-                                            {/if}
-                                        </Label>
-                                        {#if field.secret}
-                                            <div class="flex items-center gap-2">
-                                                <Input
-                                                    id={field.id}
-                                                    type={showSecrets ? 'text' : 'password'}
-                                                    value={field.value}
-                                                    placeholder="Enter API Key"
-                                                    disabled={saving}
-                                                    class="font-mono"
-                                                    onchange={(event) =>
-                                                        updateField(
-                                                            field,
-                                                            event.currentTarget.value
-                                                        )}
-                                                />
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    class="shrink-0"
-                                                    onclick={() => (showSecrets = !showSecrets)}
-                                                    aria-label={showSecrets
-                                                        ? 'Hide API key'
-                                                        : 'Show API key'}
-                                                >
-                                                    {#if showSecrets}
-                                                        <EyeOff class="size-4" />
-                                                    {:else}
-                                                        <Eye class="size-4" />
-                                                    {/if}
-                                                </Button>
-                                            </div>
-                                        {:else if field.options}
-                                            <select
-                                                id={field.id}
-                                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                                value={field.value}
-                                                disabled={saving}
-                                                onchange={(event) =>
-                                                    updateField(field, event.currentTarget.value)}
-                                            >
-                                                {#each field.options as option (option)}
-                                                    <option value={option}>{option}</option>
-                                                {/each}
-                                            </select>
-                                        {:else if field.multiline}
-                                            <Textarea
-                                                id={field.id}
-                                                value={field.value}
-                                                placeholder={field.placeholder}
-                                                disabled={saving}
-                                                class="min-h-48 font-mono text-xs"
-                                                onchange={(event) =>
-                                                    updateField(field, event.currentTarget.value)}
-                                            />
-                                        {:else}
                                             <Input
                                                 id={field.id}
-                                                type={field.number ? 'number' : 'text'}
+                                                type={showSecrets ? 'text' : 'password'}
                                                 value={field.value}
-                                                placeholder={field.placeholder}
-                                                min={field.number?.min}
-                                                max={field.number?.max}
-                                                step={field.number?.step}
+                                                placeholder="Enter API Key"
                                                 disabled={saving}
+                                                class="font-mono text-sm"
+                                                autocomplete="off"
                                                 onchange={(event) =>
                                                     updateField(field, event.currentTarget.value)}
                                             />
-                                        {/if}
-                                        {#if field.help}
-                                            <p class="text-xs text-muted-foreground">
-                                                {field.help}
-                                            </p>
-                                        {/if}
-                                    </div>
-                                {/each}
-                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onclick={() => (showSecrets = !showSecrets)}
+                                                aria-label={showSecrets
+                                                    ? 'Hide API key'
+                                                    : 'Show API key'}
+                                            >
+                                                {#if showSecrets}
+                                                    <EyeOff class="size-4" />
+                                                {:else}
+                                                    <Eye class="size-4" />
+                                                {/if}
+                                            </Button>
+                                        </form>
+                                    {:else if field.options}
+                                        <select
+                                            id={field.id}
+                                            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                            value={field.value}
+                                            disabled={saving}
+                                            onchange={(event) =>
+                                                updateField(field, event.currentTarget.value)}
+                                        >
+                                            {#each field.options as option (option)}
+                                                <option value={option}>{option}</option>
+                                            {/each}
+                                        </select>
+                                    {:else if field.multiline}
+                                        <Textarea
+                                            id={field.id}
+                                            value={field.value}
+                                            placeholder={field.placeholder}
+                                            disabled={saving}
+                                            class="min-h-48 font-mono text-xs"
+                                            onchange={(event) =>
+                                                updateField(field, event.currentTarget.value)}
+                                        />
+                                    {:else}
+                                        <Input
+                                            id={field.id}
+                                            type={field.number ? 'number' : 'text'}
+                                            value={field.value}
+                                            placeholder={field.placeholder}
+                                            min={field.number?.min}
+                                            max={field.number?.max}
+                                            step={field.number?.step}
+                                            disabled={saving}
+                                            onchange={(event) =>
+                                                updateField(field, event.currentTarget.value)}
+                                        />
+                                    {/if}
+                                    {#if field.help}
+                                        <p class="text-xs text-muted-foreground">
+                                            {field.help}
+                                        </p>
+                                    {/if}
+                                </div>
+                            {/each}
                         </div>
                     {/if}
                 </CardContent>

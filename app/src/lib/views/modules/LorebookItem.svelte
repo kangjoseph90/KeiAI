@@ -1,10 +1,11 @@
 <script lang="ts">
+    import { slide } from 'svelte/transition';
     import type { Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
-    import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import {
         ChevronDown,
@@ -36,6 +37,42 @@
     let advancedOpen = $state(false);
     let openedInitially = $state(false);
     let busy = $state(false);
+
+    type ActivationMode = 'keyword' | 'disabled' | 'always';
+
+    const activationModeLabels: Record<ActivationMode, string> = {
+        keyword: 'Keyword',
+        disabled: 'Disabled',
+        always: 'Always active'
+    };
+
+    function getActivationMode(): ActivationMode {
+        if (item.disabled) return 'disabled';
+        if (item.alwaysActive) return 'always';
+        return 'keyword';
+    }
+
+    function getNextActivationMode(mode: ActivationMode): ActivationMode {
+        if (mode === 'keyword') return 'disabled';
+        if (mode === 'disabled') return 'always';
+        return 'keyword';
+    }
+
+    function getActivationChanges(mode: ActivationMode): DeepPartial<Lorebook> {
+        if (mode === 'disabled') return { disabled: true, alwaysActive: false };
+        if (mode === 'always') return { disabled: false, alwaysActive: true };
+        return { disabled: false, alwaysActive: false };
+    }
+
+    function getActivationButtonLabel(): string {
+        const current = getActivationMode();
+        const next = getNextActivationMode(current);
+        return `Activation: ${activationModeLabels[current]}. Click to switch to ${activationModeLabels[next]}.`;
+    }
+
+    async function handleActivationChange(mode: ActivationMode): Promise<void> {
+        await handleUpdate(getActivationChanges(mode));
+    }
 
     $effect(() => {
         if (initiallyEditing && !openedInitially) {
@@ -79,29 +116,24 @@
     }
 </script>
 
-<div
-    aria-busy={busy}
-    class="group overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.disabled
-        ? 'opacity-55'
-        : ''}"
->
-    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+<EditableListItem {expanded} {busy} muted={item.disabled}>
+    {#snippet header()}
         <div
-            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
             aria-hidden="true"
         >
-            <GripVertical class="size-4" />
+            <GripVertical class="size-3.5" />
         </div>
         <button
             type="button"
-            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
             aria-label={expanded ? 'Collapse entry' : 'Expand entry'}
         >
             {#if expanded}
-                <ChevronDown class="size-4" />
+                <ChevronDown class="size-3.5" />
             {:else}
-                <ChevronRight class="size-4" />
+                <ChevronRight class="size-3.5" />
             {/if}
         </button>
 
@@ -109,154 +141,140 @@
             disabled={busy}
             value={item.name}
             aria-label="Entry name"
-            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
-        {#if item.disabled}
-            <Badge variant="outline" class="text-xs shrink-0">Disabled</Badge>
-        {/if}
-
-        <!-- 버튼 1: Always Active (Zap) -->
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 {item.alwaysActive
+            class="shrink-0 {getActivationMode() === 'always'
                 ? 'text-amber-500 hover:text-amber-600'
-                : 'text-muted-foreground'}"
-            title={item.alwaysActive ? 'Deactivate Always Active' : 'Activate Always Active'}
-            aria-label={item.alwaysActive ? 'Deactivate Always Active' : 'Activate Always Active'}
+                : getActivationMode() === 'disabled'
+                  ? 'text-muted-foreground/60 hover:text-muted-foreground'
+                  : 'text-muted-foreground hover:text-foreground'}"
+            title={getActivationButtonLabel()}
+            aria-label={getActivationButtonLabel()}
             disabled={busy}
-            onclick={() => handleUpdate({ alwaysActive: !item.alwaysActive })}
+            onclick={() => handleActivationChange(getNextActivationMode(getActivationMode()))}
         >
-            <Zap class="size-4 {item.alwaysActive ? 'fill-amber-500/10' : ''}" />
-        </Button>
-
-        <!-- 버튼 2: Enabled / Disabled (Eye) -->
-        <Button
-            size="icon"
-            variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground"
-            title={item.disabled ? 'Enable entry' : 'Disable entry'}
-            aria-label={item.disabled ? 'Enable entry' : 'Disable entry'}
-            disabled={busy}
-            onclick={() => handleUpdate({ disabled: !item.disabled })}
-        >
-            {#if !item.disabled}
-                <Eye class="size-4" />
+            {#if getActivationMode() === 'keyword'}
+                <Eye class="size-3.5" />
+            {:else if getActivationMode() === 'disabled'}
+                <EyeOff class="size-3.5" />
             {:else}
-                <EyeOff class="size-4" />
+                <Zap class="size-3.5 fill-amber-500/10" />
             {/if}
         </Button>
 
-        <!-- 버튼 3: Delete (Trash2) -->
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+            class="shrink-0 text-muted-foreground hover:text-destructive"
             title="Delete entry"
             aria-label="Delete entry"
             disabled={busy}
             onclick={handleDelete}
         >
-            <Trash2 class="size-4" />
+            <Trash2 class="size-3.5" />
         </Button>
-    </div>
+    {/snippet}
 
-    {#if expanded}
-        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-            <div class="flex flex-wrap gap-4 select-none">
-                <label class="flex items-center gap-2 cursor-pointer text-xs">
-                    <input
-                        type="checkbox"
-                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
-                        checked={item.alwaysActive}
+    {#snippet details()}
+        <div class="space-y-1.5">
+            <Label class="text-xs" for={`activation-mode-${item.id}`}>Activation</Label>
+            <select
+                id={`activation-mode-${item.id}`}
+                disabled={busy}
+                class="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={getActivationMode()}
+                aria-label="Activation mode"
+                onchange={(e) => handleActivationChange(e.currentTarget.value as ActivationMode)}
+            >
+                <option value="keyword">Keyword</option>
+                <option value="disabled">Disabled</option>
+                <option value="always">Always active</option>
+            </select>
+        </div>
+
+        {#if getActivationMode() !== 'always'}
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div class="space-y-1.5">
+                    <Label class="text-xs">Key</Label>
+                    <Input
                         disabled={busy}
-                        onchange={(e) => handleUpdate({ alwaysActive: e.currentTarget.checked })}
+                        class="h-8 font-mono text-sm"
+                        value={item.key}
+                        placeholder="keyword1, keyword2..."
+                        onchange={(e) => handleUpdate({ key: e.currentTarget.value })}
                     />
-                    <span>Always Active</span>
-                </label>
-            </div>
-
-            {#if !item.alwaysActive}
-                <div class="grid gap-3 sm:grid-cols-2">
+                </div>
+                {#if item.useMultipleKeys && !item.useRegex}
                     <div class="space-y-1.5">
-                        <Label class="text-xs">Key</Label>
+                        <Label class="text-xs">Second Key</Label>
                         <Input
                             disabled={busy}
                             class="h-8 font-mono text-sm"
-                            value={item.key}
-                            placeholder="keyword1, keyword2..."
-                            onchange={(e) => handleUpdate({ key: e.currentTarget.value })}
+                            value={item.secondKey}
+                            placeholder="Must also match..."
+                            onchange={(e) => handleUpdate({ secondKey: e.currentTarget.value })}
                         />
                     </div>
-                    {#if item.useMultipleKeys && !item.useRegex}
-                        <div class="space-y-1.5">
-                            <Label class="text-xs">Second Key</Label>
-                            <Input
-                                disabled={busy}
-                                class="h-8 font-mono text-sm"
-                                value={item.secondKey}
-                                placeholder="Must also match..."
-                                onchange={(e) => handleUpdate({ secondKey: e.currentTarget.value })}
-                            />
-                        </div>
-                    {/if}
-                </div>
-            {/if}
+                {/if}
+            </div>
+        {/if}
 
+        <div class="space-y-1.5">
+            <Label class="text-xs">Content</Label>
+            <Textarea
+                disabled={busy}
+                class="text-sm min-h-25 font-sans bg-background"
+                value={item.content}
+                placeholder="Fact or lore to insert..."
+                onchange={(e) => handleUpdate({ content: e.currentTarget.value })}
+            />
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
-                <Label class="text-xs">Content</Label>
-                <Textarea
+                <Label class="text-xs">Depth</Label>
+                <Input
                     disabled={busy}
-                    class="text-sm min-h-[100px] font-sans bg-background"
-                    value={item.content}
-                    placeholder="Fact or lore to insert..."
-                    onchange={(e) => handleUpdate({ content: e.currentTarget.value })}
+                    class="h-8 text-sm"
+                    type="number"
+                    value={item.depth}
+                    onchange={(e) => handleUpdate({ depth: parseInt(e.currentTarget.value) || 0 })}
                 />
             </div>
-
-            <div class="grid gap-3 sm:grid-cols-2">
-                <div class="space-y-1.5">
-                    <Label class="text-xs">Depth</Label>
-                    <Input
-                        disabled={busy}
-                        class="h-8 text-sm"
-                        type="number"
-                        value={item.depth}
-                        onchange={(e) =>
-                            handleUpdate({ depth: parseInt(e.currentTarget.value) || 0 })}
-                    />
-                </div>
-                <div class="space-y-1.5">
-                    <Label class="text-xs">Order</Label>
-                    <Input
-                        disabled={busy}
-                        class="h-8 text-sm"
-                        type="number"
-                        value={item.order}
-                        onchange={(e) =>
-                            handleUpdate({ order: parseInt(e.currentTarget.value) || 0 })}
-                    />
-                </div>
-            </div>
-
             <div class="space-y-1.5">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
-                    onclick={() => (advancedOpen = !advancedOpen)}
-                >
-                    Advanced Settings
-                    {#if advancedOpen}
-                        <ChevronUp class="size-3" />
-                    {:else}
-                        <ChevronDown class="size-3" />
-                    {/if}
-                </Button>
+                <Label class="text-xs">Order</Label>
+                <Input
+                    disabled={busy}
+                    class="h-8 text-sm"
+                    type="number"
+                    value={item.order}
+                    onchange={(e) => handleUpdate({ order: parseInt(e.currentTarget.value) || 0 })}
+                />
+            </div>
+        </div>
 
+        <div class="space-y-1.5">
+            <Button
+                variant="ghost"
+                size="sm"
+                class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
+                onclick={() => (advancedOpen = !advancedOpen)}
+            >
+                Advanced Settings
                 {#if advancedOpen}
+                    <ChevronUp class="size-3" />
+                {:else}
+                    <ChevronDown class="size-3" />
+                {/if}
+            </Button>
+
+            {#if advancedOpen}
+                <div transition:slide={{ duration: 150 }}>
                     <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1.5">
@@ -386,8 +404,8 @@
                             </div>
                         </div>
                     </div>
-                {/if}
-            </div>
+                </div>
+            {/if}
         </div>
-    {/if}
-</div>
+    {/snippet}
+</EditableListItem>

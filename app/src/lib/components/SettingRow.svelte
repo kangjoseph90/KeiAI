@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { Snippet } from 'svelte';
     import type { HTMLAttributes } from 'svelte/elements';
     import { cn, type WithElementRef } from '$lib/utils';
 
@@ -7,17 +8,17 @@
         class: className,
         children,
         ...restProps
-    }: WithElementRef<HTMLAttributes<HTMLDivElement>> = $props();
+    }: WithElementRef<HTMLAttributes<HTMLDivElement>> & { children: Snippet } = $props();
 </script>
 
 <div
     bind:this={ref}
-    data-slot="card"
+    data-slot="setting-row"
     class={cn(
-        'bg-card text-card-foreground flex flex-col gap-4 rounded-lg border py-4 shadow-sm',
+        'flex min-h-13 flex-col gap-3 rounded-lg border border-foreground/15 px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
         className
     )}
     {...restProps}
 >
-    {@render children?.()}
+    {@render children()}
 </div>

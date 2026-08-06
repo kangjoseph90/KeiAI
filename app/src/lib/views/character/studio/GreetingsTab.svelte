@@ -6,6 +6,7 @@
     import { generateSortOrder } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import type { Character, Greeting } from '$lib/services';
     import { SvelteSet } from 'svelte/reactivity';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
@@ -115,7 +116,7 @@
     }
 </script>
 
-<section class="space-y-6">
+<section class="space-y-4">
     <ListActionBar description="Opening messages for new conversations.">
         <Button
             size="sm"
@@ -133,27 +134,25 @@
             <EmptyListPlaceholder message="No greetings." />
         {/snippet}
         {#snippet item({ entity: g })}
-            <div
-                class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md"
-            >
-                <!-- 헤더 영역 -->
-                <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+            <EditableListItem expanded={expanded.has(g.id)} busy={busyAction === `delete:${g.id}`}>
+                {#snippet header()}
+                    <!-- 헤더 영역 -->
                     <div
-                        class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                        class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
                         aria-hidden="true"
                     >
-                        <GripVertical class="size-4" />
+                        <GripVertical class="size-3.5" />
                     </div>
                     <button
                         type="button"
-                        class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         onclick={() => toggleExpand(g.id)}
                         aria-label={expanded.has(g.id) ? 'Collapse' : 'Expand'}
                     >
                         {#if expanded.has(g.id)}
-                            <ChevronDown class="size-4" />
+                            <ChevronDown class="size-3.5" />
                         {:else}
-                            <ChevronRight class="size-4" />
+                            <ChevronRight class="size-3.5" />
                         {/if}
                     </button>
 
@@ -170,32 +169,30 @@
                     {/if}
 
                     <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        class="shrink-0 text-muted-foreground hover:text-destructive"
                         disabled={busyAction !== null}
                         aria-busy={busyAction === `delete:${g.id}`}
                         onclick={() => handleDelete(g.id)}
                         aria-label="Delete greeting"
                     >
-                        <Trash2 class="size-4" />
+                        <Trash2 class="size-3.5" />
                     </Button>
-                </div>
+                {/snippet}
 
                 <!-- 펼쳐지는 바디 영역 -->
-                {#if expanded.has(g.id)}
-                    <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-                        <Textarea
-                            rows={6}
-                            value={g.content}
-                            disabled={busyAction !== null}
-                            placeholder="Write greeting message..."
-                            onchange={(e) => handleUpdate(g.id, e.currentTarget.value)}
-                            class="text-xs bg-background leading-relaxed"
-                        />
-                    </div>
-                {/if}
-            </div>
+                {#snippet details()}
+                    <Textarea
+                        rows={6}
+                        value={g.content}
+                        disabled={busyAction !== null}
+                        placeholder="Write greeting message..."
+                        onchange={(e) => handleUpdate(g.id, e.currentTarget.value)}
+                        class="text-xs bg-background leading-relaxed"
+                    />
+                {/snippet}
+            </EditableListItem>
         {/snippet}
     </SortableList>
 </section>

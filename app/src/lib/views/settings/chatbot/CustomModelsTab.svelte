@@ -27,6 +27,7 @@
     import { generateSortOrder } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { appConfirm, toast } from '$lib/ui';
@@ -176,27 +177,25 @@
             <EmptyListPlaceholder message="No custom models registered yet." />
         {/snippet}
         {#snippet item({ entity: model })}
-            <div
-                class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md"
-            >
-                <!-- 헤더 영역 -->
-                <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+            <EditableListItem expanded={expandedModels.has(model.id)} busy={busyAction !== null}>
+                {#snippet header()}
+                    <!-- 헤더 영역 -->
                     <div
-                        class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                        class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
                         aria-hidden="true"
                     >
-                        <GripVertical class="size-4" />
+                        <GripVertical class="size-3.5" />
                     </div>
                     <button
                         type="button"
-                        class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onclick={() => toggleExpand(model.id)}
                         aria-label={expandedModels.has(model.id) ? 'Collapse' : 'Expand'}
                     >
                         {#if expandedModels.has(model.id)}
-                            <ChevronDown class="size-4" />
+                            <ChevronDown class="size-3.5" />
                         {:else}
-                            <ChevronRight class="size-4" />
+                            <ChevronRight class="size-3.5" />
                         {/if}
                     </button>
 
@@ -208,7 +207,7 @@
                                 name: e.currentTarget.value
                             })}
                         aria-label="Model name"
-                        class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                        class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
                     />
 
                     <Badge variant="secondary" class="text-[10px] h-5 px-1.5 shrink-0">
@@ -216,22 +215,22 @@
                     </Badge>
 
                     <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        class="shrink-0 text-muted-foreground hover:text-destructive"
                         onclick={() => handleRemove(model.id)}
                         aria-label="Delete model"
                         disabled={busyAction !== null}
                         aria-busy={busyAction === `delete:${model.id}`}
                     >
-                        <Trash2 class="size-4" />
+                        <Trash2 class="size-3.5" />
                     </Button>
-                </div>
+                {/snippet}
 
                 <!-- 펼쳐지는 바디 영역 -->
-                {#if expandedModels.has(model.id)}
-                    <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-                        <div class="grid grid-cols-2 gap-4">
+                {#snippet details()}
+                    <div class="flex flex-col gap-3">
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs">Model ID (Internal)</Label>
                                 <Input
@@ -266,20 +265,23 @@
                             <Label class="text-xs flex items-center gap-1">
                                 <Key class="size-3" /> API Key (Optional)
                             </Label>
-                            <Input
-                                type="password"
-                                value={model.apiKey ?? ''}
-                                disabled={busyAction !== null}
-                                placeholder="sk-..."
-                                class="h-8 text-xs bg-background"
-                                onchange={(e) =>
-                                    updateModelSafely(model.id, {
-                                        apiKey: e.currentTarget.value
-                                    })}
-                            />
+                            <form onsubmit={(e) => e.preventDefault()}>
+                                <Input
+                                    type="password"
+                                    value={model.apiKey ?? ''}
+                                    disabled={busyAction !== null}
+                                    placeholder="sk-..."
+                                    class="h-8 text-xs bg-background"
+                                    autocomplete="off"
+                                    onchange={(e) =>
+                                        updateModelSafely(model.id, {
+                                            apiKey: e.currentTarget.value
+                                        })}
+                                />
+                            </form>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs">Tokenizer</Label>
                                 <select
@@ -332,7 +334,7 @@
                             </Button>
 
                             {#if expandedCapabilities.has(model.id)}
-                                <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border">
+                                <div class="grid gap-3 p-3 rounded-lg bg-muted/30 border">
                                     <div class="flex flex-col gap-2">
                                         <div class="flex flex-wrap gap-x-5 gap-y-2">
                                             {#each capabilities as capability (capability)}
@@ -361,8 +363,8 @@
                             {/if}
                         </div>
                     </div>
-                {/if}
-            </div>
+                {/snippet}
+            </EditableListItem>
         {/snippet}
     </SortableList>
 </div>

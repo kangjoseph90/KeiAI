@@ -1,6 +1,6 @@
 <script lang="ts">
     import {
-        User,
+        UserRound,
         MessageSquare,
         Book,
         Code,
@@ -87,7 +87,7 @@
 
     // Tabs navigation helper
     const tabs = [
-        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'profile', label: 'Profile', icon: UserRound },
         { id: 'greetings', label: 'Greetings', icon: MessageSquare },
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
@@ -185,9 +185,10 @@
             alt={$activeCharacter?.name ?? 'Character'}
             class="size-full object-cover"
             fallback="none"
+            focus="top"
         >
             {#if !$activeCharacter?.avatar}
-                <User class="size-5 text-muted-foreground" />
+                <UserRound class="size-5 text-muted-foreground" />
             {/if}
         </AssetView>
     </div>

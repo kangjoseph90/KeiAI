@@ -2,9 +2,9 @@
     import type { CharJS } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
+    import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
-    import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from 'lucide-svelte';
     import { appConfirm, toast } from '$lib/ui';
@@ -68,29 +68,24 @@
     }
 </script>
 
-<div
-    aria-busy={busy}
-    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.enabled
-        ? ''
-        : 'opacity-55'}"
->
-    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+<EditableListItem {expanded} {busy} muted={!item.enabled}>
+    {#snippet header()}
         <div
-            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            class="flex h-7 w-4 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
             aria-hidden="true"
         >
-            <GripVertical class="size-4" />
+            <GripVertical class="size-3.5" />
         </div>
         <button
             type="button"
-            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
             aria-label={expanded ? 'Collapse CharJS entry' : 'Expand CharJS entry'}
         >
             {#if expanded}
-                <ChevronDown class="size-4" />
+                <ChevronDown class="size-3.5" />
             {:else}
-                <ChevronRight class="size-4" />
+                <ChevronRight class="size-3.5" />
             {/if}
         </button>
 
@@ -98,54 +93,48 @@
             disabled={busy}
             value={item.name}
             aria-label="CharJS name"
-            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
-        {#if !item.enabled}
-            <Badge variant="outline" class="text-xs shrink-0">Disabled</Badge>
-        {/if}
-
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground"
+            class="shrink-0 text-muted-foreground"
             title={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
             aria-label={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
             disabled={busy}
             onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
             {#if item.enabled}
-                <Eye class="size-4" />
+                <Eye class="size-3.5" />
             {:else}
-                <EyeOff class="size-4" />
+                <EyeOff class="size-3.5" />
             {/if}
         </Button>
         <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+            class="shrink-0 text-muted-foreground hover:text-destructive"
             title="Delete CharJS entry"
             aria-label="Delete CharJS entry"
             disabled={busy}
             onclick={handleDelete}
         >
-            <Trash2 class="size-4" />
+            <Trash2 class="size-3.5" />
         </Button>
-    </div>
+    {/snippet}
 
-    {#if expanded}
-        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-            <div class="space-y-1.5">
-                <Label class="text-xs">Code</Label>
-                <Textarea
-                    disabled={busy}
-                    class="min-h-48 resize-y bg-background font-mono text-sm leading-relaxed"
-                    value={item.code}
-                    placeholder="// Write CharJS behavior here..."
-                    onchange={(e) => handleUpdate({ code: e.currentTarget.value })}
-                />
-            </div>
+    {#snippet details()}
+        <div class="space-y-1.5">
+            <Label class="text-xs">Code</Label>
+            <Textarea
+                disabled={busy}
+                class="min-h-48 resize-y bg-background font-mono text-sm leading-relaxed"
+                value={item.code}
+                placeholder="// Write CharJS behavior here..."
+                onchange={(e) => handleUpdate({ code: e.currentTarget.value })}
+            />
         </div>
-    {/if}
-</div>
+    {/snippet}
+</EditableListItem>

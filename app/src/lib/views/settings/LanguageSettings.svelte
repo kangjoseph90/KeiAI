@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+    import SettingRow from '$lib/components/SettingRow.svelte';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { appSettings, updateSettings } from '$lib/stores';
@@ -65,12 +66,12 @@
     }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-5">
     <Card>
         <CardHeader>
             <CardTitle class="text-base">Translation</CardTitle>
         </CardHeader>
-        <CardContent class="space-y-6">
+        <CardContent class="space-y-4">
             <div class="flex max-w-md flex-col gap-1.5">
                 <Label for="translation-target-language">Target Language</Label>
                 <Input
@@ -86,14 +87,15 @@
                 />
             </div>
 
-            <div class="flex items-center justify-between gap-4 rounded-md border p-4">
+            <SettingRow>
                 <div class="space-y-0.5">
-                    <Label>Auto-show Translation</Label>
+                    <Label for="translation-auto-show">Auto-show Translation</Label>
                     <p class="text-xs text-muted-foreground">
                         Automatically show translations when a message has been translated.
                     </p>
                 </div>
                 <input
+                    id="translation-auto-show"
                     type="checkbox"
                     class="size-5 shrink-0 rounded border-primary"
                     checked={$appSettings?.translation?.autoShowTranslation === true}
@@ -104,7 +106,7 @@
                             }
                         })}
                 />
-            </div>
+            </SettingRow>
         </CardContent>
     </Card>
 

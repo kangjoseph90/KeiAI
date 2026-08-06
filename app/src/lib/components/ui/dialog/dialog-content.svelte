@@ -37,7 +37,7 @@
             <DialogPrimitive.Close
                 class="ring-offset-background focus:ring-ring absolute end-2 top-2 z-30 flex size-9 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none sm:end-4 sm:top-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
             >
-                <XIcon />
+                <XIcon class="size-5" />
                 <span class="sr-only">Close</span>
             </DialogPrimitive.Close>
         {/if}

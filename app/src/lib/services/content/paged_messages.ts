@@ -67,12 +67,25 @@ export class PagedMessages {
     readonly beforeSortOrder: string;
 
     private readonly pages = new Map<number, Promise<Message[]>>();
+    private readonly pagedLength: number;
+    private readonly lastMessageId: string | null;
+    private lastMessage: Message | null;
+    private lastMessageDirty = false;
 
-    private constructor(chatId: string, pageSize: number, length: number, beforeSortOrder: string) {
+    private constructor(
+        chatId: string,
+        pageSize: number,
+        pagedLength: number,
+        beforeSortOrder: string,
+        lastMessage?: Message
+    ) {
         this.chatId = chatId;
         this.pageSize = pageSize;
-        this.length = length;
+        this.pagedLength = pagedLength;
+        this.length = pagedLength + (lastMessage ? 1 : 0);
         this.beforeSortOrder = beforeSortOrder;
+        this.lastMessageId = lastMessage?.id ?? null;
+        this.lastMessage = lastMessage ?? null;
     }
 
     static async createBefore(
@@ -85,9 +98,32 @@ export class PagedMessages {
         return new PagedMessages(chatId, pageSize, length, beforeSortOrder);
     }
 
+    static async createThrough(
+        lastMessage: Message,
+        options: PagedMessagesOptions = {}
+    ): Promise<PagedMessages> {
+        const pageSize = normalizePageSize(options.pageSize ?? DEFAULT_PAGE_SIZE);
+        const beforeLength = await MessageService.countByChatBefore(
+            lastMessage.chatId,
+            lastMessage.sortOrder
+        );
+        return new PagedMessages(
+            lastMessage.chatId,
+            pageSize,
+            beforeLength,
+            lastMessage.sortOrder,
+            lastMessage
+        );
+    }
+
     async at(index: number): Promise<IndexedMessage | null> {
         const resolved = normalizeIndex(index, this.length);
         if (resolved === null) return null;
+
+        if (this.lastMessageId && resolved === this.pagedLength) {
+            const message = await this.loadLastMessage();
+            return message ? { message, index: resolved } : null;
+        }
 
         const pageIndex = Math.floor(resolved / this.pageSize);
         const pageOffset = resolved % this.pageSize;
@@ -102,24 +138,20 @@ export class PagedMessages {
         const resolvedEnd = normalizeSliceBound(end, this.length, this.length);
         if (resolvedStart >= resolvedEnd) return [];
 
-        const firstPage = Math.floor(resolvedStart / this.pageSize);
-        const lastPage = Math.floor((resolvedEnd - 1) / this.pageSize);
-        const pagePromises: Promise<Message[]>[] = [];
+        const beforeEnd = Math.min(resolvedEnd, this.pagedLength);
+        const messages =
+            resolvedStart < beforeEnd ? await this.sliceBefore(resolvedStart, beforeEnd) : [];
 
-        for (let pageIndex = firstPage; pageIndex <= lastPage; pageIndex += 1) {
-            pagePromises.push(this.loadPage(pageIndex));
+        if (
+            this.lastMessageId &&
+            resolvedStart <= this.pagedLength &&
+            this.pagedLength < resolvedEnd
+        ) {
+            const message = await this.loadLastMessage();
+            if (message) messages.push({ message, index: this.pagedLength });
         }
 
-        const pages = await Promise.all(pagePromises);
-        const messages = pages.flat();
-        const localStart = resolvedStart - firstPage * this.pageSize;
-        const localEnd = localStart + (resolvedEnd - resolvedStart);
-        const slicedMessages = messages.slice(localStart, localEnd);
-
-        return slicedMessages.map((message, offset) => ({
-            message,
-            index: resolvedStart + offset
-        }));
+        return messages;
     }
 
     async toArray(): Promise<IndexedMessage[]> {
@@ -129,11 +161,44 @@ export class PagedMessages {
     invalidate(index: number): void {
         const resolved = normalizeIndex(index, this.length);
         if (resolved === null) return;
+
+        if (this.lastMessageId && resolved === this.pagedLength) {
+            this.lastMessage = null;
+            this.lastMessageDirty = true;
+            return;
+        }
+
+        if (resolved >= this.pagedLength) return;
         this.pages.delete(Math.floor(resolved / this.pageSize));
     }
 
     clear(): void {
         this.pages.clear();
+        if (this.lastMessageId) {
+            this.lastMessage = null;
+            this.lastMessageDirty = true;
+        }
+    }
+
+    private async sliceBefore(start: number, end: number): Promise<IndexedMessage[]> {
+        const firstPage = Math.floor(start / this.pageSize);
+        const lastPage = Math.floor((end - 1) / this.pageSize);
+        const pagePromises: Promise<Message[]>[] = [];
+
+        for (let pageIndex = firstPage; pageIndex <= lastPage; pageIndex += 1) {
+            pagePromises.push(this.loadPage(pageIndex));
+        }
+
+        const pages = await Promise.all(pagePromises);
+        const messages = pages.flat();
+        const localStart = start - firstPage * this.pageSize;
+        const localEnd = localStart + (end - start);
+        const slicedMessages = messages.slice(localStart, localEnd);
+
+        return slicedMessages.map((message, offset) => ({
+            message,
+            index: start + offset
+        }));
     }
 
     private loadPage(pageIndex: number): Promise<Message[]> {
@@ -141,8 +206,8 @@ export class PagedMessages {
         if (cached) return cached;
 
         const offset = pageIndex * this.pageSize;
-        const limit = Math.min(this.pageSize, this.length - offset);
-        const backwardOffset = this.length - offset - limit;
+        const limit = Math.min(this.pageSize, this.pagedLength - offset);
+        const backwardOffset = this.pagedLength - offset - limit;
         const page =
             offset <= backwardOffset
                 ? MessageService.getMessagesAfter(this.chatId, '', limit, offset)
@@ -154,5 +219,15 @@ export class PagedMessages {
                   );
         this.pages.set(pageIndex, page);
         return page;
+    }
+
+    private async loadLastMessage(): Promise<Message | null> {
+        if (!this.lastMessageId) return null;
+        if (!this.lastMessageDirty) return this.lastMessage;
+
+        const message = await MessageService.get(this.lastMessageId);
+        this.lastMessage = message?.chatId === this.chatId ? message : null;
+        this.lastMessageDirty = false;
+        return this.lastMessage;
     }
 }

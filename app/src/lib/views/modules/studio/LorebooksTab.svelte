@@ -52,7 +52,7 @@
     }
 </script>
 
-<section class="space-y-6">
+<section class="space-y-4">
     <ListActionBar description="Context recalled during conversation generation.">
         <Button size="sm" class="gap-1.5" onclick={handleAdd}>
             <Plus class="size-4" /> Add

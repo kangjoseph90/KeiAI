@@ -84,7 +84,7 @@
     }
 </script>
 
-<div class="space-y-6">
+<div class="space-y-5">
     <Card>
         <CardHeader>
             <CardTitle class="flex items-center gap-2"><Server class="size-5" /> Server</CardTitle>
@@ -96,7 +96,7 @@
             <div class="grid gap-2 sm:grid-cols-2">
                 <button
                     type="button"
-                    class="rounded-lg border p-4 text-left transition-colors {serverMode ===
+                    class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {serverMode ===
                     'default'
                         ? 'border-primary bg-primary/5'
                         : 'hover:bg-muted/50'}"
@@ -110,7 +110,7 @@
                 </button>
                 <button
                     type="button"
-                    class="rounded-lg border p-4 text-left transition-colors {serverMode ===
+                    class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {serverMode ===
                     'custom'
                         ? 'border-primary bg-primary/5'
                         : 'hover:bg-muted/50'}"
@@ -183,7 +183,7 @@
                 <div class="grid gap-2 sm:grid-cols-3">
                     <button
                         type="button"
-                        class="rounded-lg border p-4 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
                         'default'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"
@@ -197,7 +197,7 @@
                     </button>
                     <button
                         type="button"
-                        class="rounded-lg border p-4 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
                         'custom'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"
@@ -212,7 +212,7 @@
                     </button>
                     <button
                         type="button"
-                        class="rounded-lg border p-4 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
                         'off'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"

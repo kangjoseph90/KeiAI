@@ -86,8 +86,8 @@
     }
 </script>
 
-<section class="space-y-6">
-    <div class="space-y-8">
+<section class="space-y-5">
+    <div class="space-y-6">
         <div class="space-y-4">
             <div class="space-y-1.5">
                 <h3 class="text-sm font-semibold flex items-center gap-2">

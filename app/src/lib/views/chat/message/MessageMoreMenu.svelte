@@ -56,8 +56,12 @@
             <MoreVertical class="size-3.5" />
         </Button>
     </DropdownMenu.Trigger>
-    <DropdownMenu.Content align="end" sideOffset={4} class="w-44">
-        <DropdownMenu.Item class="cursor-pointer" {disabled} onclick={onGenerateImage}>
+    <DropdownMenu.Content align="end" sideOffset={4} class="w-52 max-w-[calc(100vw-1rem)]">
+        <DropdownMenu.Item
+            class="cursor-pointer whitespace-nowrap"
+            {disabled}
+            onclick={onGenerateImage}
+        >
             {#if imageTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
                 Stop image generation
@@ -66,7 +70,11 @@
                 {hasImageAttachments ? 'Regenerate image' : 'Generate image'}
             {/if}
         </DropdownMenu.Item>
-        <DropdownMenu.Item class="cursor-pointer" {disabled} onclick={onGenerateAudio}>
+        <DropdownMenu.Item
+            class="cursor-pointer whitespace-nowrap"
+            {disabled}
+            onclick={onGenerateAudio}
+        >
             {#if audioTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
                 Stop audio generation

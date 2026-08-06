@@ -7,8 +7,7 @@
         Plus,
         Trash2,
         Upload,
-        User,
-        UserRound,
+        UserRoundPen,
         X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
@@ -70,7 +69,7 @@
     let exporting = $state<ExportButton | null>(null);
 
     const tabs = [
-        { id: 'profile' as const, label: 'Profile', icon: UserRound },
+        { id: 'profile' as const, label: 'Profile', icon: UserRoundPen },
         { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
         { id: 'advanced' as const, label: 'Advanced', icon: Settings2 }
     ];
@@ -323,9 +322,10 @@
             alt={$activePersona?.name ?? 'Persona'}
             class="size-full object-cover"
             fallback="none"
+            focus="top"
         >
             {#if !$activePersona?.avatar}
-                <UserRound class="size-5 text-muted-foreground" />
+                <UserRoundPen class="size-5 text-muted-foreground" />
             {/if}
         </AssetView>
     </div>
@@ -351,110 +351,96 @@
         <ScrollArea class="min-h-0 flex-1">
             <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                 {#if activeTab === 'profile'}
-                    <section class="space-y-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Basic Information</CardTitle>
-                                <CardDescription>
-                                    How this persona appears in chats and prompt context.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-6">
-                                <div class="flex items-center gap-4 sm:gap-6">
-                                    <div class="shrink-0">
-                                        {#if $activePersona.avatar}
-                                            <button
-                                                type="button"
-                                                class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:size-24"
-                                                aria-label={`View ${$activePersona.name} avatar`}
-                                                title="View avatar"
-                                                onclick={() => (avatarGalleryOpen = true)}
-                                            >
-                                                <AssetView
-                                                    asset={avatarGalleryItems[0]?.asset}
-                                                    alt={$activePersona.name}
-                                                    class="size-full object-cover"
-                                                    fallback="none"
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-4">
+                            <div class="shrink-0">
+                                {#if $activePersona.avatar}
+                                    <button
+                                        type="button"
+                                        class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        aria-label={`View ${$activePersona.name} avatar`}
+                                        title="View avatar"
+                                        onclick={() => (avatarGalleryOpen = true)}
+                                    >
+                                        <AssetView
+                                            asset={avatarGalleryItems[0]?.asset}
+                                            alt={$activePersona.name}
+                                            class="size-full object-cover"
+                                            fallback="none"
+                                            focus="top"
+                                        />
+                                    </button>
+                                {:else}
+                                    <div
+                                        class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
+                                    >
+                                        <AssetView
+                                            asset={null}
+                                            alt={$activePersona.name}
+                                            class="size-full object-cover"
+                                            fallback="none"
+                                            focus="top"
+                                        >
+                                            <div class="flex size-full items-center justify-center">
+                                                <UserRoundPen
+                                                    class="size-10 text-muted-foreground/50"
                                                 />
-                                            </button>
-                                        {:else}
-                                            <div
-                                                class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
-                                            >
-                                                <AssetView
-                                                    asset={null}
-                                                    alt={$activePersona.name}
-                                                    class="size-full object-cover"
-                                                    fallback="none"
-                                                >
-                                                    <div
-                                                        class="flex size-full items-center justify-center"
-                                                    >
-                                                        <User
-                                                            class="size-10 text-muted-foreground/50"
-                                                        />
-                                                    </div>
-                                                </AssetView>
                                             </div>
-                                        {/if}
+                                        </AssetView>
                                     </div>
+                                {/if}
+                            </div>
 
-                                    <div class="min-w-0 flex-1 space-y-4">
-                                        <div class="grid gap-1.5">
-                                            <Label>Persona Name</Label>
-                                            <Input
-                                                value={$activePersona.name}
-                                                oninput={(e) =>
-                                                    updatePersona($activePersona!.id, {
-                                                        name: e.currentTarget.value
-                                                    })}
-                                                placeholder="Enter persona name..."
-                                            />
-                                        </div>
-                                        <div class="flex flex-wrap items-center gap-1">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                class="gap-1 px-2"
-                                                disabled={resourceAction !== null}
-                                                aria-busy={resourceAction === 'avatar-upload'}
-                                                onclick={handleAvatarUpload}
-                                            >
-                                                <Upload class="size-4" /> Upload avatar
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                class="gap-1 px-2"
-                                                disabled={!$activePersona.avatar ||
-                                                    resourceAction !== null}
-                                                aria-busy={resourceAction === 'avatar-remove'}
-                                                onclick={handleAvatarRemove}
-                                            >
-                                                Remove avatar
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-
+                            <div class="min-w-0 flex-1 space-y-3">
                                 <div class="grid gap-1.5">
-                                    <Label>Persona Description</Label>
-                                    <Textarea
-                                        rows={5}
-                                        value={$activePersona.description}
+                                    <Label>Persona Name</Label>
+                                    <Input
+                                        value={$activePersona.name}
                                         oninput={(e) =>
                                             updatePersona($activePersona!.id, {
-                                                description: e.currentTarget.value
+                                                name: e.currentTarget.value
                                             })}
-                                        placeholder="Describe how this persona should speak, act, or be represented..."
+                                        placeholder="Enter persona name..."
                                     />
-                                    <p class="text-xs text-muted-foreground">
-                                        Used for persona prompt blocks and chat participant context.
-                                    </p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    </section>
+                                <div class="flex flex-wrap items-center gap-1">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="gap-1 px-2"
+                                        disabled={resourceAction !== null}
+                                        aria-busy={resourceAction === 'avatar-upload'}
+                                        onclick={handleAvatarUpload}
+                                    >
+                                        <Upload class="size-4" /> Upload avatar
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        class="gap-1 px-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                        disabled={!$activePersona.avatar || resourceAction !== null}
+                                        aria-busy={resourceAction === 'avatar-remove'}
+                                        onclick={handleAvatarRemove}
+                                    >
+                                        Remove avatar
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-1.5">
+                            <Label>Persona Description</Label>
+                            <Textarea
+                                rows={5}
+                                value={$activePersona.description}
+                                oninput={(e) =>
+                                    updatePersona($activePersona!.id, {
+                                        description: e.currentTarget.value
+                                    })}
+                                placeholder="Describe how this persona should speak, act, or be represented..."
+                            />
+                        </div>
+                    </div>
                 {:else if activeTab === 'assets'}
                     <section class="space-y-4">
                         <div class="flex items-center justify-between">
@@ -513,10 +499,10 @@
                             {/snippet}
                             {#snippet item({ entity: ref })}
                                 <div
-                                    class="group flex cursor-zoom-in items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
+                                    class="group flex min-h-[3.25rem] items-center gap-2 rounded-lg border border-foreground/15 bg-card px-3 py-2 cursor-zoom-in text-card-foreground transition-colors hover:border-foreground/25"
                                 >
                                     <div
-                                        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+                                        class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
                                     >
                                         <AssetView
                                             asset={{
@@ -565,12 +551,11 @@
                                     <div
                                         class={editingId === ref.id
                                             ? 'flex items-center gap-1'
-                                            : 'touch-visible flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'}
+                                            : 'touch-visible flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'}
                                     >
                                         {#if editingId === ref.id}
                                             <Button
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Save"
                                                 aria-label={`Save ${ref.name} name`}
                                                 disabled={resourceAction !== null ||
@@ -579,35 +564,33 @@
                                                     `asset-rename:${ref.id}`}
                                                 onclick={() => saveRename(ref)}
                                             >
-                                                <Check class="size-3" />
+                                                <Check class="size-3.5" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Cancel"
                                                 aria-label={`Cancel renaming ${ref.name}`}
                                                 disabled={resourceAction !== null}
                                                 onclick={cancelRename}
                                             >
-                                                <X class="size-3" />
+                                                <X class="size-3.5" />
                                             </Button>
                                         {:else}
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7"
                                                 title="Rename"
                                                 aria-label={`Rename ${ref.name}`}
                                                 disabled={resourceAction !== null}
                                                 onclick={() => startRename(ref)}
                                             >
-                                                <Pencil class="size-3" />
+                                                <Pencil class="size-3.5" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="size-7 text-destructive hover:text-destructive"
+                                                class="text-destructive hover:text-destructive"
                                                 title="Delete"
                                                 aria-label={`Delete ${ref.name}`}
                                                 disabled={resourceAction !== null}
@@ -615,7 +598,7 @@
                                                     `asset-delete:${ref.id}`}
                                                 onclick={() => handleDeleteAsset(ref)}
                                             >
-                                                <Trash2 class="size-3" />
+                                                <Trash2 class="size-3.5" />
                                             </Button>
                                         {/if}
                                     </div>

@@ -2,6 +2,7 @@
     import { Check, Library, Search, UserRoundPlus, UsersRound } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         Dialog,
@@ -14,7 +15,8 @@
     import { Input } from '$lib/components/ui/input';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import type { Character, Persona } from '$lib/services';
-    import type { EntityListConfig } from '$lib/types/refs';
+    import type { EntityListConfig, FolderDef } from '$lib/types/refs';
+    import type { Snippet } from 'svelte';
 
     type PickerResource = Character | Persona;
     type ResourceTable = 'characters' | 'personas';
@@ -34,6 +36,18 @@
         libraryResources?: PickerResource[];
         libraryConfig?: EntityListConfig;
         onCopy?: (ids: string[]) => Promise<void | boolean>;
+    }
+
+    interface FolderSnippetPayload {
+        folder: FolderDef;
+        collapsed: boolean;
+        toggle: () => void;
+        childCount: number;
+        parts: {
+            icon: Snippet<[{ folder: FolderDef; collapsed: boolean; sizeClass?: string }]>;
+            name: Snippet<[{ folder: FolderDef }]>;
+            actions: Snippet<[{ folder: FolderDef }]>;
+        };
     }
 
     let {
@@ -129,6 +143,37 @@
     }
 </script>
 
+{#snippet folderCard(payload: FolderSnippetPayload)}
+    {@const { folder, collapsed, toggle, parts } = payload}
+    <div
+        role="button"
+        tabindex="0"
+        aria-expanded={!collapsed}
+        aria-label={folder.name}
+        class="group/folder relative w-full cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onclick={toggle}
+        onkeydown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            toggle();
+        }}
+    >
+        <MediaEntityCard name={folder.name} align="center" density="compact" class="cursor-pointer">
+            {#snippet visual()}
+                {@render parts.icon({
+                    folder,
+                    collapsed,
+                    sizeClass: 'size-10 rounded-lg [&_svg]:size-4'
+                })}
+            {/snippet}
+            {#snippet nameContent()}
+                {@render parts.name({ folder })}
+            {/snippet}
+        </MediaEntityCard>
+    </div>
+{/snippet}
+
 <Dialog bind:open>
     <DialogContent
         class="grid h-[min(42rem,var(--overlay-available-height))] max-w-[calc(100%-2rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl"
@@ -180,9 +225,10 @@
                     config={displayConfig}
                     mode="browse"
                     layout="grid"
-                    gridClass="grid grid-cols-2 gap-1 sm:grid-cols-3"
-                    childContainerClass="relative mt-1 border-l px-3"
-                    itemWrapperClass={() => 'min-w-0 p-1'}
+                    gridClass="grid w-full grid-cols-[repeat(auto-fit,8rem)] justify-center gap-2"
+                    childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
+                    itemWrapperClass={() => 'min-w-0'}
+                    folder={folderCard}
                 >
                     {#snippet empty()}
                         <div
@@ -205,55 +251,53 @@
                         {@const isSelected = selectedIds.includes(resource.id)}
                         <button
                             type="button"
-                            class="group/item flex w-full min-w-0 items-center gap-3 rounded-md border p-2 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isAttached
-                                ? 'border-transparent bg-muted/50 text-muted-foreground'
-                                : isSelected
-                                  ? 'border-primary bg-primary/5 shadow-sm'
-                                  : 'border-transparent hover:border-border hover:bg-muted/40'}"
+                            class="group/item block w-full min-w-0 appearance-none border-0 bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             disabled={isAttached || adding}
                             aria-pressed={isSelected}
                             onclick={() => toggle(resource.id)}
                         >
-                            <div
-                                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold text-foreground"
+                            <MediaEntityCard
+                                name={resource.name}
+                                align="center"
+                                density="compact"
+                                interactive={!isAttached && !adding && !isSelected}
+                                class={isAttached
+                                    ? 'border-transparent bg-muted/50 text-muted-foreground opacity-75'
+                                    : isSelected
+                                      ? 'border-primary bg-primary/5 shadow-sm'
+                                      : ''}
                             >
-                                {#if resource.avatar}
-                                    <AssetView
-                                        asset={{
-                                            scopeType: resource.scopeType,
-                                            scopeId: resource.scopeId,
-                                            ownerTable,
-                                            ownerId: resource.id,
-                                            hash: resource.avatar.hash,
-                                            encKey: resource.avatar.encKey,
-                                            mimeType: resource.avatar.mimeType
-                                        }}
-                                        alt={resource.name}
-                                        class="size-full"
-                                    />
-                                {:else}
-                                    {initial(resource.name)}
-                                {/if}
-                            </div>
+                                {#snippet visual()}
+                                    {#if resource.avatar}
+                                        <AssetView
+                                            asset={{
+                                                scopeType: resource.scopeType,
+                                                scopeId: resource.scopeId,
+                                                ownerTable,
+                                                ownerId: resource.id,
+                                                hash: resource.avatar.hash,
+                                                encKey: resource.avatar.encKey,
+                                                mimeType: resource.avatar.mimeType
+                                            }}
+                                            alt={resource.name}
+                                            class="size-full object-cover"
+                                            focus="top"
+                                        />
+                                    {:else}
+                                        {initial(resource.name)}
+                                    {/if}
 
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-medium text-foreground">
-                                    {resource.name}
-                                </p>
-                                <p class="mt-0.5 text-[11px] text-muted-foreground">
-                                    {isAttached ? 'Added' : isSelected ? 'Selected' : 'Available'}
-                                </p>
-                            </div>
-
-                            <span
-                                class="flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors {isAttached ||
-                                isSelected
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-muted-foreground/30 text-transparent group-hover/item:border-muted-foreground/60'}"
-                                aria-hidden="true"
-                            >
-                                <Check class="size-3" strokeWidth={3} />
-                            </span>
+                                    <span
+                                        class="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full border bg-background/85 text-transparent shadow-sm backdrop-blur-sm transition-colors {isAttached ||
+                                        isSelected
+                                            ? 'border-primary bg-primary text-primary-foreground'
+                                            : 'border-foreground/20 group-hover/item:border-foreground/50'}"
+                                        aria-hidden="true"
+                                    >
+                                        <Check class="size-3" strokeWidth={3} />
+                                    </span>
+                                {/snippet}
+                            </MediaEntityCard>
                         </button>
                     {/snippet}
                 </EntityList>

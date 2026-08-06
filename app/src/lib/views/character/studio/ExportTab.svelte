@@ -1,99 +1,98 @@
 <script lang="ts">
     import { Download } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+    import { Label } from '$lib/components/ui/label';
     import type { ExportCharacterFileRequest } from '$lib/managers';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
 
-    let {
-        exporting,
-        showLightExport,
-        onExport
-    }: {
+    interface Props {
         exporting: ExportButton | null;
         showLightExport: boolean;
         onExport: (id: ExportButton, request: ExportCharacterFileRequest) => void | Promise<void>;
-    } = $props();
+    }
+
+    let { exporting, showLightExport, onExport }: Props = $props();
+
+    let selectedFormat = $state<ExportButton>('ccv3-png');
+
+    interface FormatOption {
+        id: ExportButton;
+        label: string;
+        description: string;
+        request: ExportCharacterFileRequest;
+    }
+
+    const formatOptions = $derived.by<FormatOption[]>(() => {
+        const list: FormatOption[] = [
+            {
+                id: 'ccv3-png',
+                label: 'Character Card V3 (PNG)',
+                description: 'Portable character card with embedded metadata.',
+                request: { kind: 'ccv3', format: 'png' }
+            },
+            {
+                id: 'ccv3-charx',
+                label: 'Character Card V3 (CharX)',
+                description: 'Archive format for character data and related assets.',
+                request: { kind: 'ccv3', format: 'charx' }
+            }
+        ];
+        if (showLightExport) {
+            list.push({
+                id: 'keichar-light',
+                label: 'Kei Light (.keichar)',
+                description: 'Compact KeiAI archive that references synchronized assets.',
+                request: { kind: 'keichar', assetMode: 'light' }
+            });
+        }
+        list.push({
+            id: 'keichar-baked',
+            label: 'Kei Baked (.keichar)',
+            description: 'Self-contained KeiAI archive with assets included.',
+            request: { kind: 'keichar', assetMode: 'baked' }
+        });
+        return list;
+    });
+
+    const activeOption = $derived(
+        formatOptions.find((opt) => opt.id === selectedFormat) ?? formatOptions[0]
+    );
+
+    function handleExportClick() {
+        const opt = activeOption;
+        if (!opt) return;
+        void onExport(opt.id, opt.request);
+    }
 </script>
 
-<section class="space-y-6">
-    <Card>
-        <CardHeader>
-            <CardTitle>Export Character</CardTitle>
-        </CardHeader>
-        <CardContent class="divide-y p-0">
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Character Card V3 PNG</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Portable character card with embedded metadata.
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() => onExport('ccv3-png', { kind: 'ccv3', format: 'png' })}
+<section class="space-y-3">
+    <h3 class="text-sm font-semibold">Export Character</h3>
+    <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+            <div class="min-w-0 flex-1">
+                <select
+                    id="export-character-format"
+                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={selectedFormat}
+                    onchange={(e) => (selectedFormat = e.currentTarget.value as ExportButton)}
                 >
-                    <Download class="size-4" /> Export PNG
-                </Button>
+                    {#each formatOptions as opt (opt.id)}
+                        <option value={opt.id}>{opt.label}</option>
+                    {/each}
+                </select>
             </div>
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Character Card V3 CharX</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Archive format for character data and related assets.
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() => onExport('ccv3-charx', { kind: 'ccv3', format: 'charx' })}
-                >
-                    <Download class="size-4" /> Export CharX
-                </Button>
-            </div>
-            {#if showLightExport}
-                <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <p class="text-sm font-medium">Kei Light</p>
-                        <p class="mt-1 text-xs text-muted-foreground">
-                            Compact KeiAI archive that references synchronized assets.
-                        </p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        class="gap-1.5 sm:self-center"
-                        disabled={exporting !== null}
-                        onclick={() =>
-                            onExport('keichar-light', {
-                                kind: 'keichar',
-                                assetMode: 'light'
-                            })}
-                    >
-                        <Download class="size-4" /> Export Light
-                    </Button>
-                </div>
-            {/if}
-            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Kei Baked</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Self-contained KeiAI archive with assets included.
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() =>
-                        onExport('keichar-baked', { kind: 'keichar', assetMode: 'baked' })}
-                >
-                    <Download class="size-4" /> Export Baked
-                </Button>
-            </div>
-        </CardContent>
-    </Card>
+            <Button
+                variant="outline"
+                class="gap-1.5 shrink-0"
+                disabled={exporting !== null}
+                onclick={handleExportClick}
+            >
+                <Download class="size-4" /> Export
+            </Button>
+        </div>
+        {#if activeOption?.description}
+            <p class="text-xs text-muted-foreground">{activeOption.description}</p>
+        {/if}
+    </div>
 </section>
