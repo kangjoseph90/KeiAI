@@ -46,6 +46,7 @@
         childContainerClass?: string;
         folderWrapperClass?: (folder: FolderDef, isCollapsed: boolean) => string;
         itemWrapperClass?: (entity: T) => string;
+        gridOverlapInset?: number;
 
         onCreateFolder?: (
             name: string,
@@ -76,6 +77,7 @@
         childContainerClass = 'relative ml-3 my-1 px-2 py-1.5',
         folderWrapperClass = undefined,
         itemWrapperClass = undefined,
+        gridOverlapInset = 0.3,
         onCreateFolder = async () => {
             throw new Error('Folder creation is unavailable in browse mode');
         },
@@ -126,6 +128,7 @@
     // Local states
     let editingFolderId = $state<string | null>(null);
     let renameValue = $state('');
+    let openFolderMenuId = $state<string | null>(null);
 
     interface VisualItem {
         type: 'folder' | 'folder-contents' | 'entity';
@@ -300,13 +303,14 @@
         } else {
             const pctX = (clientX - rect.left) / rect.width;
             const pctY = (clientY - rect.top) / rect.height;
-            if (pctX < 0.3) {
+            const overlapInset = Math.min(0.45, Math.max(0, gridOverlapInset));
+            if (pctX < overlapInset) {
                 zone = 'before';
-            } else if (pctX > 0.7) {
+            } else if (pctX > 1 - overlapInset) {
                 zone = 'after';
-            } else if (pctY < 0.3) {
+            } else if (pctY < overlapInset) {
                 zone = 'before';
-            } else if (pctY > 0.7) {
+            } else if (pctY > 1 - overlapInset) {
                 zone = 'after';
             }
         }
@@ -587,15 +591,21 @@
     {#if mode === 'manage'}
         <div
             role="none"
-            class="touch-visible opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100 transition-opacity"
+            class="touch-visible opacity-0 transition-opacity group-hover/folder:opacity-100 has-focus-visible:opacity-100 {openFolderMenuId ===
+            f.id
+                ? 'opacity-100'
+                : ''}"
             onclick={(e) => e.stopPropagation()}
         >
-            <DropdownMenu.Root>
+            <DropdownMenu.Root
+                open={openFolderMenuId === f.id}
+                onOpenChange={(open) => (openFolderMenuId = open ? f.id : null)}
+            >
                 <DropdownMenu.Trigger>
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        class="hover:bg-muted-foreground/10 text-inherit"
+                        class="size-7 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground"
                         aria-label={`Actions for ${f.name}`}
                     >
                         <MoreVertical class="size-3.5" />
@@ -767,7 +777,7 @@
     class="relative flex flex-col w-full {ctx.draggedId ? 'drag-active' : ''}"
     aria-busy={ctx.dropPending}
 >
-    <div class={layout === 'grid' ? gridClass : listClass}>
+    <div class={layout === 'grid' ? cn(gridClass, 'grid-flow-dense') : listClass}>
         {#each visualItems as visualNode (visualNode.id)}
             <div
                 animate:flip={{ duration: ctx.animateReorder ? 150 : 0 }}
@@ -839,6 +849,7 @@
                                 {childContainerClass}
                                 {folderWrapperClass}
                                 {itemWrapperClass}
+                                {gridOverlapInset}
                                 parentId={f.id}
                                 {onCreateFolder}
                                 {onUpdateFolder}

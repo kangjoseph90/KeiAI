@@ -230,7 +230,7 @@
                 <!-- 펼쳐지는 바디 영역 -->
                 {#snippet details()}
                     <div class="flex flex-col gap-3">
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs">Model ID (Internal)</Label>
                                 <Input
@@ -281,7 +281,7 @@
                             </form>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs">Tokenizer</Label>
                                 <select

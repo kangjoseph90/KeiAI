@@ -324,12 +324,16 @@
                         {#snippet item({ entity: room })}
                             {@const selected = route.roomId === room.id}
                             <div
-                                class="relative flex size-10 items-center justify-center rounded-md border bg-background text-xs font-semibold transition-colors {selected
+                                class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
                                     ? 'border-primary ring-2 ring-primary/20'
                                     : 'border-transparent hover:border-sidebar-border'} group"
                                 title={room.name}
                             >
-                                <RoomAvatar {room} class="size-full" />
+                                <RoomAvatar
+                                    {room}
+                                    class="size-full"
+                                    initialClass="text-[10px] font-semibold"
+                                />
                             </div>
                         {/snippet}
                     </EntityList>

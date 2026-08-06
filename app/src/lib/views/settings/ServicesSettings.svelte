@@ -952,7 +952,7 @@
         {#each FEATURES as item (item.id)}
             <button
                 type="button"
-                class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
+                class="min-w-max basis-24 grow shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
                 item.id
                     ? 'bg-background text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'}"
@@ -971,8 +971,12 @@
                     <CardDescription>{feature.description}</CardDescription>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-3" aria-busy={saving}>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="flex flex-col gap-1.5 {hasModel ? '' : 'col-span-2'}">
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div
+                            class="flex flex-col gap-1.5 {hasModel
+                                ? ''
+                                : 'col-span-1 sm:col-span-2'}"
+                        >
                             <Label for="service-provider">Provider</Label>
                             <select
                                 id="service-provider"

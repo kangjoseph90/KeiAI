@@ -788,7 +788,7 @@
                 >
                     <div
                         bind:this={messagesContentEl}
-                        class="chat-messages-content flex flex-none flex-col gap-6 {$displayMessages.length ===
+                        class="chat-messages-content flex flex-none flex-col gap-4 {$displayMessages.length ===
                         0
                             ? 'min-h-full'
                             : ''}"
@@ -946,12 +946,6 @@
 
     .chat-messages-container {
         container: chat-messages / inline-size;
-    }
-
-    @container chat-messages (min-width: 32rem) {
-        .chat-messages-content {
-            gap: 1rem;
-        }
     }
 
     .app-chat-panel-stage {

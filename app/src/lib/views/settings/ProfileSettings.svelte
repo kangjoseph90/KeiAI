@@ -159,7 +159,7 @@
         </CardDescription>
     </CardHeader>
     <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
-        <div class="mb-1 flex items-center gap-4 sm:gap-6">
+        <div class="mb-1 flex items-center gap-4">
             <div class="shrink-0">
                 <button
                     type="button"
@@ -174,7 +174,7 @@
                     onclick={() => (avatarPreviewOpen = true)}
                 >
                     <Avatar.Root
-                        class="size-20 border-2 border-muted transition-colors hover:border-primary sm:size-24"
+                        class="size-20 border-2 border-muted transition-colors hover:border-primary"
                     >
                         <Avatar.Image src={displayedAvatar} alt={userName} class="object-cover" />
                         <Avatar.Fallback class="text-xl font-bold"

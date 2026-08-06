@@ -19,6 +19,8 @@
         DialogHeader,
         DialogTitle
     } from '$lib/components/ui/dialog';
+    import { Input } from '$lib/components/ui/input';
+    import { Label } from '$lib/components/ui/label';
     import type { MultiRoom, MultiRoomMember, Room } from '$lib/services';
 
     interface Props {
@@ -30,7 +32,7 @@
         error?: string;
         busyMemberId?: string | null;
         busyAction?: string | null;
-        onVisibilityChange: (visibility: MultiRoom['visibility']) => Promise<void>;
+        onSave: (name: string, visibility: MultiRoom['visibility']) => Promise<void>;
         onApprove: (userId: string) => Promise<void>;
         onReject: (userId: string) => Promise<void>;
         onRevoke: (userId: string) => Promise<void>;
@@ -47,7 +49,7 @@
         error = '',
         busyMemberId = null,
         busyAction = null,
-        onVisibilityChange,
+        onSave,
         onApprove,
         onReject,
         onRevoke,
@@ -58,23 +60,71 @@
     const isOwner = $derived(Boolean(meta && currentUserId && meta.ownerUserId === currentUserId));
     const acceptedMembers = $derived(members.filter((member) => member.status === 'accepted'));
     const pendingMembers = $derived(members.filter((member) => member.status === 'pending'));
+    let nameDraft = $state('');
+    let visibilityDraft = $state<MultiRoom['visibility']>('private');
+    let saving = $state(false);
+    let wasOpen = $state(false);
+    let previousRoomName = $state('');
+    let previousVisibility = $state<MultiRoom['visibility']>('private');
+
+    const trimmedName = $derived(nameDraft.trim());
+    const hasChanges = $derived(
+        Boolean(room && meta) &&
+            (trimmedName !== (room?.name ?? '') ||
+                visibilityDraft !== (meta?.visibility ?? 'private'))
+    );
+    const busy = $derived(saving || busyAction !== null || busyMemberId !== null);
+    const canSave = $derived(isOwner && Boolean(trimmedName) && hasChanges && !busy);
+
+    $effect(() => {
+        const savedName = room?.name ?? '';
+        const savedVisibility = meta?.visibility ?? 'private';
+
+        if (!open) {
+            nameDraft = '';
+            visibilityDraft = 'private';
+            wasOpen = false;
+        } else if (
+            !wasOpen ||
+            savedName !== previousRoomName ||
+            savedVisibility !== previousVisibility
+        ) {
+            nameDraft = savedName;
+            visibilityDraft = savedVisibility;
+            wasOpen = true;
+        }
+
+        previousRoomName = savedName;
+        previousVisibility = savedVisibility;
+    });
+
+    async function saveChanges(): Promise<void> {
+        if (!canSave || saving) return;
+
+        saving = true;
+        try {
+            await onSave(trimmedName, visibilityDraft);
+        } finally {
+            saving = false;
+        }
+    }
 </script>
 
 <Dialog bind:open>
     <DialogContent class="p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
-            <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Shield class="size-3.5" />
-                Multi Room
-            </div>
-            <DialogTitle class="text-lg">{room?.name ?? 'Room management'}</DialogTitle>
+            <DialogTitle class="text-lg">
+                {isOwner ? 'Manage Multi Room' : (room?.name ?? 'Multi Room')}
+            </DialogTitle>
             <DialogDescription>
-                {isOwner ? 'Manage access and membership.' : 'View members or leave this room.'}
+                {isOwner
+                    ? 'Manage room settings, access, and membership.'
+                    : 'View members or leave this room.'}
             </DialogDescription>
         </DialogHeader>
 
         {#if room && meta}
-            <div class="divide-y" aria-busy={busyAction !== null || busyMemberId !== null}>
+            <div class="divide-y" aria-busy={busy}>
                 {#if error}
                     <div
                         class="border-b border-destructive/20 bg-destructive/10 px-5 py-3 text-sm text-destructive"
@@ -83,6 +133,20 @@
                     </div>
                 {/if}
                 <section class="space-y-3 px-5 py-3">
+                    {#if isOwner}
+                        <div class="space-y-1.5">
+                            <div class="min-w-0 flex-1 space-y-1.5">
+                                <Label for="multi-room-name">Room name</Label>
+                                <Input
+                                    id="multi-room-name"
+                                    bind:value={nameDraft}
+                                    class="h-9"
+                                    disabled={busy}
+                                    placeholder="Multi room name..."
+                                />
+                            </div>
+                        </div>
+                    {/if}
                     <div
                         class="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4"
                     >
@@ -95,21 +159,21 @@
                         <div class="flex rounded-md border bg-muted/30 p-1 max-sm:[&>*]:flex-1">
                             <Button
                                 size="sm"
-                                variant={meta.visibility === 'private' ? 'secondary' : 'ghost'}
+                                variant={visibilityDraft === 'private' ? 'secondary' : 'ghost'}
                                 class="h-7 gap-1.5 px-2.5 text-xs"
-                                disabled={!isOwner || busyAction !== null || busyMemberId !== null}
-                                aria-busy={busyAction === 'manage-visibility'}
-                                onclick={() => onVisibilityChange('private')}
+                                disabled={!isOwner || busy}
+                                aria-pressed={visibilityDraft === 'private'}
+                                onclick={() => (visibilityDraft = 'private')}
                             >
                                 <Lock class="size-3.5" /> Private
                             </Button>
                             <Button
                                 size="sm"
-                                variant={meta.visibility === 'public' ? 'secondary' : 'ghost'}
+                                variant={visibilityDraft === 'public' ? 'secondary' : 'ghost'}
                                 class="h-7 gap-1.5 px-2.5 text-xs"
-                                disabled={!isOwner || busyAction !== null || busyMemberId !== null}
-                                aria-busy={busyAction === 'manage-visibility'}
-                                onclick={() => onVisibilityChange('public')}
+                                disabled={!isOwner || busy}
+                                aria-pressed={visibilityDraft === 'public'}
+                                onclick={() => (visibilityDraft = 'public')}
                             >
                                 <Globe2 class="size-3.5" /> Public
                             </Button>
@@ -135,7 +199,7 @@
                                             variant="outline"
                                             title="Approve member"
                                             aria-label={`Approve ${member.userId}`}
-                                            disabled={busyAction !== null || busyMemberId !== null}
+                                            disabled={busy}
                                             onclick={() => onApprove(member.userId)}
                                         >
                                             <Check class="size-4" />
@@ -145,7 +209,7 @@
                                             variant="ghost"
                                             title="Reject request"
                                             aria-label={`Reject ${member.userId}`}
-                                            disabled={busyAction !== null || busyMemberId !== null}
+                                            disabled={busy}
                                             onclick={() => onReject(member.userId)}
                                         >
                                             <X class="size-4" />
@@ -190,7 +254,7 @@
                                         class="text-muted-foreground hover:text-destructive"
                                         title="Remove member"
                                         aria-label={`Remove ${member.userId}`}
-                                        disabled={busyAction !== null || busyMemberId !== null}
+                                        disabled={busy}
                                         aria-busy={busyAction === `revoke-member:${member.userId}`}
                                         onclick={() => onRevoke(member.userId)}
                                     >
@@ -203,24 +267,33 @@
                 </section>
             </div>
 
-            <DialogFooter class="flex-row items-center justify-end gap-2 border-t px-5 py-3">
+            <DialogFooter class="flex-row items-center gap-2 border-t px-5 py-3 sm:justify-between">
                 {#if isOwner}
                     <Button
                         size="sm"
                         variant="destructive"
                         class="h-8 gap-1.5 px-3"
-                        disabled={busyAction !== null || busyMemberId !== null}
+                        disabled={busy}
                         aria-busy={busyAction === `delete-multi-room:${room.id}`}
                         onclick={onDelete}
                     >
                         <Trash2 class="size-4" /> Delete room
                     </Button>
+                    <Button
+                        size="sm"
+                        class="ml-auto h-8 gap-1.5 px-3"
+                        disabled={!canSave}
+                        aria-busy={saving}
+                        onclick={saveChanges}
+                    >
+                        Save changes
+                    </Button>
                 {:else}
                     <Button
                         size="sm"
                         variant="outline"
-                        class="h-8 gap-1.5 px-3 text-destructive"
-                        disabled={busyAction !== null || busyMemberId !== null}
+                        class="ml-auto h-8 gap-1.5 px-3 text-destructive"
+                        disabled={busy}
                         aria-busy={busyAction === `leave-multi-room:${room.id}`}
                         onclick={onLeave}
                     >

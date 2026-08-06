@@ -11,10 +11,7 @@
 </script>
 
 <div class="flex items-center justify-between gap-3 min-w-0">
-    <p
-        class="text-xs sm:text-sm text-muted-foreground truncate flex-1 min-w-0 pr-1"
-        title={description}
-    >
+    <p class="text-sm text-muted-foreground truncate flex-1 min-w-0 pr-1" title={description}>
         {description}
     </p>
     <div class="flex shrink-0 items-center gap-1.5 flex-wrap">

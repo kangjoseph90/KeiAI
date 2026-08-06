@@ -194,7 +194,7 @@
                     data.
                 </p>
                 <div
-                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all sm:text-xl sm:tracking-widest dark:border-amber-900 dark:bg-amber-950/50"
+                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all dark:border-amber-900 dark:bg-amber-950/50"
                 >
                     {displayRecovery}
                 </div>

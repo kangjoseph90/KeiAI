@@ -80,12 +80,12 @@
     }
 
     function navigateFromSidebar(r: RouteState) {
-        if (compactShell) sidebarCollapsed = true;
+        if (isCompactShell()) sidebarCollapsed = true;
         navigate(r);
     }
 
     function isCompactShell(): boolean {
-        return compactShell;
+        return compactShellMedia?.matches ?? compactShell;
     }
 
     function handleSidebarToggle(): void {
@@ -140,7 +140,7 @@
         if (event.defaultPrevented || event.key !== 'Escape') return;
         if (chatPanelOpen) {
             handleChatPanelClose();
-        } else if (compactShell && !sidebarCollapsed) {
+        } else if (isCompactShell() && !sidebarCollapsed) {
             sidebarCollapsed = true;
         }
     }
@@ -391,7 +391,7 @@
             <!-- Sidebar -->
             <AppSidebar
                 collapsed={sidebarCollapsed}
-                compact={compactShell}
+                compact={isCompactShell()}
                 route={$route}
                 onToggle={handleSidebarToggle}
                 onNavigate={navigateFromSidebar}
@@ -406,7 +406,10 @@
         <!-- Main Content -->
         <div
             class="flex min-h-0 flex-1 flex-col overflow-hidden"
-            inert={appSidebarVisible && compactShell && !sidebarCollapsed && $route.view !== 'room'}
+            inert={appSidebarVisible &&
+                isCompactShell() &&
+                !sidebarCollapsed &&
+                $route.view !== 'room'}
         >
             {#if $route.view === 'room' && $route.roomId}
                 <ChatView
@@ -415,7 +418,7 @@
                     bind:inspectorOpen={chatPanelOpen}
                     onRequestInspectorOpen={handleChatPanelOpen}
                     onRequestInspectorClose={handleChatPanelClose}
-                    roomOverlayOpen={compactShell && !sidebarCollapsed}
+                    roomOverlayOpen={isCompactShell() && !sidebarCollapsed}
                 />
             {:else if $route.view === 'characterStudio' && $route.charId}
                 <CharacterStudio charId={$route.charId} characterTab={$route.characterTab} />

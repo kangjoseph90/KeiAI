@@ -7,8 +7,7 @@
         Plus,
         Trash2,
         Upload,
-        User,
-        UserRound,
+        UserRoundPen,
         X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
@@ -70,7 +69,7 @@
     let exporting = $state<ExportButton | null>(null);
 
     const tabs = [
-        { id: 'profile' as const, label: 'Profile', icon: UserRound },
+        { id: 'profile' as const, label: 'Profile', icon: UserRoundPen },
         { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
         { id: 'advanced' as const, label: 'Advanced', icon: Settings2 }
     ];
@@ -323,9 +322,10 @@
             alt={$activePersona?.name ?? 'Persona'}
             class="size-full object-cover"
             fallback="none"
+            focus="top"
         >
             {#if !$activePersona?.avatar}
-                <UserRound class="size-5 text-muted-foreground" />
+                <UserRoundPen class="size-5 text-muted-foreground" />
             {/if}
         </AssetView>
     </div>
@@ -360,12 +360,12 @@
                                 </CardDescription>
                             </CardHeader>
                             <CardContent class="space-y-4">
-                                <div class="flex items-center gap-4 sm:gap-6">
+                                <div class="flex items-center gap-4">
                                     <div class="shrink-0">
                                         {#if $activePersona.avatar}
                                             <button
                                                 type="button"
-                                                class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:size-24"
+                                                class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                                 aria-label={`View ${$activePersona.name} avatar`}
                                                 title="View avatar"
                                                 onclick={() => (avatarGalleryOpen = true)}
@@ -375,22 +375,24 @@
                                                     alt={$activePersona.name}
                                                     class="size-full object-cover"
                                                     fallback="none"
+                                                    focus="top"
                                                 />
                                             </button>
                                         {:else}
                                             <div
-                                                class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
+                                                class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
                                             >
                                                 <AssetView
                                                     asset={null}
                                                     alt={$activePersona.name}
                                                     class="size-full object-cover"
                                                     fallback="none"
+                                                    focus="top"
                                                 >
                                                     <div
                                                         class="flex size-full items-center justify-center"
                                                     >
-                                                        <User
+                                                        <UserRoundPen
                                                             class="size-10 text-muted-foreground/50"
                                                         />
                                                     </div>

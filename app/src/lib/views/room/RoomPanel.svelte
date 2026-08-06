@@ -5,14 +5,16 @@
         Folder,
         FolderOpen,
         MessageSquare,
+        Pin,
         Plus,
         Search,
         Trash2,
-        User,
+        UserRound,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -25,6 +27,7 @@
         createChat,
         createRoomFolder,
         deleteChat,
+        deleteRoom,
         deleteRoomFolder,
         isMultiRoom,
         modules,
@@ -193,6 +196,23 @@
         editingRoomName = true;
     }
 
+    async function handleDeleteRoom(): Promise<void> {
+        if (!$activeRoom || $isMultiRoom) return;
+        const roomId = $activeRoom.id;
+        const roomName = $activeRoom.name;
+        await runPanelAction('delete-room', 'Could not delete room', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete room?',
+                description: `Delete room "${roomName}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeRoom?.id !== roomId) return;
+            await deleteRoom(roomId);
+            onNavigate({ view: 'home' });
+        });
+    }
+
     async function handleDeleteChat(chatId: string): Promise<void> {
         if (!$activeRoom) return;
         const roomId = $activeRoom.id;
@@ -280,6 +300,13 @@
                     <p class="min-w-0 flex-1 truncate text-sm font-semibold">
                         {$activeRoom.name}
                     </p>
+                    {#if $isMultiRoom}
+                        <span
+                            class="shrink-0 rounded-full border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                        >
+                            Multi Room
+                        </span>
+                    {/if}
                     {#if !$isMultiRoom}
                         <Button
                             variant="ghost"
@@ -292,6 +319,18 @@
                         >
                             <Edit3 class="size-3.5" />
                         </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class="shrink-0 text-muted-foreground hover:text-destructive"
+                            title="Delete room"
+                            aria-label={`Delete ${$activeRoom.name}`}
+                            disabled={panelAction !== null}
+                            aria-busy={panelAction === 'delete-room'}
+                            onclick={handleDeleteRoom}
+                        >
+                            <Trash2 class="size-3.5" />
+                        </Button>
                     {/if}
                 {/if}
             </div>
@@ -301,7 +340,7 @@
                     <p
                         class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
-                        <User class="size-3" /> Characters
+                        <UserRound class="size-3" /> Characters
                     </p>
                     <Button
                         variant="ghost"
@@ -321,7 +360,8 @@
                     layout="grid"
                     gridClass="grid grid-cols-3 gap-2"
                     listClass="grid grid-cols-3 gap-2"
-                    childContainerClass="relative my-1 px-2 py-1.5"
+                    gridOverlapInset={0.18}
+                    childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
                     onItemClick={(character) => {
                         if ($activeChat) {
                             void handleSelectCharacter(character.id);
@@ -346,19 +386,60 @@
                             <EmptyListPlaceholder message="No characters." />
                         </div>
                     {/snippet}
+                    {#snippet folder({ folder: f, collapsed, toggle, parts })}
+                        <div
+                            role="button"
+                            tabindex="0"
+                            aria-expanded={!collapsed}
+                            aria-label={f.name}
+                            class="group/folder relative w-full cursor-pointer select-none"
+                            onclick={toggle}
+                            onkeydown={(event) => {
+                                if (event.target !== event.currentTarget) return;
+                                if (event.key !== 'Enter' && event.key !== ' ') return;
+                                event.preventDefault();
+                                toggle();
+                            }}
+                        >
+                            <MediaEntityCard
+                                name={f.name}
+                                align="center"
+                                density="compact"
+                                interactive={false}
+                                class="hover:border-foreground/25 hover:bg-sidebar-accent"
+                                footerClass="py-1"
+                            >
+                                {#snippet visual()}
+                                    {@render parts.icon({
+                                        folder: f,
+                                        collapsed,
+                                        sizeClass: 'size-10 rounded-lg [&_svg]:size-4'
+                                    })}
+                                {/snippet}
+                                {#snippet nameContent()}
+                                    {@render parts.name({ folder: f })}
+                                {/snippet}
+                                {#snippet action()}
+                                    {@render parts.actions({ folder: f })}
+                                {/snippet}
+                            </MediaEntityCard>
+                        </div>
+                    {/snippet}
                     {#snippet item({ entity: character })}
                         {@const selected = $chatSelections?.characterId === character.id}
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
-                            <div
-                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-lg border border-foreground/15 bg-card p-2 text-center transition-[border-color,background-color] {selected
+                            <MediaEntityCard
+                                name={character.name}
+                                align="center"
+                                density="compact"
+                                interactive={false}
+                                footerClass="py-1"
+                                class={selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:border-foreground/25 hover:bg-sidebar-accent'}"
-                                title={character.name}
+                                    : 'hover:border-foreground/25 hover:bg-sidebar-accent'}
                             >
-                                <div
-                                    class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
-                                >
+                                {#snippet visual()}
                                     {#if character.avatar}
                                         <AssetView
                                             asset={{
@@ -372,13 +453,30 @@
                                             }}
                                             alt={character.name}
                                             class="size-full object-cover"
+                                            focus="top"
                                         />
                                     {:else}
                                         {initial(character.name)}
                                     {/if}
-                                </div>
-                                <span class="w-full truncate text-[11px]">{character.name}</span>
-                            </div>
+                                {/snippet}
+                                {#snippet nameContent()}
+                                    <span
+                                        class="inline-flex max-w-full min-w-0 items-center justify-center gap-1"
+                                    >
+                                        {#if isDefault}
+                                            <span
+                                                role="img"
+                                                class="inline-flex size-3 shrink-0 items-center justify-center text-primary"
+                                                title="Default character"
+                                                aria-label={`${character.name} is the default character`}
+                                            >
+                                                <Pin class="size-3" />
+                                            </span>
+                                        {/if}
+                                        <span class="min-w-0 truncate">{character.name}</span>
+                                    </span>
+                                {/snippet}
+                            </MediaEntityCard>
                             <ParticipantCardMenu
                                 kind="character"
                                 name={character.name}

@@ -480,6 +480,7 @@
                 asset={speakerAvatarLocator}
                 alt={speakerName}
                 class="size-full object-cover"
+                focus="top"
             />
         {:else}
             {speakerInitial}

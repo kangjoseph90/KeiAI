@@ -128,7 +128,7 @@
         </Card>
     {/if}
 
-    <section class="rounded-lg border bg-card px-5 py-4">
+    <section class="rounded-lg border bg-card px-5 py-3">
         <div class="flex items-center gap-2">
             <button
                 type="button"

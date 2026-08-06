@@ -10,7 +10,6 @@
         GripVertical
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Badge } from '$lib/components/ui/badge';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import {
@@ -209,14 +208,6 @@
                                 aria-label="Preset name"
                                 class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
                             />
-
-                            <!-- Active Status Badge -->
-                            {#if $activePreset?.id === preset.id}
-                                <Badge
-                                    class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
-                                    >Active</Badge
-                                >
-                            {/if}
 
                             <!-- Actions -->
                             <Button

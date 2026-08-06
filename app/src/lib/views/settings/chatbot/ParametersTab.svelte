@@ -98,7 +98,7 @@
         <CardHeader>
             <CardTitle class="text-base">Chat Parameters</CardTitle>
         </CardHeader>
-        <CardContent class="grid grid-cols-3 gap-x-6 gap-y-3">
+        <CardContent class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
             {#each commonParams as param (param)}
                 <div class="flex flex-col gap-1.5">
                     <Label class="text-xs">{getLLMParameterName(param)}</Label>
@@ -115,7 +115,7 @@
         </CardContent>
     </Card>
 
-    <section class="rounded-lg border bg-card p-4">
+    <section class="rounded-lg border bg-card px-5 py-3">
         <div class="flex items-center gap-2">
             <button
                 type="button"
@@ -171,7 +171,9 @@
                         </CardHeader>
                         {#if params !== undefined}
                             <div transition:slide={{ duration: 150 }}>
-                                <CardContent class="grid grid-cols-3 gap-x-6 gap-y-3">
+                                <CardContent
+                                    class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3"
+                                >
                                     {#each commonParams as param (param)}
                                         <div class="flex flex-col gap-1.5">
                                             <Label class="text-xs"

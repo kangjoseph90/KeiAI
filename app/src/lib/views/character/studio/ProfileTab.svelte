@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { User, Upload } from 'lucide-svelte';
+    import { UserRound, Upload } from 'lucide-svelte';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Textarea } from '$lib/components/ui/textarea';
@@ -97,12 +97,12 @@
             <CardDescription>How the character is identified in the application.</CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
-            <div class="flex items-center gap-4 sm:gap-6">
+            <div class="flex items-center gap-4">
                 <div class="shrink-0">
                     {#if character.avatar}
                         <button
                             type="button"
-                            class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:size-24"
+                            class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             aria-label={`View ${character.name} avatar`}
                             title="View avatar"
                             onclick={() => (avatarGalleryOpen = true)}
@@ -112,20 +112,22 @@
                                 alt={character.name}
                                 class="size-full object-cover"
                                 fallback="none"
+                                focus="top"
                             />
                         </button>
                     {:else}
                         <div
-                            class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
+                            class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
                         >
                             <AssetView
                                 asset={null}
                                 alt={character.name}
                                 class="size-full object-cover"
                                 fallback="none"
+                                focus="top"
                             >
                                 <div class="flex size-full items-center justify-center">
-                                    <User class="size-10 text-muted-foreground/50" />
+                                    <UserRound class="size-10 text-muted-foreground/50" />
                                 </div>
                             </AssetView>
                         </div>

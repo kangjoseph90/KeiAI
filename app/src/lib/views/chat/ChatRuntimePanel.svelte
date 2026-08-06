@@ -1,6 +1,17 @@
 <script lang="ts">
-    import { Plus, User, Book, ImageIcon, FileText, Paperclip, X } from 'lucide-svelte';
+    import type { Snippet } from 'svelte';
+    import {
+        Plus,
+        UserRoundPen,
+        Book,
+        ImageIcon,
+        FileText,
+        Paperclip,
+        Pin,
+        X
+    } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
     import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
@@ -38,10 +49,23 @@
     import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
+    import type { FolderDef } from '$lib/types/refs';
 
     interface Props {
         chatId: string;
         onSelectInlay?: (assetId: string) => void;
+    }
+
+    interface PersonaFolderPayload {
+        folder: FolderDef;
+        collapsed: boolean;
+        toggle: () => void;
+        childCount: number;
+        parts: {
+            icon: Snippet<[{ folder: FolderDef; collapsed: boolean; sizeClass?: string }]>;
+            name: Snippet<[{ folder: FolderDef }]>;
+            actions: Snippet<[{ folder: FolderDef }]>;
+        };
     }
 
     let { chatId, onSelectInlay }: Props = $props();
@@ -202,8 +226,47 @@
     }
 </script>
 
+{#snippet personaFolder(payload: PersonaFolderPayload)}
+    {@const { folder, collapsed, toggle, parts } = payload}
+    {#snippet folderVisual()}
+        {@render parts.icon({
+            folder,
+            collapsed,
+            sizeClass: 'size-10 rounded-lg [&_svg]:size-4'
+        })}
+    {/snippet}
+    {#snippet folderAction()}
+        {@render parts.actions({ folder })}
+    {/snippet}
+    <div
+        role="button"
+        tabindex="0"
+        aria-expanded={!collapsed}
+        aria-label={folder.name}
+        class="group/folder relative w-full cursor-pointer select-none"
+        onclick={toggle}
+        onkeydown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            toggle();
+        }}
+    >
+        <MediaEntityCard
+            name={folder.name}
+            visual={folderVisual}
+            action={folderAction}
+            align="center"
+            density="compact"
+            interactive={false}
+            footerClass="py-1"
+            class="hover:border-foreground/25 hover:bg-sidebar-accent"
+        />
+    </div>
+{/snippet}
+
 <div
-    class="flex h-full flex-col border-l border-sidebar-border bg-sidebar"
+    class="chat-runtime-panel flex h-full flex-col border-l border-sidebar-border bg-sidebar"
     aria-busy={panelAction !== null}
 >
     <!-- Panel Header -->
@@ -240,7 +303,7 @@
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
-                            <User class="size-3" /> Personas
+                            <UserRoundPen class="size-3" /> Personas
                         </Label>
                         <Button
                             variant="ghost"
@@ -258,9 +321,11 @@
                         entities={$chatPersonas}
                         config={$activeChat.personas}
                         layout="grid"
-                        gridClass="grid grid-cols-3 gap-2"
+                        gridClass="chat-runtime-persona-grid grid gap-2"
                         listClass="grid grid-cols-3 gap-2"
-                        childContainerClass="relative my-1 px-2 py-1.5"
+                        gridOverlapInset={0.18}
+                        childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
+                        folder={personaFolder}
                         onItemClick={(persona) => {
                             void handlePersonaSelect(persona.id);
                         }}
@@ -273,7 +338,7 @@
                             moveChatItem(chatId, 'personas', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div class="col-span-3">
+                            <div class="col-span-full">
                                 <EmptyListPlaceholder
                                     message="No personas attached to this chat."
                                 />
@@ -282,36 +347,56 @@
                         {#snippet item({ entity: persona })}
                             {@const selected = $chatSelections?.personaId === persona.id}
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
+                            {#snippet personaVisual()}
+                                {#if persona.avatar}
+                                    <AssetView
+                                        asset={{
+                                            scopeType: persona.scopeType,
+                                            scopeId: persona.scopeId,
+                                            ownerTable: 'personas',
+                                            ownerId: persona.id,
+                                            hash: persona.avatar.hash,
+                                            encKey: persona.avatar.encKey,
+                                            mimeType: persona.avatar.mimeType
+                                        }}
+                                        alt={persona.name}
+                                        class="size-full object-cover"
+                                        focus="top"
+                                    />
+                                {:else}
+                                    {initial(persona.name)}
+                                {/if}
+                            {/snippet}
+                            {#snippet personaName()}
+                                <span
+                                    class="inline-flex max-w-full items-center justify-center gap-1"
+                                >
+                                    {#if isDefault}
+                                        <span
+                                            role="img"
+                                            class="inline-flex size-3 shrink-0 items-center justify-center text-primary"
+                                            title="Default persona"
+                                            aria-label={`${persona.name} is the default persona`}
+                                        >
+                                            <Pin class="size-3" />
+                                        </span>
+                                    {/if}
+                                    <span class="truncate">{persona.name}</span>
+                                </span>
+                            {/snippet}
                             <div class="group relative">
-                                <div
-                                    class="flex w-full min-w-0 cursor-pointer flex-col items-center gap-1 rounded-lg border border-foreground/15 bg-card p-2 text-center transition-[border-color,background-color] {selected
+                                <MediaEntityCard
+                                    name={persona.name}
+                                    visual={personaVisual}
+                                    align="center"
+                                    density="compact"
+                                    interactive={false}
+                                    nameContent={personaName}
+                                    footerClass="py-1"
+                                    class="cursor-pointer {selected
                                         ? 'border-primary ring-2 ring-primary/20'
                                         : 'hover:border-foreground/25 hover:bg-sidebar-accent'}"
-                                    title={persona.name}
-                                >
-                                    <div
-                                        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
-                                    >
-                                        {#if persona.avatar}
-                                            <AssetView
-                                                asset={{
-                                                    scopeType: persona.scopeType,
-                                                    scopeId: persona.scopeId,
-                                                    ownerTable: 'personas',
-                                                    ownerId: persona.id,
-                                                    hash: persona.avatar.hash,
-                                                    encKey: persona.avatar.encKey,
-                                                    mimeType: persona.avatar.mimeType
-                                                }}
-                                                alt={persona.name}
-                                                class="size-full object-cover"
-                                            />
-                                        {:else}
-                                            {initial(persona.name)}
-                                        {/if}
-                                    </div>
-                                    <span class="w-full truncate text-[11px]">{persona.name}</span>
-                                </div>
+                                />
                                 <ParticipantCardMenu
                                     kind="persona"
                                     name={persona.name}
@@ -431,7 +516,7 @@
                         entities={listItems($activeChat.inlays)}
                         config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
                         layout="grid"
-                        gridClass="grid grid-cols-3 gap-1 w-full"
+                        gridClass="chat-runtime-gallery-grid grid gap-1 w-full"
                         itemWrapperClass={() =>
                             'relative w-full p-1 transition-all duration-200 drop-target'}
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -510,3 +595,21 @@
     items={galleryItems}
     title="Chat gallery"
 />
+
+<style>
+    .chat-runtime-panel {
+        container: chat-runtime-panel / inline-size;
+    }
+
+    :global(.chat-runtime-persona-grid),
+    :global(.chat-runtime-gallery-grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @container chat-runtime-panel (min-width: 20rem) {
+        :global(.chat-runtime-persona-grid),
+        :global(.chat-runtime-gallery-grid) {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+</style>
