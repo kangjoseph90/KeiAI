@@ -1,5 +1,4 @@
 import { NotificationService } from '$lib/services/notification';
-import { toast } from '$lib/ui/toast';
 
 export function isDocumentVisible(): boolean {
     const doc = globalThis.document;
@@ -8,24 +7,13 @@ export function isDocumentVisible(): boolean {
     return doc.visibilityState !== 'hidden' && doc.hasFocus();
 }
 
-export async function showTaskNotificationOrToast(
-    toastKind: 'success' | 'error',
+export async function showTaskSystemNotification(
     title: string,
     description: string
 ): Promise<void> {
-    const startedHidden = !isDocumentVisible();
-    if (startedHidden) {
-        const shown = await NotificationService.show({
-            title,
-            body: description
-        });
-        if (shown) return;
-    }
-
-    const shouldPersist = startedHidden && !isDocumentVisible();
-    toast[toastKind]({
+    if (isDocumentVisible()) return;
+    await NotificationService.show({
         title,
-        description,
-        ...(shouldPersist ? { persistent: true } : {})
+        body: description
     });
 }

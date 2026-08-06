@@ -7,9 +7,9 @@
  */
 
 import { get } from 'svelte/store';
-import { activeChatId, chatTasks } from '../state';
-import type { ChatTask } from '../types';
-import { isDocumentVisible, showTaskNotificationOrToast } from './notification';
+import { chatTasks } from '../state';
+import type { ChatTask, CreateTaskMetadata } from '../types';
+import { showTaskSystemNotification } from './notification';
 
 const CHAT_COMPLETE_TITLE = 'Response ready';
 const CHAT_COMPLETE_DESCRIPTION = 'A chat response has finished generating.';
@@ -24,14 +24,17 @@ const CHAT_ERROR_TITLE = 'Chat task failed';
 export function createChatTask(
     chatId: string,
     messageId: string,
-    controller: AbortController
+    controller: AbortController,
+    metadata: CreateTaskMetadata
 ): void {
     chatTasks.update((map) => {
         const next = new Map(map);
         next.set(chatId, {
+            ...metadata,
             status: 'generating',
             messageId,
-            controller
+            controller,
+            startedAt: Date.now()
         });
         return next;
     });
@@ -47,19 +50,39 @@ export function setChatTaskError(chatId: string, errorMessage: string): void {
         const task = map.get(chatId);
         if (!task) return map;
         const next = new Map(map);
-        next.set(chatId, { ...task, status: 'error', errorMessage });
+        next.set(chatId, {
+            ...task,
+            status: 'error',
+            controller: undefined,
+            errorMessage,
+            finishedAt: Date.now()
+        });
         return next;
     });
 }
 
-export function notifyChatTaskComplete(chatId: string): void {
-    if (get(activeChatId) === chatId && isDocumentVisible()) return;
+export function setChatTaskComplete(chatId: string): void {
+    chatTasks.update((map) => {
+        const task = map.get(chatId);
+        if (!task) return map;
+        const next = new Map(map);
+        next.set(chatId, {
+            ...task,
+            status: 'completed',
+            controller: undefined,
+            errorMessage: undefined,
+            finishedAt: Date.now()
+        });
+        return next;
+    });
+}
 
-    void showTaskNotificationOrToast('success', CHAT_COMPLETE_TITLE, CHAT_COMPLETE_DESCRIPTION);
+export function notifyChatTaskComplete(_chatId: string): void {
+    void showTaskSystemNotification(CHAT_COMPLETE_TITLE, CHAT_COMPLETE_DESCRIPTION);
 }
 
 export function notifyChatTaskError(_chatId: string, errorMessage: string): void {
-    void showTaskNotificationOrToast('error', CHAT_ERROR_TITLE, errorMessage);
+    void showTaskSystemNotification(CHAT_ERROR_TITLE, errorMessage);
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────

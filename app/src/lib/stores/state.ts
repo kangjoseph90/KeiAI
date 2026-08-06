@@ -24,7 +24,17 @@ import type {
     MultiRoomMember
 } from '$lib/services';
 import type { SyncStatus } from '$lib/services';
-import type { DisplayMessage, ChatTask, MediaTask, TranslationTask } from './types';
+import type {
+    ChatDraft,
+    CollectedTask,
+    CollectedTaskKind,
+    DictationTask,
+    DisplayMessage,
+    ChatTask,
+    MediaTask,
+    TaskMetadata,
+    TranslationTask
+} from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
@@ -174,11 +184,53 @@ export const chatTasks = writable<Map<string, ChatTask>>(new Map());
 export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
 export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
 export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
+export const dictationTasks = writable<Map<string, DictationTask>>(new Map());
+export const chatDrafts = writable<Map<string, ChatDraft>>(new Map());
+
+export const hasRecordingDictation = derived(dictationTasks, (tasks) =>
+    Array.from(tasks.values()).some(
+        (task) => task.status === 'generating' && task.phase === 'recording'
+    )
+);
 
 /** True when the currently active chat has an in-flight task. */
 export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
-    chat ? tasks.has(chat.id) : false
+    chat ? tasks.get(chat.id)?.status === 'generating' : false
 );
+
+export const collectedTasks = derived(
+    [chatTasks, translationTasks, imageGenerationTasks, ttsTasks, dictationTasks],
+    ([chats, translations, images, speech, dictations]): CollectedTask[] => [
+        ...collectTasks('chat', chats),
+        ...collectTasks('translation', translations),
+        ...collectTasks('image', images),
+        ...collectTasks('tts', speech),
+        ...collectTasks('dictation', dictations)
+    ]
+);
+
+function collectTasks<T extends { status: 'generating' | 'completed' | 'error' } & TaskMetadata>(
+    kind: CollectedTaskKind,
+    tasks: Map<string, T>
+): CollectedTask[] {
+    return Array.from(tasks, ([taskKey, task]) => ({
+        id: `${kind}:${taskKey}`,
+        kind,
+        taskKey,
+        roomId: task.roomId,
+        chatId: task.chatId,
+        chatTitle: task.chatTitle,
+        title: task.title,
+        status: task.status === 'generating' ? 'running' : task.status,
+        phase: 'phase' in task && typeof task.phase === 'string' ? task.phase : undefined,
+        errorMessage:
+            'errorMessage' in task && typeof task.errorMessage === 'string'
+                ? task.errorMessage
+                : undefined,
+        startedAt: task.startedAt,
+        finishedAt: task.finishedAt
+    }));
+}
 
 /**
  * Messages with display status overlay.
@@ -196,7 +248,7 @@ export const displayMessages = derived(
             if (task?.messageId === msg.id) {
                 return {
                     ...base,
-                    displayStatus: task.status,
+                    displayStatus: task.status === 'generating' ? 'generating' : task.status,
                     errorMessage: task.errorMessage
                 };
             }

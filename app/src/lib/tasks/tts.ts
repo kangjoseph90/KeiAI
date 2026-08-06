@@ -7,7 +7,15 @@ import { getAppSettings, getChat, getMessage, updateMessageSwipe } from '$lib/st
 import { WorkflowRuntime } from '$lib/workflow';
 import { deserializeAgentParts, getLastTextContent } from '$lib/workflow/agent/llm';
 import { toMessageContext } from '$lib/workflow/agent/context';
-import { clearTTSTask, createTTSTask, getTTSTask, setTTSTaskError } from '$lib/stores/tasks/tts';
+import {
+    clearTTSTask,
+    createTTSTask,
+    getTTSTask,
+    notifyTTSTaskComplete,
+    notifyTTSTaskError,
+    setTTSTaskComplete,
+    setTTSTaskError
+} from '$lib/stores/tasks/tts';
 
 export async function runTTS(messageId: string): Promise<void> {
     if (getTTSTask(messageId)?.status === 'generating') {
@@ -31,7 +39,12 @@ export async function runTTS(messageId: string): Promise<void> {
         chatId: chat.id
     };
     const controller = new AbortController();
-    createTTSTask(messageId, controller);
+    createTTSTask(messageId, controller, {
+        roomId: chat.roomId,
+        chatId: chat.id,
+        chatTitle: chat.title,
+        title: 'Audio generation'
+    });
 
     try {
         const runtime = new WorkflowRuntime(settings.tts.workflow, {
@@ -57,19 +70,22 @@ export async function runTTS(messageId: string): Promise<void> {
         if (finalIds.length === 0) {
             throw new AppError('INVALID_INPUT', 'Text to speech workflow returned no audio');
         }
-        clearTTSTask(messageId);
+        setTTSTaskComplete(messageId);
+        notifyTTSTaskComplete(messageId);
     } catch (error) {
         if (controller.signal.aborted) {
             clearTTSTask(messageId);
         } else {
-            setTTSTaskError(messageId, getErrorMessage(error, 'Text to speech failed'));
+            const errorMessage = getErrorMessage(error, 'Text to speech failed');
+            setTTSTaskError(messageId, errorMessage);
+            notifyTTSTaskError(messageId, errorMessage);
         }
         throw error;
     }
 }
 
 export function stopTTS(messageId: string): void {
-    getTTSTask(messageId)?.controller.abort();
+    getTTSTask(messageId)?.controller?.abort();
 }
 
 export function dismissTTS(messageId: string): void {

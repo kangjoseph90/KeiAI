@@ -1,10 +1,12 @@
 <script lang="ts">
     import {
         Check,
+        Loader2,
         Edit3,
         Folder,
         FolderOpen,
         MessageSquare,
+        MoreVertical,
         Pin,
         Plus,
         Search,
@@ -18,13 +20,16 @@
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
+    import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import {
         activeChat,
+        collectedTasks,
         activePreset,
         activeRoom,
         appSettings,
         chatSelections,
         createChat,
+        getChatTaskIndicator,
         createRoomFolder,
         deleteChat,
         deleteRoom,
@@ -64,6 +69,7 @@
     let chatSearch = $state('');
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
+    let openChatMenuId = $state<string | null>(null);
     let editingRoomName = $state(false);
     let roomNameDraft = $state('');
     let panelAction = $state<string | null>(null);
@@ -585,8 +591,9 @@
                         {/snippet}
                         {#snippet item({ entity: chat })}
                             {@const selected = route.chatId === chat.id}
+                            {@const taskIndicator = getChatTaskIndicator($collectedTasks, chat.id)}
                             <div
-                                class="group rounded-md px-2 py-2 text-sm transition-colors {selected
+                                class="chat-row group rounded-md px-2 py-2 text-sm transition-colors {selected
                                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                                     : 'hover:bg-sidebar-accent/50'}"
                             >
@@ -642,35 +649,120 @@
                                                 {chat.title || 'Untitled Chat'}
                                             </span>
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            class="touch-visible text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-                                            title="Rename chat"
-                                            aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
-                                            disabled={panelAction !== null}
-                                            onclick={() =>
-                                                startRenameChat(
-                                                    chat.id,
-                                                    chat.title || 'Untitled Chat'
-                                                )}
-                                        >
-                                            <Edit3 class="size-3.5" />
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            class="touch-visible text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100 focus-visible:opacity-100"
-                                            title="Delete chat"
-                                            aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
-                                            disabled={panelAction !== null}
-                                            aria-busy={panelAction === `delete-chat:${chat.id}`}
-                                            onclick={() => handleDeleteChat(chat.id)}
-                                        >
-                                            <Trash2 class="size-3.5" />
-                                        </Button>
+                                        <div class="chat-row-trailing relative h-7 w-15 shrink-0">
+                                            <div
+                                                class="chat-row-task-status pointer-events-none absolute inset-y-0 right-2 flex w-4 items-center justify-center transition-opacity"
+                                            >
+                                                {#if taskIndicator === 'running'}
+                                                    <Loader2
+                                                        class="size-3.5 animate-spin text-primary"
+                                                        role="status"
+                                                        aria-label="Task running"
+                                                    />
+                                                {:else if taskIndicator === 'error'}
+                                                    <span
+                                                        class="size-2 rounded-full bg-destructive"
+                                                        role="status"
+                                                        aria-label="Task failed"
+                                                    ></span>
+                                                {:else if taskIndicator === 'completed'}
+                                                    <span
+                                                        class="size-2 rounded-full bg-emerald-500"
+                                                        role="status"
+                                                        aria-label="Task completed"
+                                                    ></span>
+                                                {/if}
+                                            </div>
+
+                                            <div
+                                                class="chat-row-desktop-actions absolute inset-y-0 right-0 flex items-center gap-1 opacity-0 transition-opacity"
+                                            >
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon-sm"
+                                                    class="text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    title="Rename chat"
+                                                    aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
+                                                    disabled={panelAction !== null}
+                                                    onclick={() =>
+                                                        startRenameChat(
+                                                            chat.id,
+                                                            chat.title || 'Untitled Chat'
+                                                        )}
+                                                >
+                                                    <Edit3 class="size-3.5" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon-sm"
+                                                    class="text-destructive hover:bg-destructive/10"
+                                                    title="Delete chat"
+                                                    aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
+                                                    disabled={panelAction !== null}
+                                                    aria-busy={panelAction ===
+                                                        `delete-chat:${chat.id}`}
+                                                    onclick={() => handleDeleteChat(chat.id)}
+                                                >
+                                                    <Trash2 class="size-3.5" />
+                                                </Button>
+                                            </div>
+
+                                            <div
+                                                class="chat-row-touch-menu absolute inset-y-0 right-0 hidden items-center"
+                                            >
+                                                <DropdownMenu.Root
+                                                    open={openChatMenuId === chat.id}
+                                                    onOpenChange={(open) =>
+                                                        (openChatMenuId = open ? chat.id : null)}
+                                                >
+                                                    <DropdownMenu.Trigger>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            class="relative text-muted-foreground after:absolute after:-inset-2"
+                                                            aria-label={`Actions for ${chat.title || 'Untitled Chat'}`}
+                                                            disabled={panelAction !== null}
+                                                        >
+                                                            <MoreVertical class="size-3.5" />
+                                                        </Button>
+                                                    </DropdownMenu.Trigger>
+                                                    <DropdownMenu.Content
+                                                        align="end"
+                                                        sideOffset={4}
+                                                        class="w-40"
+                                                    >
+                                                        <DropdownMenu.Item
+                                                            class="cursor-pointer"
+                                                            disabled={panelAction !== null}
+                                                            onclick={() =>
+                                                                startRenameChat(
+                                                                    chat.id,
+                                                                    chat.title || 'Untitled Chat'
+                                                                )}
+                                                        >
+                                                            <Edit3 class="size-4" />
+                                                            Rename
+                                                        </DropdownMenu.Item>
+                                                        <DropdownMenu.Separator />
+                                                        <DropdownMenu.Item
+                                                            class="cursor-pointer"
+                                                            variant="destructive"
+                                                            disabled={panelAction !== null}
+                                                            aria-busy={panelAction ===
+                                                                `delete-chat:${chat.id}`}
+                                                            onclick={() =>
+                                                                handleDeleteChat(chat.id)}
+                                                        >
+                                                            <Trash2 class="size-4" />
+                                                            Delete
+                                                        </DropdownMenu.Item>
+                                                    </DropdownMenu.Content>
+                                                </DropdownMenu.Root>
+                                            </div>
+                                        </div>
                                     </div>
                                 {/if}
                             </div>
@@ -714,6 +806,35 @@
     @container room-panel (min-width: 20rem) {
         :global(.room-panel-character-grid) {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    .chat-row:hover .chat-row-task-status,
+    .chat-row:has(:focus-visible) .chat-row-task-status {
+        opacity: 0;
+    }
+
+    .chat-row:hover .chat-row-desktop-actions,
+    .chat-row:has(:focus-visible) .chat-row-desktop-actions {
+        opacity: 1;
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        .chat-row-trailing {
+            width: 3rem;
+        }
+
+        .chat-row-task-status {
+            right: 2rem;
+            opacity: 1 !important;
+        }
+
+        .chat-row-desktop-actions {
+            display: none;
+        }
+
+        .chat-row-touch-menu {
+            display: flex;
         }
     }
 </style>

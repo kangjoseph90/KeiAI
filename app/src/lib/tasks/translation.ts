@@ -12,6 +12,7 @@ import {
     getTranslationTask,
     notifyTranslationTaskComplete,
     notifyTranslationTaskError,
+    setTranslationTaskComplete,
     setTranslationTaskError
 } from '$lib/stores/tasks/translation';
 import { WorkflowRuntime } from '$lib/workflow';
@@ -71,7 +72,12 @@ export async function runTranslation(
         translation: { sourceHash, text: '' }
     });
 
-    createTranslationTask(messageId, sourceHash, controller);
+    createTranslationTask(messageId, sourceHash, controller, {
+        roomId: chat.roomId,
+        chatId: chat.id,
+        chatTitle: chat.title,
+        title: 'Translation'
+    });
 
     try {
         const runtime = new WorkflowRuntime(settings.translation.workflow, {
@@ -93,7 +99,7 @@ export async function runTranslation(
             throw new AppError('INVALID_INPUT', 'Translation workflow returned empty output');
         }
 
-        clearTranslationTask(messageId);
+        setTranslationTaskComplete(messageId);
         notifyTranslationTaskComplete(messageId);
     } catch (error) {
         if (controller.signal.aborted) {
@@ -125,7 +131,7 @@ async function saveTranslationText(
 
 export function stopTranslation(messageId: string): void {
     const task = getTranslationTask(messageId);
-    task?.controller.abort();
+    task?.controller?.abort();
 }
 
 export function dismissTranslation(messageId: string): void {

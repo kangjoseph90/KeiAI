@@ -19,6 +19,7 @@ vi.mock('$lib/stores/tasks/chat', () => ({
     setChatTaskError: vi.fn(),
     getChatTask: vi.fn(),
     clearChatTask: vi.fn(),
+    setChatTaskComplete: vi.fn(),
     notifyChatTaskComplete: vi.fn(),
     notifyChatTaskError: vi.fn()
 }));
@@ -238,6 +239,7 @@ import {
     setChatTaskError,
     getChatTask,
     clearChatTask,
+    setChatTaskComplete,
     notifyChatTaskComplete,
     notifyChatTaskError
 } from '$lib/stores/tasks/chat';
@@ -272,6 +274,11 @@ const mockNewMessage = {
 
 function makeMockTask(overrides: Record<string, unknown> = {}) {
     return {
+        roomId: 'room-1',
+        chatId: 'chat-1',
+        chatTitle: 'Chat 1',
+        title: 'Chat response',
+        startedAt: 1,
         status: 'generating' as const,
         messageId: 'msg-new',
         controller: new AbortController(),
@@ -379,7 +386,8 @@ describe('Chat Pipeline', () => {
         expect(createChatTask).toHaveBeenCalledWith(
             mockChatId,
             'msg-new',
-            expect.any(AbortController)
+            expect.any(AbortController),
+            expect.objectContaining({ roomId: 'room-1', chatId: mockChatId })
         );
         // Should update swipe content during streaming
         expect(prepareNextSwipe).toHaveBeenCalledWith(
@@ -416,8 +424,8 @@ describe('Chat Pipeline', () => {
         );
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
-        // Should clear task on success
-        expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
+        // Completed tasks remain available to the task collector until the chat is entered.
+        expect(setChatTaskComplete).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskComplete).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskError).not.toHaveBeenCalled();
         expect(emitEvent).toHaveBeenCalledWith(

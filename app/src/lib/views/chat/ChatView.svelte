@@ -16,11 +16,15 @@
         activeRoom,
         chatSelections,
         chatTasks,
+        chatDrafts,
+        dictationTasks,
         appSettings,
+        collectedTasks,
         roomCharacters,
         chatPersonas,
         displayMessages,
         isChatRunning,
+        hasRecordingDictation,
         createMessage,
         updateMessage,
         deleteMessage,
@@ -30,17 +34,31 @@
         loadNewerMessages,
         dropOlderMessages,
         dropNewerMessages,
-        createChatInlay
+        createChatInlay,
+        clearChatDraft,
+        consumeCompletedTasks,
+        flushChatDrafts,
+        loadChatDraft,
+        setChatDraftInlayIds,
+        setChatDraftText
     } from '$lib/stores';
     import { appConfirm, characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
-    import { runChat, stopChat, dismissChat } from '$lib/tasks';
+    import {
+        cancelDictation,
+        dismissChat,
+        dismissDictation,
+        finishDictation,
+        runChat,
+        runDictation,
+        stopChat
+    } from '$lib/tasks';
     import { getLastTextContent, findLastTextIndex, type AgentPart } from '$lib/workflow/agent/llm';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import { navigate } from '$lib/router';
     import { createLogger } from '$lib/adapters/logger';
     import { emitEvent } from '$lib/events';
-    import { onDestroy, tick } from 'svelte';
+    import { onDestroy, tick, untrack } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
     import type { RuntimeContext } from '$lib/types/context';
     import { appDialog } from '$lib/adapters/dialog';
@@ -66,6 +84,7 @@
     const logger = createLogger('view:chat');
     let newMessageText = $state('');
     let pendingAttachments = $state<string[]>([]);
+    let dictationActionError = $state('');
     let editModeId = $state<string | null>(null);
     let isEditingTranslation = $state(false);
     let editMessageText = $state('');
@@ -109,6 +128,9 @@
         const task = $chatTasks.get(activeChatId);
         return task?.status === 'generating' ? task.messageId : null;
     });
+    const activeDictationTask = $derived(
+        $activeChat ? ($dictationTasks.get($activeChat.id) ?? null) : null
+    );
 
     onDestroy(() => {
         chatViewEpoch += 1;
@@ -232,6 +254,14 @@
     // Reset state and scroll to bottom when active chat changes
     $effect(() => {
         const activeChatId = $activeChat?.id;
+        if (
+            activeChatId &&
+            $collectedTasks.some(
+                (task) => task.chatId === activeChatId && task.status === 'completed'
+            )
+        ) {
+            consumeCompletedTasks(activeChatId);
+        }
         if (activeChatId === previousActiveChatId) return;
 
         previousActiveChatId = activeChatId;
@@ -239,10 +269,14 @@
         hasMoreOlder = true;
         hasMoreNewer = false;
         paginationDirection = null;
+        newMessageText = '';
         pendingAttachments = [];
+        dictationActionError = '';
         clearStreamReserve();
         previousGeneratingMessageId = null;
         previousBottomOffset = 0;
+
+        if (activeChatId) void restoreDraft(activeChatId);
 
         void tick().then(() => {
             if ($activeChat?.id !== activeChatId || !scrollContainerEl) return;
@@ -250,6 +284,34 @@
             previousBottomOffset = 0;
         });
     });
+
+    $effect(() => {
+        const activeChatId = $activeChat?.id;
+        if (!activeChatId) return;
+        const draft = $chatDrafts.get(activeChatId);
+        if (!draft) return;
+        untrack(() => {
+            if (newMessageText !== draft.text) newMessageText = draft.text;
+            if (!sameIds(pendingAttachments, draft.inlayIds)) {
+                pendingAttachments = draft.inlayIds.filter((id) =>
+                    Boolean($activeChat?.inlays.refs[id])
+                );
+            }
+        });
+    });
+
+    async function restoreDraft(targetChatId: string): Promise<void> {
+        const draft = await loadChatDraft(targetChatId);
+        if ($activeChat?.id !== targetChatId) return;
+        const validInlayIds = draft.inlayIds.filter((id) => Boolean($activeChat?.inlays.refs[id]));
+        if (!sameIds(validInlayIds, draft.inlayIds)) {
+            setChatDraftInlayIds(targetChatId, validInlayIds);
+        }
+    }
+
+    function sameIds(a: string[], b: string[]): boolean {
+        return a.length === b.length && a.every((id, index) => id === b[index]);
+    }
 
     async function handleScroll() {
         if (!scrollContainerEl || !$activeChat || isAdjustingStreamReserve) return;
@@ -508,6 +570,10 @@
 
         newMessageText = '';
         pendingAttachments = [];
+        clearChatDraft(targetChatId);
+        void flushChatDrafts().catch((error) =>
+            logger.warn('Failed to clear cached chat draft:', error)
+        );
 
         if ($appSettings?.chat.autoGenerateResponse !== false && $activeChat?.id === targetChatId) {
             void runChat(targetChatId, targetCharacterId, targetPersonaId);
@@ -562,6 +628,25 @@
         if (pendingAttachments.length >= MAX_ATTACHMENTS || pendingAttachments.includes(assetId))
             return;
         pendingAttachments = [...pendingAttachments, assetId];
+        if ($activeChat) setChatDraftInlayIds($activeChat.id, pendingAttachments);
+    }
+
+    function handleDraftTextChange(value: string): void {
+        if ($activeChat) setChatDraftText($activeChat.id, value);
+    }
+
+    function handleDraftAttachmentsChange(ids: string[]): void {
+        if ($activeChat) setChatDraftInlayIds($activeChat.id, ids);
+    }
+
+    function handleStartDictation(): void {
+        const targetChatId = $activeChat?.id;
+        if (!targetChatId) return;
+        dictationActionError = '';
+        void runDictation(targetChatId).catch((error) => {
+            if ($activeChat?.id !== targetChatId) return;
+            dictationActionError = getErrorMessage(error, 'Dictation failed');
+        });
     }
 
     function handleGenerateResponse() {
@@ -871,12 +956,22 @@
                     bind:value={newMessageText}
                     bind:attachmentIds={pendingAttachments}
                     maxAttachments={MAX_ATTACHMENTS}
+                    dictationTask={activeDictationTask}
+                    {dictationActionError}
+                    recordingUnavailable={$hasRecordingDictation}
                     {showScrollToBottom}
                     overlayInert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
                     onHeightChange={(height) => (composerHeight = height)}
                     onSend={() => void handleSendMessage()}
                     onGenerate={handleGenerateResponse}
                     onStop={() => stopChat($activeChat!.id)}
+                    onRecord={handleStartDictation}
+                    onCancelDictation={() => cancelDictation($activeChat!.id)}
+                    onFinishDictation={() => finishDictation($activeChat!.id)}
+                    onDismissDictation={() => dismissDictation($activeChat!.id)}
+                    onDismissDictationActionError={() => (dictationActionError = '')}
+                    onValueChange={handleDraftTextChange}
+                    onAttachmentsChange={handleDraftAttachmentsChange}
                     onUpload={() => void handleAttachmentUpload()}
                     onFiles={(files) => void attachFiles(files)}
                     onScrollToBottom={scrollToBottom}

@@ -13,6 +13,7 @@ import {
     setChatTaskError,
     getChatTask,
     clearChatTask,
+    setChatTaskComplete,
     notifyChatTaskComplete,
     notifyChatTaskError
 } from '$lib/stores/tasks/chat';
@@ -61,7 +62,6 @@ export async function runChat(
     }
 
     const controller = new AbortController();
-
     try {
         const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
 
@@ -115,7 +115,12 @@ export async function runChat(
             }
         );
 
-        createChatTask(chatId, preparedMessage.id, controller);
+        createChatTask(chatId, preparedMessage.id, controller, {
+            roomId: chat.roomId,
+            chatId,
+            chatTitle: chat.title,
+            title: 'Chat response'
+        });
 
         const ctx: RuntimeContext = {
             roomId: chat.roomId,
@@ -173,7 +178,7 @@ export async function runChat(
             content: getLastTextContent(finalSwipe.parts)
         });
 
-        clearChatTask(chatId);
+        setChatTaskComplete(chatId);
         notifyChatTaskComplete(chatId);
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -191,7 +196,7 @@ export async function runChat(
 
 export function stopChat(chatId: string): void {
     const task = getChatTask(chatId);
-    task?.controller.abort();
+    task?.controller?.abort();
 }
 
 export function dismissChat(chatId: string): void {

@@ -11,6 +11,9 @@ import {
     clearImageGenerationTask,
     createImageGenerationTask,
     getImageGenerationTask,
+    notifyImageGenerationTaskComplete,
+    notifyImageGenerationTaskError,
+    setImageGenerationTaskComplete,
     setImageGenerationTaskError
 } from '$lib/stores/tasks/image';
 
@@ -36,7 +39,12 @@ export async function runImageGeneration(messageId: string): Promise<void> {
         chatId: chat.id
     };
     const controller = new AbortController();
-    createImageGenerationTask(messageId, controller);
+    createImageGenerationTask(messageId, controller, {
+        roomId: chat.roomId,
+        chatId: chat.id,
+        chatTitle: chat.title,
+        title: 'Image generation'
+    });
 
     try {
         const runtime = new WorkflowRuntime(settings.imageGeneration.workflow, {
@@ -62,22 +70,22 @@ export async function runImageGeneration(messageId: string): Promise<void> {
         if (finalIds.length === 0) {
             throw new AppError('INVALID_INPUT', 'Image generation workflow returned no images');
         }
-        clearImageGenerationTask(messageId);
+        setImageGenerationTaskComplete(messageId);
+        notifyImageGenerationTaskComplete(messageId);
     } catch (error) {
         if (controller.signal.aborted) {
             clearImageGenerationTask(messageId);
         } else {
-            setImageGenerationTaskError(
-                messageId,
-                getErrorMessage(error, 'Image generation failed')
-            );
+            const errorMessage = getErrorMessage(error, 'Image generation failed');
+            setImageGenerationTaskError(messageId, errorMessage);
+            notifyImageGenerationTaskError(messageId, errorMessage);
         }
         throw error;
     }
 }
 
 export function stopImageGeneration(messageId: string): void {
-    getImageGenerationTask(messageId)?.controller.abort();
+    getImageGenerationTask(messageId)?.controller?.abort();
 }
 
 export function dismissImageGeneration(messageId: string): void {

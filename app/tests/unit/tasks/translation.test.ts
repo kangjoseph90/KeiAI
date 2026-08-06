@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     updateMessageSwipe: vi.fn(),
     createTask: vi.fn(),
     clearTask: vi.fn(),
+    completeTask: vi.fn(),
     setTaskError: vi.fn(),
     notifyTaskComplete: vi.fn(),
     notifyTaskError: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('$lib/stores/content/message', () => ({
 vi.mock('$lib/stores/tasks/translation', () => ({
     createTranslationTask: mocks.createTask,
     clearTranslationTask: mocks.clearTask,
+    setTranslationTaskComplete: mocks.completeTask,
     setTranslationTaskError: mocks.setTaskError,
     notifyTranslationTaskComplete: mocks.notifyTaskComplete,
     notifyTranslationTaskError: mocks.notifyTaskError,
@@ -117,7 +119,7 @@ describe('translation task', () => {
     it('includes the target message in history and streams the workflow result', async () => {
         await runTranslation('message-1');
 
-        expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
+        expect(mocks.completeTask).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskComplete).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskError).not.toHaveBeenCalled();
         expect(mocks.createPagedMessages).toHaveBeenCalledWith(
@@ -126,7 +128,8 @@ describe('translation task', () => {
         expect(mocks.createTask).toHaveBeenCalledWith(
             'message-1',
             'hash:Korean\0Hello',
-            expect.any(AbortController)
+            expect.any(AbortController),
+            expect.objectContaining({ roomId: 'room-1', chatId: 'chat-1' })
         );
         expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(1, 'message-1', 'swipe-1', {
             translation: {

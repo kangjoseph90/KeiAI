@@ -8,7 +8,6 @@
     import { Button } from '$lib/components/ui/button';
     import { Textarea } from '$lib/components/ui/textarea';
     import {
-        AlertCircle,
         Check,
         GitBranch,
         Loader2,
@@ -40,6 +39,7 @@
     import ThoughtPart from './ThoughtPart.svelte';
     import ToolCallPart from './ToolCallPart.svelte';
     import MessageMoreMenu from './MessageMoreMenu.svelte';
+    import TaskErrorNotice from '../TaskErrorNotice.svelte';
     import {
         activeRoom,
         appSettings,
@@ -70,7 +70,7 @@
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
-    import { copyTextToClipboard, toast } from '$lib/ui';
+    import { copyTextToClipboard } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -135,6 +135,8 @@
     });
     let translationSourceHash = $state('');
     let translationActionError = $state('');
+    let imageGenerationActionError = $state('');
+    let ttsActionError = $state('');
     let showTranslation = $state(false);
     let messageStyleHtml = $state('');
     let messageStyleSignature = '';
@@ -171,9 +173,11 @@
             : translationActionError
     );
     let imageGenerationError = $derived(
-        imageGenerationTask?.status === 'error' ? imageGenerationTask.errorMessage : ''
+        imageGenerationTask?.status === 'error'
+            ? imageGenerationTask.errorMessage
+            : imageGenerationActionError
     );
-    let ttsError = $derived(ttsTask?.status === 'error' ? ttsTask.errorMessage : '');
+    let ttsError = $derived(ttsTask?.status === 'error' ? ttsTask.errorMessage : ttsActionError);
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -294,7 +298,10 @@
             });
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
-            translationActionError = getErrorMessage(error, 'Translation failed');
+            const task = $translationTasks.get(message.id);
+            if (task?.status !== 'error' || task.sourceHash !== translationSourceHash) {
+                translationActionError = getErrorMessage(error, 'Translation failed');
+            }
         }
     }
 
@@ -303,14 +310,14 @@
             stopImageGeneration(message.id);
             return;
         }
+        imageGenerationActionError = '';
         try {
             await runImageGeneration(message.id);
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
-            toast.error({
-                title: 'Image generation failed',
-                description: getErrorMessage(error)
-            });
+            if ($imageGenerationTasks.get(message.id)?.status !== 'error') {
+                imageGenerationActionError = getErrorMessage(error, 'Image generation failed');
+            }
         }
     }
 
@@ -319,14 +326,14 @@
             stopTTS(message.id);
             return;
         }
+        ttsActionError = '';
         try {
             await runTTS(message.id);
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
-            toast.error({
-                title: 'Text to speech failed',
-                description: getErrorMessage(error)
-            });
+            if ($ttsTasks.get(message.id)?.status !== 'error') {
+                ttsActionError = getErrorMessage(error, 'Text to speech failed');
+            }
         }
     }
 
@@ -537,24 +544,11 @@
 
             <!-- Error Bubble -->
         {:else if message.displayStatus === 'error'}
-            <div
-                class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-            >
-                <AlertCircle class="mt-0.5 size-4 shrink-0" />
-                <div class="flex flex-col gap-1">
-                    <span class="font-medium">Generation failed</span>
-                    <span class="text-xs opacity-80">{message.errorMessage ?? 'Unknown error'}</span
-                    >
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        class="mt-1 h-6 gap-1 self-start text-xs"
-                        onclick={onDismissError}
-                    >
-                        <X class="size-3" /> Dismiss
-                    </Button>
-                </div>
-            </div>
+            <TaskErrorNotice
+                title="Generation failed"
+                message={message.errorMessage ?? 'Unknown error'}
+                onDismiss={onDismissError}
+            />
 
             <!-- Message Content -->
         {:else}
@@ -676,43 +670,36 @@
             {/if}
 
             {#if translationError}
-                <div class="flex items-center gap-2 text-xs text-destructive">
-                    <AlertCircle class="size-3" />
-                    <span>{translationError}</span>
-                    <button
-                        class="rounded p-0.5 hover:bg-destructive/10"
-                        aria-label="Dismiss translation error"
-                        onclick={() => {
-                            translationActionError = '';
-                            dismissTranslation(message.id);
-                        }}><X class="size-3" /></button
-                    >
-                </div>
+                <TaskErrorNotice
+                    title="Translation failed"
+                    message={translationError}
+                    onDismiss={() => {
+                        translationActionError = '';
+                        dismissTranslation(message.id);
+                    }}
+                />
             {/if}
 
             {#if imageGenerationError}
-                <div class="flex items-center gap-2 text-xs text-destructive">
-                    <AlertCircle class="size-3" />
-                    <span>{imageGenerationError}</span>
-                    <button
-                        class="rounded p-0.5 hover:bg-destructive/10"
-                        aria-label="Dismiss image generation error"
-                        onclick={() => dismissImageGeneration(message.id)}
-                        ><X class="size-3" /></button
-                    >
-                </div>
+                <TaskErrorNotice
+                    title="Image generation failed"
+                    message={imageGenerationError}
+                    onDismiss={() => {
+                        imageGenerationActionError = '';
+                        dismissImageGeneration(message.id);
+                    }}
+                />
             {/if}
 
             {#if ttsError}
-                <div class="flex items-center gap-2 text-xs text-destructive">
-                    <AlertCircle class="size-3" />
-                    <span>{ttsError}</span>
-                    <button
-                        class="rounded p-0.5 hover:bg-destructive/10"
-                        aria-label="Dismiss text to speech error"
-                        onclick={() => dismissTTS(message.id)}><X class="size-3" /></button
-                    >
-                </div>
+                <TaskErrorNotice
+                    title="Text to speech failed"
+                    message={ttsError}
+                    onDismiss={() => {
+                        ttsActionError = '';
+                        dismissTTS(message.id);
+                    }}
+                />
             {/if}
 
             <!-- Wide containers: hover/focus. Narrow containers and touch: always visible. -->

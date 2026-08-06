@@ -1,20 +1,40 @@
 <script lang="ts">
-    import { ArrowDown, MessageSquare, Paperclip, SendHorizontal, Square, X } from 'lucide-svelte';
+    import {
+        ArrowDown,
+        MessageSquare,
+        Mic,
+        Paperclip,
+        SendHorizontal,
+        Square,
+        X
+    } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
-    import { activeChat, isChatRunning } from '$lib/stores';
+    import { activeChat, isChatRunning, type DictationTask } from '$lib/stores';
+    import DictationControls from './DictationControls.svelte';
+    import TaskErrorNotice from './TaskErrorNotice.svelte';
 
     let {
         value = $bindable(''),
         attachmentIds = $bindable([]),
         maxAttachments,
+        dictationTask = null,
+        dictationActionError = '',
+        recordingUnavailable = false,
         showScrollToBottom = false,
         overlayInert = false,
         onHeightChange,
         onSend,
         onGenerate,
         onStop,
+        onRecord,
+        onCancelDictation,
+        onFinishDictation,
+        onDismissDictation,
+        onDismissDictationActionError,
+        onValueChange,
+        onAttachmentsChange,
         onUpload,
         onFiles,
         onScrollToBottom
@@ -22,12 +42,22 @@
         value?: string;
         attachmentIds?: string[];
         maxAttachments: number;
+        dictationTask?: DictationTask | null;
+        dictationActionError?: string;
+        recordingUnavailable?: boolean;
         showScrollToBottom?: boolean;
         overlayInert?: boolean;
         onHeightChange: (height: number) => void;
         onSend: () => void;
         onGenerate: () => void;
         onStop: () => void;
+        onRecord: () => void;
+        onCancelDictation: () => void;
+        onFinishDictation: () => void;
+        onDismissDictation: () => void;
+        onDismissDictationActionError: () => void;
+        onValueChange: (value: string) => void;
+        onAttachmentsChange: (ids: string[]) => void;
         onUpload: () => void;
         onFiles: (files: File[]) => void;
         onScrollToBottom: () => void;
@@ -41,6 +71,9 @@
     const isExpanded = $derived(textHeight > 48);
     const hasContent = $derived(value.trim().length > 0 || attachmentIds.length > 0);
     const isDragging = $derived(dragCounter > 0);
+    const dictationBusy = $derived(
+        dictationTask?.phase === 'recording' || dictationTask?.phase === 'transcribing'
+    );
     const pendingInlays = $derived.by(() => {
         if (!$activeChat) return [];
         return attachmentIds
@@ -75,12 +108,14 @@
     }
 
     function handleDragEnter(event: DragEvent) {
+        if (dictationBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
         dragCounter += 1;
     }
 
     function handleDragOver(event: DragEvent) {
+        if (dictationBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
     }
@@ -91,6 +126,7 @@
     }
 
     function handleDrop(event: DragEvent) {
+        if (dictationBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
         dragCounter = 0;
@@ -114,6 +150,11 @@
         const data = event.dataTransfer;
         if (!data) return false;
         return data.files.length > 0 || Array.from(data.types).includes('Files');
+    }
+
+    function removeAttachment(id: string): void {
+        attachmentIds = attachmentIds.filter((attachmentId) => attachmentId !== id);
+        onAttachmentsChange(attachmentIds);
     }
 </script>
 
@@ -148,9 +189,9 @@
 
     <div
         bind:this={composerElement}
-        class="relative mx-auto w-full max-w-4xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20"
+        class="relative mx-auto w-full max-w-4xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
     >
-        {#if isDragging}
+        {#if isDragging && !dictationBusy}
             <div
                 class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
             >
@@ -158,7 +199,7 @@
             </div>
         {/if}
 
-        {#if pendingInlays.length > 0 && $activeChat}
+        {#if !dictationBusy && pendingInlays.length > 0 && $activeChat}
             <div class="flex gap-2 overflow-x-auto px-2 pb-2 pt-1">
                 {#each pendingInlays as ref (ref.id)}
                     <div class="relative size-18 shrink-0 overflow-visible rounded-lg">
@@ -182,8 +223,8 @@
                             type="button"
                             class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
                             aria-label={`Remove ${ref.name} attachment`}
-                            onclick={() =>
-                                (attachmentIds = attachmentIds.filter((id) => id !== ref.id))}
+                            onmousedown={(event) => event.preventDefault()}
+                            onclick={() => removeAttachment(ref.id)}
                         >
                             <X class="size-3" />
                         </button>
@@ -192,81 +233,120 @@
             </div>
         {/if}
 
-        <div
-            class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1 {isExpanded
-                ? 'items-end grid-rows-[auto_auto]'
-                : 'items-center grid-rows-1'}"
-        >
-            <Button
-                variant="ghost"
-                size="icon"
-                class="col-start-1 shrink-0 rounded-full text-muted-foreground {isExpanded
-                    ? 'row-start-2'
-                    : 'row-start-1'}"
-                onclick={onUpload}
-                disabled={$isChatRunning || attachmentIds.length >= maxAttachments}
-                title="Attach media"
-                aria-label="Attach media"
-            >
-                <Paperclip class="size-4" />
-            </Button>
-
-            <AutoResizeTextarea
-                bind:value
-                classname="min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 {isExpanded
-                    ? 'col-span-3 row-start-1 mx-2 w-auto'
-                    : 'col-start-2 row-start-1'}"
-                onheightchange={(height) => (textHeight = height)}
-                onkeydown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        onSend();
-                    }
-                }}
-                onpaste={handlePaste}
-                placeholder="Type a message..."
-                disabled={$isChatRunning}
+        {#if dictationBusy && dictationTask}
+            <DictationControls
+                task={dictationTask}
+                onCancel={onCancelDictation}
+                onFinish={onFinishDictation}
+                onDismiss={onDismissDictation}
             />
-
-            {#if $isChatRunning}
-                <Button
-                    variant="destructive"
-                    size="icon"
-                    class="col-start-3 shrink-0 rounded-full {isExpanded
-                        ? 'row-start-2'
-                        : 'row-start-1'}"
-                    onclick={onStop}
-                    title="Stop generation"
-                    aria-label="Stop generation"
-                >
-                    <Square class="size-4" />
-                </Button>
-            {:else if hasContent}
-                <Button
-                    size="icon"
-                    class="col-start-3 shrink-0 rounded-full {isExpanded
-                        ? 'row-start-2'
-                        : 'row-start-1'}"
-                    onclick={onSend}
-                    title="Send message"
-                    aria-label="Send message"
-                >
-                    <SendHorizontal class="size-4" />
-                </Button>
-            {:else}
-                <Button
-                    variant="secondary"
-                    size="icon"
-                    class="col-start-3 shrink-0 rounded-full {isExpanded
-                        ? 'row-start-2'
-                        : 'row-start-1'}"
-                    onclick={onGenerate}
-                    title="Generate response"
-                    aria-label="Generate response"
-                >
-                    <MessageSquare class="size-4" />
-                </Button>
+        {:else}
+            {#if dictationTask?.phase === 'error'}
+                <DictationControls
+                    task={dictationTask}
+                    onCancel={onCancelDictation}
+                    onFinish={onFinishDictation}
+                    onDismiss={onDismissDictation}
+                    class="mb-2"
+                />
+            {:else if dictationActionError}
+                <TaskErrorNotice
+                    title="Dictation failed"
+                    message={dictationActionError}
+                    onDismiss={onDismissDictationActionError}
+                    class="mb-2"
+                />
             {/if}
-        </div>
+            <div
+                class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1 {isExpanded
+                    ? 'items-end grid-rows-[auto_auto]'
+                    : 'items-center grid-rows-1'}"
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="col-start-1 shrink-0 rounded-full text-muted-foreground {isExpanded
+                        ? 'row-start-2'
+                        : 'row-start-1'}"
+                    onclick={onUpload}
+                    disabled={$isChatRunning || attachmentIds.length >= maxAttachments}
+                    title="Attach media"
+                    aria-label="Attach media"
+                >
+                    <Paperclip class="size-4" />
+                </Button>
+
+                <AutoResizeTextarea
+                    bind:value
+                    classname="min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 {isExpanded
+                        ? 'col-span-3 row-start-1 mx-2 w-auto'
+                        : 'col-start-2 row-start-1'}"
+                    onheightchange={(height) => (textHeight = height)}
+                    oninput={() => onValueChange(value)}
+                    onkeydown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault();
+                            onSend();
+                        }
+                    }}
+                    onpaste={handlePaste}
+                    placeholder="Type a message..."
+                    disabled={$isChatRunning}
+                />
+
+                <div
+                    class="col-start-3 flex shrink-0 items-center gap-1 {isExpanded
+                        ? 'row-start-2'
+                        : 'row-start-1'}"
+                >
+                    {#if $isChatRunning}
+                        <Button
+                            variant="destructive"
+                            size="icon"
+                            class="shrink-0 rounded-full"
+                            onclick={onStop}
+                            title="Stop generation"
+                            aria-label="Stop generation"
+                        >
+                            <Square class="size-4" />
+                        </Button>
+                    {:else}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="shrink-0 rounded-full text-muted-foreground"
+                            onclick={onRecord}
+                            disabled={recordingUnavailable || dictationTask !== null}
+                            title="Start dictation"
+                            aria-label="Start dictation"
+                        >
+                            <Mic class="size-4" />
+                        </Button>
+                        {#if hasContent}
+                            <Button
+                                size="icon"
+                                class="shrink-0 rounded-full"
+                                onclick={onSend}
+                                title="Send message"
+                                aria-label="Send message"
+                            >
+                                <SendHorizontal class="size-4" />
+                            </Button>
+                        {:else}
+                            <Button
+                                variant="secondary"
+                                size="icon"
+                                class="shrink-0 rounded-full"
+                                onclick={onGenerate}
+                                title="Generate response"
+                                aria-label="Generate response"
+                            >
+                                <MessageSquare class="size-4" />
+                            </Button>
+                        {/if}
+                    {/if}
+                </div>
+            </div>
+        {/if}
     </div>
 </div>

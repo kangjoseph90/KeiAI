@@ -499,7 +499,7 @@
                             {/snippet}
                             {#snippet item({ entity: ref })}
                                 <div
-                                    class="group flex min-h-[3.25rem] items-center gap-2 rounded-lg border border-foreground/15 bg-card px-3 py-2 cursor-zoom-in text-card-foreground transition-colors hover:border-foreground/25"
+                                    class="group flex min-h-13 items-center gap-2 rounded-lg border border-foreground/15 bg-card px-3 py-2 cursor-zoom-in text-card-foreground transition-colors hover:border-foreground/25"
                                 >
                                     <div
                                         class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"

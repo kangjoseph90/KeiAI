@@ -8,6 +8,12 @@ import {
 } from '$lib/stores/tasks/translation';
 
 describe('translation task store', () => {
+    const metadata = {
+        roomId: 'room-1',
+        chatId: 'chat-1',
+        chatTitle: 'Chat 1',
+        title: 'Translation'
+    };
     afterEach(() => {
         translationTasks.set(new Map());
     });
@@ -15,14 +21,15 @@ describe('translation task store', () => {
     it('tracks execution state and errors per message', () => {
         const controller = new AbortController();
 
-        createTranslationTask('message-1', 'hash-1', controller);
+        createTranslationTask('message-1', 'hash-1', controller, metadata);
         setTranslationTaskError('message-1', 'failed');
 
-        expect(get(translationTasks).get('message-1')).toEqual({
+        expect(get(translationTasks).get('message-1')).toMatchObject({
             status: 'error',
             errorMessage: 'failed',
             sourceHash: 'hash-1',
-            controller
+            controller: undefined,
+            ...metadata
         });
 
         clearTranslationTask('message-1');
