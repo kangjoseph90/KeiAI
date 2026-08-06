@@ -1,99 +1,97 @@
 <script lang="ts">
     import { Download } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import type { ModuleFileExport } from '$lib/porters/module';
 
     type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
 
-    let {
-        exporting,
-        showLightExport,
-        onExport
-    }: {
+    interface Props {
         exporting: ExportButton | null;
         showLightExport: boolean;
         onExport: (id: ExportButton, request: ModuleFileExport) => void | Promise<void>;
-    } = $props();
+    }
+
+    let { exporting, showLightExport, onExport }: Props = $props();
+
+    let selectedFormat = $state<ExportButton>('risu-charx');
+
+    interface FormatOption {
+        id: ExportButton;
+        label: string;
+        description: string;
+        request: ModuleFileExport;
+    }
+
+    const formatOptions = $derived.by<FormatOption[]>(() => {
+        const list: FormatOption[] = [
+            {
+                id: 'risu-charx',
+                label: 'Risu CHARX (.charx)',
+                description: 'Current RisuAI module format with embedded assets.',
+                request: { kind: 'risu', format: 'charx' }
+            },
+            {
+                id: 'risu-legacy',
+                label: 'Legacy Risu Module (.risum)',
+                description: 'Legacy RisuAI module archive for older clients.',
+                request: { kind: 'risu', format: 'risum' }
+            }
+        ];
+        if (showLightExport) {
+            list.push({
+                id: 'keimodule-light',
+                label: 'Kei Light (.keimodule)',
+                description: 'Compact KeiAI archive referencing synchronized assets.',
+                request: { kind: 'keimodule', assetMode: 'light' }
+            });
+        }
+        list.push({
+            id: 'keimodule-baked',
+            label: 'Kei Baked (.keimodule)',
+            description: 'Self-contained KeiAI archive with assets included.',
+            request: { kind: 'keimodule', assetMode: 'baked' }
+        });
+        return list;
+    });
+
+    const activeOption = $derived(
+        formatOptions.find((opt) => opt.id === selectedFormat) ?? formatOptions[0]
+    );
+
+    function handleExportClick() {
+        const opt = activeOption;
+        if (!opt) return;
+        void onExport(opt.id, opt.request);
+    }
 </script>
 
-<section class="space-y-5">
-    <Card>
-        <CardHeader>
-            <CardTitle>Export Module</CardTitle>
-        </CardHeader>
-        <CardContent class="divide-y p-0">
-            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Risu CHARX</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Current RisuAI module format with embedded assets (.charx).
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() => onExport('risu-charx', { kind: 'risu', format: 'charx' })}
+<section class="space-y-3">
+    <h3 class="text-sm font-semibold">Export Module</h3>
+    <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+            <div class="min-w-0 flex-1">
+                <select
+                    id="export-module-format"
+                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={selectedFormat}
+                    onchange={(e) => (selectedFormat = e.currentTarget.value as ExportButton)}
                 >
-                    <Download class="size-4" /> Export CHARX
-                </Button>
+                    {#each formatOptions as opt (opt.id)}
+                        <option value={opt.id}>{opt.label}</option>
+                    {/each}
+                </select>
             </div>
-            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Legacy Risu Module</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Legacy RisuAI module archive for older clients (.risum).
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() => onExport('risu-legacy', { kind: 'risu', format: 'risum' })}
-                >
-                    <Download class="size-4" /> Export RISUM
-                </Button>
-            </div>
-            {#if showLightExport}
-                <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <p class="text-sm font-medium">Kei Light</p>
-                        <p class="mt-1 text-xs text-muted-foreground">
-                            Compact KeiAI archive that references synchronized assets.
-                        </p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        class="gap-1.5 sm:self-center"
-                        disabled={exporting !== null}
-                        onclick={() =>
-                            onExport('keimodule-light', {
-                                kind: 'keimodule',
-                                assetMode: 'light'
-                            })}
-                    >
-                        <Download class="size-4" /> Export Light
-                    </Button>
-                </div>
-            {/if}
-            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium">Kei Baked</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        Self-contained KeiAI archive with assets included.
-                    </p>
-                </div>
-                <Button
-                    variant="outline"
-                    class="gap-1.5 sm:self-center"
-                    disabled={exporting !== null}
-                    onclick={() =>
-                        onExport('keimodule-baked', { kind: 'keimodule', assetMode: 'baked' })}
-                >
-                    <Download class="size-4" /> Export Baked
-                </Button>
-            </div>
-        </CardContent>
-    </Card>
+            <Button
+                variant="outline"
+                class="gap-1.5 shrink-0"
+                disabled={exporting !== null}
+                onclick={handleExportClick}
+            >
+                <Download class="size-4" /> Export
+            </Button>
+        </div>
+        {#if activeOption?.description}
+            <p class="text-xs text-muted-foreground">{activeOption.description}</p>
+        {/if}
+    </div>
 </section>

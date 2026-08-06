@@ -358,8 +358,8 @@
                     entities={$roomCharacters}
                     config={$activeRoom.characters}
                     layout="grid"
-                    gridClass="grid grid-cols-3 gap-2"
-                    listClass="grid grid-cols-3 gap-2"
+                    gridClass="room-panel-character-grid grid gap-2"
+                    listClass="room-panel-character-grid grid gap-2"
                     gridOverlapInset={0.18}
                     childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
                     onItemClick={(character) => {
@@ -382,7 +382,7 @@
                         )}
                 >
                     {#snippet empty()}
-                        <div class="col-span-3">
+                        <div class="col-span-full">
                             <EmptyListPlaceholder message="No characters." />
                         </div>
                     {/snippet}
@@ -701,3 +701,19 @@
         </div>
     </div>
 {/if}
+
+<style>
+    .app-sidebar-room-panel {
+        container: room-panel / inline-size;
+    }
+
+    :global(.room-panel-character-grid) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @container room-panel (min-width: 20rem) {
+        :global(.room-panel-character-grid) {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+</style>

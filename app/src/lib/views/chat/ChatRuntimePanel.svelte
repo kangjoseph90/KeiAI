@@ -322,7 +322,7 @@
                         config={$activeChat.personas}
                         layout="grid"
                         gridClass="chat-runtime-persona-grid grid gap-2"
-                        listClass="grid grid-cols-3 gap-2"
+                        listClass="chat-runtime-persona-grid grid gap-2"
                         gridOverlapInset={0.18}
                         childContainerClass="relative my-2 rounded-xl border border-border/60 bg-muted/20 p-2"
                         folder={personaFolder}

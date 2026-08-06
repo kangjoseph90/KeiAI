@@ -351,112 +351,96 @@
         <ScrollArea class="min-h-0 flex-1">
             <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                 {#if activeTab === 'profile'}
-                    <section class="space-y-5">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Basic Information</CardTitle>
-                                <CardDescription>
-                                    How this persona appears in chats and prompt context.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <div class="flex items-center gap-4">
-                                    <div class="shrink-0">
-                                        {#if $activePersona.avatar}
-                                            <button
-                                                type="button"
-                                                class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                                aria-label={`View ${$activePersona.name} avatar`}
-                                                title="View avatar"
-                                                onclick={() => (avatarGalleryOpen = true)}
-                                            >
-                                                <AssetView
-                                                    asset={avatarGalleryItems[0]?.asset}
-                                                    alt={$activePersona.name}
-                                                    class="size-full object-cover"
-                                                    fallback="none"
-                                                    focus="top"
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-4">
+                            <div class="shrink-0">
+                                {#if $activePersona.avatar}
+                                    <button
+                                        type="button"
+                                        class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        aria-label={`View ${$activePersona.name} avatar`}
+                                        title="View avatar"
+                                        onclick={() => (avatarGalleryOpen = true)}
+                                    >
+                                        <AssetView
+                                            asset={avatarGalleryItems[0]?.asset}
+                                            alt={$activePersona.name}
+                                            class="size-full object-cover"
+                                            fallback="none"
+                                            focus="top"
+                                        />
+                                    </button>
+                                {:else}
+                                    <div
+                                        class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
+                                    >
+                                        <AssetView
+                                            asset={null}
+                                            alt={$activePersona.name}
+                                            class="size-full object-cover"
+                                            fallback="none"
+                                            focus="top"
+                                        >
+                                            <div class="flex size-full items-center justify-center">
+                                                <UserRoundPen
+                                                    class="size-10 text-muted-foreground/50"
                                                 />
-                                            </button>
-                                        {:else}
-                                            <div
-                                                class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
-                                            >
-                                                <AssetView
-                                                    asset={null}
-                                                    alt={$activePersona.name}
-                                                    class="size-full object-cover"
-                                                    fallback="none"
-                                                    focus="top"
-                                                >
-                                                    <div
-                                                        class="flex size-full items-center justify-center"
-                                                    >
-                                                        <UserRoundPen
-                                                            class="size-10 text-muted-foreground/50"
-                                                        />
-                                                    </div>
-                                                </AssetView>
                                             </div>
-                                        {/if}
+                                        </AssetView>
                                     </div>
+                                {/if}
+                            </div>
 
-                                    <div class="min-w-0 flex-1 space-y-4">
-                                        <div class="grid gap-1.5">
-                                            <Label>Persona Name</Label>
-                                            <Input
-                                                value={$activePersona.name}
-                                                oninput={(e) =>
-                                                    updatePersona($activePersona!.id, {
-                                                        name: e.currentTarget.value
-                                                    })}
-                                                placeholder="Enter persona name..."
-                                            />
-                                        </div>
-                                        <div class="flex flex-wrap items-center gap-1">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                class="gap-1 px-2"
-                                                disabled={resourceAction !== null}
-                                                aria-busy={resourceAction === 'avatar-upload'}
-                                                onclick={handleAvatarUpload}
-                                            >
-                                                <Upload class="size-4" /> Upload avatar
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                class="gap-1 px-2"
-                                                disabled={!$activePersona.avatar ||
-                                                    resourceAction !== null}
-                                                aria-busy={resourceAction === 'avatar-remove'}
-                                                onclick={handleAvatarRemove}
-                                            >
-                                                Remove avatar
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-
+                            <div class="min-w-0 flex-1 space-y-3">
                                 <div class="grid gap-1.5">
-                                    <Label>Persona Description</Label>
-                                    <Textarea
-                                        rows={5}
-                                        value={$activePersona.description}
+                                    <Label>Persona Name</Label>
+                                    <Input
+                                        value={$activePersona.name}
                                         oninput={(e) =>
                                             updatePersona($activePersona!.id, {
-                                                description: e.currentTarget.value
+                                                name: e.currentTarget.value
                                             })}
-                                        placeholder="Describe how this persona should speak, act, or be represented..."
+                                        placeholder="Enter persona name..."
                                     />
-                                    <p class="text-xs text-muted-foreground">
-                                        Used for persona prompt blocks and chat participant context.
-                                    </p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    </section>
+                                <div class="flex flex-wrap items-center gap-1">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="gap-1 px-2"
+                                        disabled={resourceAction !== null}
+                                        aria-busy={resourceAction === 'avatar-upload'}
+                                        onclick={handleAvatarUpload}
+                                    >
+                                        <Upload class="size-4" /> Upload avatar
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        class="gap-1 px-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                        disabled={!$activePersona.avatar || resourceAction !== null}
+                                        aria-busy={resourceAction === 'avatar-remove'}
+                                        onclick={handleAvatarRemove}
+                                    >
+                                        Remove avatar
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-1.5">
+                            <Label>Persona Description</Label>
+                            <Textarea
+                                rows={5}
+                                value={$activePersona.description}
+                                oninput={(e) =>
+                                    updatePersona($activePersona!.id, {
+                                        description: e.currentTarget.value
+                                    })}
+                                placeholder="Describe how this persona should speak, act, or be represented..."
+                            />
+                        </div>
+                    </div>
                 {:else if activeTab === 'assets'}
                     <section class="space-y-4">
                         <div class="flex items-center justify-between">
