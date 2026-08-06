@@ -415,7 +415,6 @@
             {#if $route.view === 'room' && $route.roomId}
                 <ChatView
                     roomId={$route.roomId}
-                    chatId={$route.chatId}
                     bind:inspectorOpen={chatPanelOpen}
                     onRequestInspectorOpen={handleChatPanelOpen}
                     onRequestInspectorClose={handleChatPanelClose}

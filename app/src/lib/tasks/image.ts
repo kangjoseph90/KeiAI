@@ -80,7 +80,6 @@ export async function runImageGeneration(messageId: string): Promise<void> {
             setImageGenerationTaskError(messageId, errorMessage);
             notifyImageGenerationTaskError(messageId, errorMessage);
         }
-        throw error;
     }
 }
 

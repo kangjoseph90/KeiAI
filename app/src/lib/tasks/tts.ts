@@ -80,7 +80,6 @@ export async function runTTS(messageId: string): Promise<void> {
             setTTSTaskError(messageId, errorMessage);
             notifyTTSTaskError(messageId, errorMessage);
         }
-        throw error;
     }
 }
 

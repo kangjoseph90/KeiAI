@@ -13,68 +13,28 @@
     import ChatBackground from './ChatBackground.svelte';
     import {
         activeChat,
-        activeRoom,
-        chatSelections,
         chatTasks,
-        chatDrafts,
-        dictationTasks,
-        appSettings,
         collectedTasks,
         roomCharacters,
-        chatPersonas,
         displayMessages,
-        isChatRunning,
-        hasRecordingDictation,
-        createMessage,
-        updateMessage,
-        deleteMessage,
-        selectChat,
         loadInitialMessages,
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
         dropNewerMessages,
-        createChatInlay,
-        clearChatDraft,
-        consumeCompletedTasks,
-        flushChatDrafts,
-        loadChatDraft,
-        setChatDraftInlayIds,
-        setChatDraftText
+        consumeCompletedTasks
     } from '$lib/stores';
-    import { appConfirm, characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
-    import {
-        cancelDictation,
-        dismissChat,
-        dismissDictation,
-        finishDictation,
-        runChat,
-        runDictation,
-        stopChat
-    } from '$lib/tasks';
-    import { getLastTextContent, findLastTextIndex, type AgentPart } from '$lib/workflow/agent/llm';
-    import { runPipeline } from '$lib/pipeline';
-    import { runTemplate } from '$lib/template';
-    import { navigate } from '$lib/router';
     import { createLogger } from '$lib/adapters/logger';
-    import { emitEvent } from '$lib/events';
-    import { onDestroy, tick, untrack } from 'svelte';
-    import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
-    import type { RuntimeContext } from '$lib/types/context';
-    import { appDialog } from '$lib/adapters/dialog';
-    import { getErrorMessage } from '$lib/types/errors';
-    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
+    import { onDestroy, tick } from 'svelte';
 
     let {
         roomId,
-        chatId,
         inspectorOpen = $bindable(false),
         onRequestInspectorOpen,
         onRequestInspectorClose,
         roomOverlayOpen = false
     }: {
         roomId: string;
-        chatId?: string;
         inspectorOpen?: boolean;
         onRequestInspectorOpen?: () => void;
         onRequestInspectorClose?: () => void;
@@ -82,12 +42,6 @@
     } = $props();
 
     const logger = createLogger('view:chat');
-    let newMessageText = $state('');
-    let pendingAttachments = $state<string[]>([]);
-    let dictationActionError = $state('');
-    let editModeId = $state<string | null>(null);
-    let isEditingTranslation = $state(false);
-    let editMessageText = $state('');
     let scrollContainerEl: HTMLElement | undefined = $state();
     type PaginationDirection = 'older' | 'newer';
     let paginationDirection = $state<PaginationDirection | null>(null);
@@ -105,9 +59,6 @@
     let previousGeneratingMessageId: string | null = null;
     let previousBottomOffset = 0;
     let isAdjustingStreamReserve = false;
-    const MAX_ATTACHMENTS = 4;
-    type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
-    let messageAction = $state<{ messageId: string; type: MessageAction } | null>(null);
     let chatViewEpoch = 0;
     let previousChatPanelOverlayMode: boolean | undefined;
     let chatLayoutTransitionFrame: number | undefined;
@@ -128,9 +79,6 @@
         const task = $chatTasks.get(activeChatId);
         return task?.status === 'generating' ? task.messageId : null;
     });
-    const activeDictationTask = $derived(
-        $activeChat ? ($dictationTasks.get($activeChat.id) ?? null) : null
-    );
 
     onDestroy(() => {
         chatViewEpoch += 1;
@@ -269,14 +217,9 @@
         hasMoreOlder = true;
         hasMoreNewer = false;
         paginationDirection = null;
-        newMessageText = '';
-        pendingAttachments = [];
-        dictationActionError = '';
         clearStreamReserve();
         previousGeneratingMessageId = null;
         previousBottomOffset = 0;
-
-        if (activeChatId) void restoreDraft(activeChatId);
 
         void tick().then(() => {
             if ($activeChat?.id !== activeChatId || !scrollContainerEl) return;
@@ -284,34 +227,6 @@
             previousBottomOffset = 0;
         });
     });
-
-    $effect(() => {
-        const activeChatId = $activeChat?.id;
-        if (!activeChatId) return;
-        const draft = $chatDrafts.get(activeChatId);
-        if (!draft) return;
-        untrack(() => {
-            if (newMessageText !== draft.text) newMessageText = draft.text;
-            if (!sameIds(pendingAttachments, draft.inlayIds)) {
-                pendingAttachments = draft.inlayIds.filter((id) =>
-                    Boolean($activeChat?.inlays.refs[id])
-                );
-            }
-        });
-    });
-
-    async function restoreDraft(targetChatId: string): Promise<void> {
-        const draft = await loadChatDraft(targetChatId);
-        if ($activeChat?.id !== targetChatId) return;
-        const validInlayIds = draft.inlayIds.filter((id) => Boolean($activeChat?.inlays.refs[id]));
-        if (!sameIds(validInlayIds, draft.inlayIds)) {
-            setChatDraftInlayIds(targetChatId, validInlayIds);
-        }
-    }
-
-    function sameIds(a: string[], b: string[]): boolean {
-        return a.length === b.length && a.every((id, index) => id === b[index]);
-    }
 
     async function handleScroll() {
         if (!scrollContainerEl || !$activeChat || isAdjustingStreamReserve) return;
@@ -488,305 +403,11 @@
         syncReserveContentHeight();
     }
 
-    const selectedPersona = $derived.by(() => {
-        const personaId = $chatSelections?.personaId ?? $activeChat?.defaultPersonaId;
-        if (!personaId) return null;
-        return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
-    });
-
-    const defaultPersona = $derived.by(() => {
-        const personaId = $activeChat?.defaultPersonaId;
-        if (!personaId) return null;
-        return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
-    });
-
-    const selectedCharacter = $derived.by(() => {
-        const characterId = $chatSelections?.characterId ?? $activeChat?.defaultCharacterId;
-        if (!characterId) return null;
-        return $roomCharacters.find((character) => character.id === characterId) ?? null;
-    });
-
     const defaultCharacter = $derived.by(() => {
         const characterId = $activeChat?.defaultCharacterId;
         if (!characterId) return null;
         return $roomCharacters.find((character) => character.id === characterId) ?? null;
     });
-
-    async function handleSendMessage() {
-        if (
-            (!newMessageText.trim() && pendingAttachments.length === 0) ||
-            !$activeChat ||
-            $isChatRunning
-        )
-            return;
-
-        if (!selectedCharacter) {
-            $characterPickerOpen = true;
-            return;
-        }
-        if (!selectedPersona) {
-            $personaPickerOpen = true;
-            return;
-        }
-
-        const targetChatId = $activeChat.id;
-        const targetCharacterId = selectedCharacter.id;
-        const targetPersonaId = selectedPersona.id;
-
-        const ctx: RuntimeContext = {
-            roomId,
-            presetId: $appSettings?.presetId,
-            characterId: defaultCharacter?.id,
-            personaId: targetPersonaId,
-            chatId: targetChatId,
-            speakerId: targetPersonaId,
-            speakerName: selectedPersona.name,
-            role: 'user'
-        };
-        const templated = await runTemplate(newMessageText, ctx);
-        const piped = await runPipeline('input', ctx, templated);
-        const processedText = await runTemplate(piped, ctx);
-        const inlayIds = Array.from(pendingAttachments);
-        const parts: AgentPart[] = [];
-        if (inlayIds.length > 0) parts.push({ type: 'inlay', ids: inlayIds });
-        if (processedText.trim()) parts.push({ type: 'text', text: processedText });
-
-        const variables = await getChatVariables(targetChatId);
-        const message = await createMessage(targetChatId, { role: 'user' });
-
-        await prepareNextSwipe(message, {
-            parts,
-            variables,
-            speakerId: targetPersonaId,
-            speakerName: selectedPersona.name,
-            replaceActiveSwipe: true
-        });
-
-        void emitEvent(
-            'message:sent',
-            { ...ctx, chatId: targetChatId, characterId: targetCharacterId },
-            { content: processedText }
-        );
-
-        newMessageText = '';
-        pendingAttachments = [];
-        clearChatDraft(targetChatId);
-        void flushChatDrafts().catch((error) =>
-            logger.warn('Failed to clear cached chat draft:', error)
-        );
-
-        if ($appSettings?.chat.autoGenerateResponse !== false && $activeChat?.id === targetChatId) {
-            void runChat(targetChatId, targetCharacterId, targetPersonaId);
-        }
-    }
-
-    /**
-     * Shared image→inlay→attachment pipeline for file pick, paste, and drop.
-     * Captures the chatId up front so a mid-flight chat switch cannot leak
-     * attachments into the wrong chat. Partial failures keep successful ones.
-     */
-    async function attachFiles(files: File[]): Promise<void> {
-        const chatId = $activeChat?.id;
-        if (!chatId) return;
-
-        const remaining = MAX_ATTACHMENTS - pendingAttachments.length;
-        const candidates = files.slice(0, remaining);
-        if (candidates.length === 0) return;
-
-        let firstError: unknown;
-        for (const file of candidates) {
-            try {
-                const ref = await createChatInlay(chatId, file);
-                // Only attach if the user hasn't switched chats while we awaited.
-                if ($activeChat?.id === chatId) addAttachment(ref.id);
-            } catch (err) {
-                logger.error('Failed to attach media:', err);
-                firstError ??= err;
-            }
-        }
-        if (firstError) {
-            toast.error({
-                title: 'Could not attach some media',
-                description: getErrorMessage(firstError)
-            });
-        }
-    }
-
-    async function handleAttachmentUpload() {
-        if (!$activeChat || pendingAttachments.length >= MAX_ATTACHMENTS) return;
-
-        const files = await appDialog.openMultipleFiles({
-            title: 'Attach Media',
-            filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
-        });
-        if (!files?.length) return;
-
-        await attachFiles(files);
-    }
-
-    function addAttachment(assetId: string) {
-        if (pendingAttachments.length >= MAX_ATTACHMENTS || pendingAttachments.includes(assetId))
-            return;
-        pendingAttachments = [...pendingAttachments, assetId];
-        if ($activeChat) setChatDraftInlayIds($activeChat.id, pendingAttachments);
-    }
-
-    function handleDraftTextChange(value: string): void {
-        if ($activeChat) setChatDraftText($activeChat.id, value);
-    }
-
-    function handleDraftAttachmentsChange(ids: string[]): void {
-        if ($activeChat) setChatDraftInlayIds($activeChat.id, ids);
-    }
-
-    function handleStartDictation(): void {
-        const targetChatId = $activeChat?.id;
-        if (!targetChatId) return;
-        dictationActionError = '';
-        void runDictation(targetChatId).catch((error) => {
-            if ($activeChat?.id !== targetChatId) return;
-            dictationActionError = getErrorMessage(error, 'Dictation failed');
-        });
-    }
-
-    function handleGenerateResponse() {
-        if (!$activeChat || $isChatRunning) return;
-
-        if (!selectedCharacter) {
-            $characterPickerOpen = true;
-            return;
-        }
-        if (!selectedPersona) {
-            $personaPickerOpen = true;
-            return;
-        }
-
-        runChat($activeChat.id, selectedCharacter.id, selectedPersona.id);
-    }
-
-    async function runMessageAction(
-        messageId: string,
-        type: MessageAction,
-        errorTitle: string,
-        action: (targetChatId: string) => Promise<void>
-    ): Promise<void> {
-        const targetChatId = $activeChat?.id;
-        if (!targetChatId || messageAction) return;
-        messageAction = { messageId, type };
-        try {
-            await action(targetChatId);
-        } catch (error) {
-            toast.error({ title: errorTitle, description: getErrorMessage(error) });
-        } finally {
-            messageAction = null;
-        }
-    }
-
-    async function handleUpdateMessage(id: string) {
-        if (!editMessageText.trim()) return;
-        const msg = $displayMessages.find((m) => m.id === id);
-        if (!msg) return;
-
-        const activeSwipe = msg.swipes[msg.activeSwipeId];
-        if (!activeSwipe) return;
-
-        const newParts = [...activeSwipe.parts];
-        const lastTextIdx = findLastTextIndex(newParts);
-
-        if (lastTextIdx >= 0) {
-            newParts[lastTextIdx] = {
-                ...newParts[lastTextIdx],
-                type: 'text',
-                text: editMessageText
-            };
-        } else {
-            newParts.push({ type: 'text', text: editMessageText });
-        }
-
-        await runMessageAction(id, 'save', 'Could not save message', async (targetChatId) => {
-            await updateMessage(id, {
-                swipes: {
-                    [msg.activeSwipeId]: { ...activeSwipe, parts: newParts }
-                }
-            });
-            if ($activeChat?.id === targetChatId) editModeId = null;
-        });
-    }
-
-    async function handleUpdateTranslation(id: string) {
-        if (!editMessageText.trim()) return;
-        const msg = $displayMessages.find((m) => m.id === id);
-        if (!msg) return;
-
-        const activeSwipe = msg.swipes[msg.activeSwipeId];
-        if (!activeSwipe || !activeSwipe.translation) return;
-
-        const updatedTranslation = {
-            ...activeSwipe.translation,
-            text: editMessageText
-        };
-
-        await runMessageAction(id, 'save', 'Could not save translation', async (targetChatId) => {
-            await updateMessage(id, {
-                swipes: {
-                    [msg.activeSwipeId]: { ...activeSwipe, translation: updatedTranslation }
-                }
-            });
-            if ($activeChat?.id === targetChatId) {
-                editModeId = null;
-                isEditingTranslation = false;
-            }
-        });
-    }
-
-    async function handleRegenerate() {
-        // Instead of deleting and re-creating, target the existing message for reroll.
-        // The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
-        if ($activeChat && selectedCharacter && selectedPersona) {
-            runChat($activeChat.id, selectedCharacter.id, selectedPersona.id, { reroll: true });
-        }
-    }
-
-    async function handleSwipe(messageId: string, newSwipeId: string) {
-        await runMessageAction(messageId, 'swipe', 'Could not change swipe', () =>
-            updateMessage(messageId, { activeSwipeId: newSwipeId })
-        );
-    }
-
-    /** Fork the chat at a given message — copies all history up to that point into a new chat. */
-    async function handleFork(messageId: string) {
-        await runMessageAction(messageId, 'fork', 'Could not fork chat', async (targetChatId) => {
-            const newChatId = await forkChat(messageId);
-            if ($activeChat?.id === targetChatId) await handleSwitchChat(newChatId);
-        });
-    }
-
-    async function handleDeleteMessage(messageId: string) {
-        await runMessageAction(
-            messageId,
-            'delete',
-            'Could not delete message',
-            async (targetChatId) => {
-                const confirmed = await appConfirm({
-                    title: 'Delete message?',
-                    description:
-                        'Delete this message and all of its swipes? This cannot be undone.',
-                    confirmText: 'Delete',
-                    variant: 'destructive'
-                });
-                if (!confirmed || $activeChat?.id !== targetChatId) return;
-                await deleteMessage(targetChatId, messageId);
-            }
-        );
-    }
-
-    async function handleSwitchChat(targetChatId: string) {
-        if ($activeRoom) {
-            await syncChatGreetings(targetChatId);
-            await selectChat(targetChatId);
-            navigate({ view: 'room', roomId: $activeRoom.id, chatId: targetChatId });
-        }
-    }
 
     function openInspector(): void {
         if (onRequestInspectorOpen) onRequestInspectorOpen();
@@ -899,45 +520,6 @@
                             {#each $displayMessages as msg (msg.id)}
                                 <Message
                                     message={msg}
-                                    isEditing={editModeId === msg.id}
-                                    bind:editText={editMessageText}
-                                    characterName={defaultCharacter?.name ?? ''}
-                                    characterId={defaultCharacter?.id}
-                                    personaId={defaultPersona?.id}
-                                    onEdit={() => {
-                                        editModeId = msg.id;
-                                        isEditingTranslation = false;
-                                        const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                        editMessageText = activeSwipe
-                                            ? getLastTextContent(activeSwipe.parts)
-                                            : '';
-                                    }}
-                                    onEditTranslation={() => {
-                                        editModeId = msg.id;
-                                        isEditingTranslation = true;
-                                        const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                        editMessageText = activeSwipe?.translation?.text ?? '';
-                                    }}
-                                    onSave={() => {
-                                        if (isEditingTranslation) {
-                                            void handleUpdateTranslation(msg.id);
-                                        } else {
-                                            void handleUpdateMessage(msg.id);
-                                        }
-                                    }}
-                                    onDelete={() => handleDeleteMessage(msg.id)}
-                                    onCancelEdit={() => {
-                                        editModeId = null;
-                                        isEditingTranslation = false;
-                                    }}
-                                    onDismissError={() => dismissChat($activeChat!.id)}
-                                    onRegenerate={() => handleRegenerate()}
-                                    onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
-                                    onFork={() => handleFork(msg.id)}
-                                    actionsDisabled={messageAction !== null}
-                                    busyAction={messageAction?.messageId === msg.id
-                                        ? messageAction.type
-                                        : null}
                                     isLastMessage={msg.id ===
                                         $displayMessages[$displayMessages.length - 1]?.id}
                                 />
@@ -953,27 +535,9 @@
 
                 <!-- Message Input -->
                 <ChatComposer
-                    bind:value={newMessageText}
-                    bind:attachmentIds={pendingAttachments}
-                    maxAttachments={MAX_ATTACHMENTS}
-                    dictationTask={activeDictationTask}
-                    {dictationActionError}
-                    recordingUnavailable={$hasRecordingDictation}
                     {showScrollToBottom}
                     overlayInert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
                     onHeightChange={(height) => (composerHeight = height)}
-                    onSend={() => void handleSendMessage()}
-                    onGenerate={handleGenerateResponse}
-                    onStop={() => stopChat($activeChat!.id)}
-                    onRecord={handleStartDictation}
-                    onCancelDictation={() => cancelDictation($activeChat!.id)}
-                    onFinishDictation={() => finishDictation($activeChat!.id)}
-                    onDismissDictation={() => dismissDictation($activeChat!.id)}
-                    onDismissDictationActionError={() => (dictationActionError = '')}
-                    onValueChange={handleDraftTextChange}
-                    onAttachmentsChange={handleDraftAttachmentsChange}
-                    onUpload={() => void handleAttachmentUpload()}
-                    onFiles={(files) => void attachFiles(files)}
                     onScrollToBottom={scrollToBottom}
                 />
             </div>
@@ -994,7 +558,7 @@
                 inert={!inspectorOpen}
             >
                 <div class="app-chat-runtime-panel relative h-full w-90 shrink-0">
-                    <ChatRuntimePanel chatId={$activeChat.id} onSelectInlay={addAttachment} />
+                    <ChatRuntimePanel chatId={$activeChat.id} />
                 </div>
             </div>
             <div

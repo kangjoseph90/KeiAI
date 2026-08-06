@@ -5,6 +5,7 @@ import type { ChatDraft } from '../types';
 
 const draftCache = createCache<ChatDraft>('chat-drafts', 500);
 const loadingDrafts = new Map<string, Promise<ChatDraft>>();
+export const MAX_CHAT_DRAFT_INLAYS = 4;
 
 function normalizeDraft(value: ChatDraft | undefined): ChatDraft {
     if (!value) return { text: '', inlayIds: [] };
@@ -64,6 +65,14 @@ export function setChatDraftText(chatId: string, text: string): void {
 export function setChatDraftInlayIds(chatId: string, inlayIds: string[]): void {
     const current = getChatDraft(chatId);
     saveDraft(chatId, { ...current, inlayIds });
+}
+
+export function addChatDraftInlay(chatId: string, inlayId: string): void {
+    const current = getChatDraft(chatId);
+    if (current.inlayIds.includes(inlayId) || current.inlayIds.length >= MAX_CHAT_DRAFT_INLAYS) {
+        return;
+    }
+    setChatDraftInlayIds(chatId, [...current.inlayIds, inlayId]);
 }
 
 export async function appendChatDraftText(chatId: string, text: string): Promise<void> {

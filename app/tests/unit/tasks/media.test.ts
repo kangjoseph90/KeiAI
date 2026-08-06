@@ -120,7 +120,7 @@ describe('media tasks', () => {
             throw new Error('provider failed');
         });
 
-        await expect(runImageGeneration('message-1')).rejects.toThrow('provider failed');
+        await expect(runImageGeneration('message-1')).resolves.toBeUndefined();
         expect(get(imageGenerationTasks).get('message-1')).toMatchObject({
             status: 'error',
             errorMessage: 'provider failed'

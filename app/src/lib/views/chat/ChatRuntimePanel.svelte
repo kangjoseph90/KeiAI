@@ -24,6 +24,7 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
         activeChat,
+        addChatDraftInlay,
         chatPersonas,
         chatSelections,
         createChatFolder,
@@ -53,7 +54,6 @@
 
     interface Props {
         chatId: string;
-        onSelectInlay?: (assetId: string) => void;
     }
 
     interface PersonaFolderPayload {
@@ -68,7 +68,7 @@
         };
     }
 
-    let { chatId, onSelectInlay }: Props = $props();
+    let { chatId }: Props = $props();
 
     let galleryVisible = $state(false);
     let panelAction = $state<string | null>(null);
@@ -561,7 +561,9 @@
                                     aria-label={`Attach ${ref.name} to message`}
                                     onclick={(event) => {
                                         event.stopPropagation();
-                                        onSelectInlay?.(ref.id);
+                                        if ($activeChat?.id === chatId) {
+                                            addChatDraftInlay(chatId, ref.id);
+                                        }
                                     }}
                                 >
                                     <Paperclip class="size-3" />

@@ -11,66 +11,76 @@
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
-    import { activeChat, isChatRunning, type DictationTask } from '$lib/stores';
+    import {
+        activeChat,
+        appSettings,
+        chatDrafts,
+        chatPersonas,
+        chatSelections,
+        createChatInlay,
+        createMessage,
+        dictationTasks,
+        hasRecordingDictation,
+        isChatRunning,
+        roomCharacters,
+        addChatDraftInlay,
+        clearChatDraft,
+        flushChatDrafts,
+        loadChatDraft,
+        MAX_CHAT_DRAFT_INLAYS,
+        setChatDraftInlayIds,
+        setChatDraftText,
+        type DictationTask
+    } from '$lib/stores';
+    import {
+        cancelDictation,
+        dismissDictation,
+        finishDictation,
+        runChat,
+        runDictation,
+        stopChat
+    } from '$lib/tasks';
+    import { characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
+    import { getChatVariables, prepareNextSwipe } from '$lib/managers';
+    import { runPipeline } from '$lib/pipeline';
+    import { runTemplate } from '$lib/template';
+    import { createLogger } from '$lib/adapters/logger';
+    import { emitEvent } from '$lib/events';
+    import { appDialog } from '$lib/adapters/dialog';
+    import { getErrorMessage } from '$lib/types/errors';
+    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
+    import type { RuntimeContext } from '$lib/types/context';
+    import { type AgentPart } from '$lib/workflow/agent/llm';
+    import { untrack } from 'svelte';
     import DictationControls from './DictationControls.svelte';
-    import TaskErrorNotice from './TaskErrorNotice.svelte';
 
     let {
-        value = $bindable(''),
-        attachmentIds = $bindable([]),
-        maxAttachments,
-        dictationTask = null,
-        dictationActionError = '',
-        recordingUnavailable = false,
         showScrollToBottom = false,
         overlayInert = false,
         onHeightChange,
-        onSend,
-        onGenerate,
-        onStop,
-        onRecord,
-        onCancelDictation,
-        onFinishDictation,
-        onDismissDictation,
-        onDismissDictationActionError,
-        onValueChange,
-        onAttachmentsChange,
-        onUpload,
-        onFiles,
         onScrollToBottom
     }: {
-        value?: string;
-        attachmentIds?: string[];
-        maxAttachments: number;
-        dictationTask?: DictationTask | null;
-        dictationActionError?: string;
-        recordingUnavailable?: boolean;
         showScrollToBottom?: boolean;
         overlayInert?: boolean;
         onHeightChange: (height: number) => void;
-        onSend: () => void;
-        onGenerate: () => void;
-        onStop: () => void;
-        onRecord: () => void;
-        onCancelDictation: () => void;
-        onFinishDictation: () => void;
-        onDismissDictation: () => void;
-        onDismissDictationActionError: () => void;
-        onValueChange: (value: string) => void;
-        onAttachmentsChange: (ids: string[]) => void;
-        onUpload: () => void;
-        onFiles: (files: File[]) => void;
         onScrollToBottom: () => void;
     } = $props();
 
+    const logger = createLogger('view:composer');
+    const MAX_ATTACHMENTS = MAX_CHAT_DRAFT_INLAYS;
     let composerElement = $state<HTMLElement>();
     let textHeight = $state(0);
     let dragCounter = $state(0);
+    let value = $state('');
+    let attachmentIds = $state<string[]>([]);
     let previousChatId: string | undefined;
 
     const isExpanded = $derived(textHeight > 48);
     const hasContent = $derived(value.trim().length > 0 || attachmentIds.length > 0);
     const isDragging = $derived(dragCounter > 0);
+    const dictationTask = $derived<DictationTask | null>(
+        $activeChat ? ($dictationTasks.get($activeChat.id) ?? null) : null
+    );
     const dictationBusy = $derived(
         dictationTask?.phase === 'recording' || dictationTask?.phase === 'transcribing'
     );
@@ -79,6 +89,50 @@
         return attachmentIds
             .map((attachmentId) => $activeChat?.inlays.refs[attachmentId])
             .filter((ref) => ref !== undefined);
+    });
+    const selectedPersona = $derived.by(() => {
+        const personaId = $chatSelections?.personaId ?? $activeChat?.defaultPersonaId;
+        if (!personaId) return null;
+        return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
+    });
+    const selectedCharacter = $derived.by(() => {
+        const characterId = $chatSelections?.characterId ?? $activeChat?.defaultCharacterId;
+        if (!characterId) return null;
+        return $roomCharacters.find((character) => character.id === characterId) ?? null;
+    });
+    const defaultCharacter = $derived.by(() => {
+        const characterId = $activeChat?.defaultCharacterId;
+        if (!characterId) return null;
+        return $roomCharacters.find((character) => character.id === characterId) ?? null;
+    });
+
+    $effect(() => {
+        const activeChatId = $activeChat?.id;
+        if (activeChatId === previousChatId) return;
+
+        previousChatId = activeChatId;
+        dragCounter = 0;
+        value = '';
+        attachmentIds = [];
+        if (activeChatId) void restoreDraft(activeChatId);
+    });
+
+    $effect(() => {
+        const activeChatId = $activeChat?.id;
+        if (!activeChatId) return;
+        const draft = $chatDrafts.get(activeChatId);
+        if (!draft) return;
+
+        untrack(() => {
+            if (value !== draft.text) value = draft.text;
+            const validInlayIds = draft.inlayIds.filter((id) =>
+                Boolean($activeChat?.inlays.refs[id])
+            );
+            if (!sameIds(attachmentIds, validInlayIds)) attachmentIds = validInlayIds;
+            if (!sameIds(validInlayIds, draft.inlayIds)) {
+                setChatDraftInlayIds(activeChatId, validInlayIds);
+            }
+        });
     });
 
     $effect(() => {
@@ -93,18 +147,11 @@
         return () => observer.disconnect();
     });
 
-    $effect(() => {
-        const activeChatId = $activeChat?.id;
-        if (activeChatId === previousChatId) return;
-        previousChatId = activeChatId;
-        dragCounter = 0;
-    });
-
     function handlePaste(event: ClipboardEvent) {
         const files = filesFromPaste(event);
         if (files.length === 0) return;
         event.preventDefault();
-        onFiles(files);
+        void attachFiles(files);
     }
 
     function handleDragEnter(event: DragEvent) {
@@ -131,7 +178,7 @@
         event.preventDefault();
         dragCounter = 0;
         const files = Array.from(event.dataTransfer?.files ?? []);
-        if (files.length > 0) onFiles(files);
+        if (files.length > 0) void attachFiles(files);
     }
 
     function filesFromPaste(event: ClipboardEvent): File[] {
@@ -152,9 +199,175 @@
         return data.files.length > 0 || Array.from(data.types).includes('Files');
     }
 
+    async function restoreDraft(targetChatId: string): Promise<void> {
+        const draft = await loadChatDraft(targetChatId);
+        if ($activeChat?.id !== targetChatId) return;
+        const validInlayIds = draft.inlayIds.filter((id) => Boolean($activeChat?.inlays.refs[id]));
+        if (!sameIds(validInlayIds, draft.inlayIds)) {
+            setChatDraftInlayIds(targetChatId, validInlayIds);
+        }
+    }
+
+    function sameIds(a: string[], b: string[]): boolean {
+        return a.length === b.length && a.every((id, index) => id === b[index]);
+    }
+
     function removeAttachment(id: string): void {
         attachmentIds = attachmentIds.filter((attachmentId) => attachmentId !== id);
-        onAttachmentsChange(attachmentIds);
+        if ($activeChat) setChatDraftInlayIds($activeChat.id, attachmentIds);
+    }
+
+    async function handleSendMessage(): Promise<void> {
+        if ((!value.trim() && attachmentIds.length === 0) || !$activeChat || $isChatRunning) return;
+
+        if (!selectedCharacter) {
+            $characterPickerOpen = true;
+            return;
+        }
+        if (!selectedPersona) {
+            $personaPickerOpen = true;
+            return;
+        }
+
+        const targetChatId = $activeChat.id;
+        const targetCharacterId = selectedCharacter.id;
+        const targetPersonaId = selectedPersona.id;
+        const ctx: RuntimeContext = {
+            roomId: $activeChat.roomId,
+            presetId: $appSettings?.presetId,
+            characterId: defaultCharacter?.id,
+            personaId: targetPersonaId,
+            chatId: targetChatId,
+            speakerId: targetPersonaId,
+            speakerName: selectedPersona.name,
+            role: 'user'
+        };
+        const templated = await runTemplate(value, ctx);
+        const piped = await runPipeline('input', ctx, templated);
+        const processedText = await runTemplate(piped, ctx);
+        const inlayIds = Array.from(attachmentIds);
+        const parts: AgentPart[] = [];
+        if (inlayIds.length > 0) parts.push({ type: 'inlay', ids: inlayIds });
+        if (processedText.trim()) parts.push({ type: 'text', text: processedText });
+
+        const variables = await getChatVariables(targetChatId);
+        const message = await createMessage(targetChatId, { role: 'user' });
+        await prepareNextSwipe(message, {
+            parts,
+            variables,
+            speakerId: targetPersonaId,
+            speakerName: selectedPersona.name,
+            replaceActiveSwipe: true
+        });
+
+        void emitEvent(
+            'message:sent',
+            { ...ctx, chatId: targetChatId, characterId: targetCharacterId },
+            { content: processedText }
+        );
+
+        value = '';
+        attachmentIds = [];
+        clearChatDraft(targetChatId);
+        void flushChatDrafts().catch((error) =>
+            logger.warn('Failed to clear cached chat draft:', error)
+        );
+
+        if ($appSettings?.chat.autoGenerateResponse !== false && $activeChat?.id === targetChatId) {
+            void runChat(targetChatId, targetCharacterId, targetPersonaId).catch((error) => {
+                if (error instanceof DOMException && error.name === 'AbortError') return;
+                toast.error({
+                    title: 'Could not start chat generation',
+                    description: getErrorMessage(error)
+                });
+            });
+        }
+    }
+
+    function handleGenerateResponse(): void {
+        if (!$activeChat || $isChatRunning) return;
+        if (!selectedCharacter) {
+            $characterPickerOpen = true;
+            return;
+        }
+        if (!selectedPersona) {
+            $personaPickerOpen = true;
+            return;
+        }
+        void runChat($activeChat.id, selectedCharacter.id, selectedPersona.id).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start chat generation',
+                description: getErrorMessage(error)
+            });
+        });
+    }
+
+    function handleStop(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) stopChat(chatId);
+    }
+
+    async function attachFiles(files: File[]): Promise<void> {
+        const chatId = $activeChat?.id;
+        if (!chatId) return;
+
+        const remaining = MAX_ATTACHMENTS - attachmentIds.length;
+        const candidates = files.slice(0, remaining);
+        if (candidates.length === 0) return;
+
+        let firstError: unknown;
+        for (const file of candidates) {
+            try {
+                const ref = await createChatInlay(chatId, file);
+                if ($activeChat?.id === chatId) addChatDraftInlay(chatId, ref.id);
+            } catch (error) {
+                logger.error('Failed to attach media:', error);
+                firstError ??= error;
+            }
+        }
+        if (firstError) {
+            toast.error({
+                title: 'Could not attach some media',
+                description: getErrorMessage(firstError)
+            });
+        }
+    }
+
+    async function handleAttachmentUpload(): Promise<void> {
+        if (!$activeChat || attachmentIds.length >= MAX_ATTACHMENTS) return;
+        const files = await appDialog.openMultipleFiles({
+            title: 'Attach Media',
+            filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
+        });
+        if (files?.length) await attachFiles(files);
+    }
+
+    function handleStartDictation(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId) return;
+        void runDictation(chatId).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start dictation',
+                description: getErrorMessage(error)
+            });
+        });
+    }
+
+    function handleCancelDictation(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) cancelDictation(chatId);
+    }
+
+    function handleFinishDictation(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) finishDictation(chatId);
+    }
+
+    function handleDismissDictation(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) dismissDictation(chatId);
     }
 </script>
 
@@ -236,24 +449,17 @@
         {#if dictationBusy && dictationTask}
             <DictationControls
                 task={dictationTask}
-                onCancel={onCancelDictation}
-                onFinish={onFinishDictation}
-                onDismiss={onDismissDictation}
+                onCancel={handleCancelDictation}
+                onFinish={handleFinishDictation}
+                onDismiss={handleDismissDictation}
             />
         {:else}
             {#if dictationTask?.phase === 'error'}
                 <DictationControls
                     task={dictationTask}
-                    onCancel={onCancelDictation}
-                    onFinish={onFinishDictation}
-                    onDismiss={onDismissDictation}
-                    class="mb-2"
-                />
-            {:else if dictationActionError}
-                <TaskErrorNotice
-                    title="Dictation failed"
-                    message={dictationActionError}
-                    onDismiss={onDismissDictationActionError}
+                    onCancel={handleCancelDictation}
+                    onFinish={handleFinishDictation}
+                    onDismiss={handleDismissDictation}
                     class="mb-2"
                 />
             {/if}
@@ -268,8 +474,8 @@
                     class="col-start-1 shrink-0 rounded-full text-muted-foreground {isExpanded
                         ? 'row-start-2'
                         : 'row-start-1'}"
-                    onclick={onUpload}
-                    disabled={$isChatRunning || attachmentIds.length >= maxAttachments}
+                    onclick={() => void handleAttachmentUpload()}
+                    disabled={$isChatRunning || attachmentIds.length >= MAX_ATTACHMENTS}
                     title="Attach media"
                     aria-label="Attach media"
                 >
@@ -282,11 +488,13 @@
                         ? 'col-span-3 row-start-1 mx-2 w-auto'
                         : 'col-start-2 row-start-1'}"
                     onheightchange={(height) => (textHeight = height)}
-                    oninput={() => onValueChange(value)}
+                    oninput={() => {
+                        if ($activeChat) setChatDraftText($activeChat.id, value);
+                    }}
                     onkeydown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
                             event.preventDefault();
-                            onSend();
+                            void handleSendMessage();
                         }
                     }}
                     onpaste={handlePaste}
@@ -304,7 +512,7 @@
                             variant="destructive"
                             size="icon"
                             class="shrink-0 rounded-full"
-                            onclick={onStop}
+                            onclick={handleStop}
                             title="Stop generation"
                             aria-label="Stop generation"
                         >
@@ -315,8 +523,8 @@
                             variant="ghost"
                             size="icon"
                             class="shrink-0 rounded-full text-muted-foreground"
-                            onclick={onRecord}
-                            disabled={recordingUnavailable || dictationTask !== null}
+                            onclick={handleStartDictation}
+                            disabled={$hasRecordingDictation || dictationTask !== null}
                             title="Start dictation"
                             aria-label="Start dictation"
                         >
@@ -326,7 +534,7 @@
                             <Button
                                 size="icon"
                                 class="shrink-0 rounded-full"
-                                onclick={onSend}
+                                onclick={() => void handleSendMessage()}
                                 title="Send message"
                                 aria-label="Send message"
                             >
@@ -337,7 +545,7 @@
                                 variant="secondary"
                                 size="icon"
                                 class="shrink-0 rounded-full"
-                                onclick={onGenerate}
+                                onclick={handleGenerateResponse}
                                 title="Generate response"
                                 aria-label="Generate response"
                             >

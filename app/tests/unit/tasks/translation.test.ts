@@ -183,7 +183,7 @@ describe('translation task', () => {
             throw new Error('provider failed');
         });
 
-        await expect(runTranslation('message-1')).rejects.toThrow('provider failed');
+        await expect(runTranslation('message-1')).resolves.toBeUndefined();
         expect(mocks.setTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
         expect(mocks.notifyTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
         expect(mocks.clearTask).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe('translation task', () => {
             throw new DOMException('Aborted', 'AbortError');
         });
 
-        await expect(runTranslation('message-1')).rejects.toThrow('Aborted');
+        await expect(runTranslation('message-1')).resolves.toBeUndefined();
 
         expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
         expect(mocks.setTaskError).not.toHaveBeenCalled();

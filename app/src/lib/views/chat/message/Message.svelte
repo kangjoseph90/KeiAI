@@ -41,85 +41,69 @@
     import MessageMoreMenu from './MessageMoreMenu.svelte';
     import TaskErrorNotice from '../TaskErrorNotice.svelte';
     import {
+        activeChat,
         activeRoom,
         appSettings,
         chatAssetsMap,
+        chatPersonas,
+        chatSelections,
+        chatTasks,
+        deleteMessage,
         selectActiveModules,
         characters,
         personas,
         roomCharacters,
-        chatPersonas,
         multiRoomCharacters,
         multiRoomPersonas,
         modules,
         imageGenerationTasks,
         ttsTasks,
-        translationTasks
+        translationTasks,
+        selectChat,
+        updateMessage,
+        updateMessageSwipe
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
+        dismissChat,
         dismissImageGeneration,
         dismissTTS,
         dismissTranslation,
-        runImageGeneration,
-        runTTS,
+        runChat,
         runTranslation,
-        stopImageGeneration,
-        stopTTS,
         stopTranslation
     } from '$lib/tasks';
+    import { forkChat, syncChatGreetings } from '$lib/managers';
+    import { navigate } from '$lib/router';
+    import {
+        appConfirm,
+        characterPickerOpen,
+        personaPickerOpen,
+        toast,
+        copyTextToClipboard
+    } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
-    import { copyTextToClipboard } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
     let {
         message,
-        isEditing = false,
-        editText = $bindable(''),
-        characterName = '',
-        characterId,
-        personaId,
-        isLastMessage = false,
-        actionsDisabled = false,
-        busyAction = null,
-        onEdit = () => {},
-        onSave = () => {},
-        onCancelEdit = () => {},
-        onDelete = () => {},
-        onDismissError = () => {},
-        onRegenerate = () => {},
-        onSwipe = (_id: string) => {},
-        onFork = () => {},
-        onCopy = () => {},
-        onEditTranslation = () => {}
+        isLastMessage = false
     }: {
         message: DisplayMessage;
-        isEditing?: boolean;
-        editText?: string;
-        characterName?: string;
-        characterId?: string;
-        personaId?: string;
         isLastMessage?: boolean;
-        actionsDisabled?: boolean;
-        busyAction?: 'save' | 'delete' | 'swipe' | 'fork' | null;
-        onEdit?: () => void;
-        onSave?: (text: string) => void;
-        onCancelEdit?: () => void;
-        onDelete?: () => void;
-        onDismissError?: () => void;
-        onRegenerate?: () => void;
-        onSwipe?: (id: string) => void;
-        onFork?: () => void;
-        onCopy?: () => void;
-        onEditTranslation?: () => void;
     } = $props();
 
     // ── State ─────────────────────────────────────────────────────────────────
 
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
     let copied = $state(false);
+    let isEditing = $state(false);
+    let isEditingTranslation = $state(false);
+    let editText = $state('');
+    type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
+    let busyAction = $state<MessageAction | null>(null);
 
     $effect(() => {
         if (isEditing && textareaEl) {
@@ -134,9 +118,6 @@
         }
     });
     let translationSourceHash = $state('');
-    let translationActionError = $state('');
-    let imageGenerationActionError = $state('');
-    let ttsActionError = $state('');
     let showTranslation = $state(false);
     let messageStyleHtml = $state('');
     let messageStyleSignature = '';
@@ -148,6 +129,20 @@
     // ── Derived ───────────────────────────────────────────────────────────────
 
     let isUser = $derived(message.role === 'user');
+    let defaultCharacterId = $derived($activeChat?.defaultCharacterId);
+    let defaultPersonaId = $derived($activeChat?.defaultPersonaId);
+    let selectedPersona = $derived.by(() => {
+        const personaId = $chatSelections?.personaId ?? defaultPersonaId;
+        return personaId ? $chatPersonas.find((persona) => persona.id === personaId) : undefined;
+    });
+    let selectedCharacter = $derived.by(() => {
+        const characterId = $chatSelections?.characterId ?? defaultCharacterId;
+        return characterId
+            ? $roomCharacters.find((character) => character.id === characterId)
+            : undefined;
+    });
+    let chatTask = $derived($chatTasks.get(message.chatId));
+    let actionsDisabled = $derived(busyAction !== null);
 
     /** The swipe that is currently active for this message. */
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
@@ -167,17 +162,6 @@
     let visibleContent = $derived(
         showTranslation && translatedContent ? translatedContent : currentContent
     );
-    let translationError = $derived(
-        matchingTranslationTask?.status === 'error'
-            ? matchingTranslationTask.errorMessage
-            : translationActionError
-    );
-    let imageGenerationError = $derived(
-        imageGenerationTask?.status === 'error'
-            ? imageGenerationTask.errorMessage
-            : imageGenerationActionError
-    );
-    let ttsError = $derived(ttsTask?.status === 'error' ? ttsTask.errorMessage : ttsActionError);
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -187,10 +171,12 @@
     /** The position of the active swipe in the sorted list. */
     let swipePos = $derived(sortedSwipes.findIndex((s) => s.id === message.activeSwipeId));
     let displayCharacterId = $derived(
-        message.role === 'assistant' && activeSwipe?.speakerId ? activeSwipe.speakerId : characterId
+        message.role === 'assistant' && activeSwipe?.speakerId
+            ? activeSwipe.speakerId
+            : defaultCharacterId
     );
     let displayPersonaId = $derived(
-        message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
+        message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : defaultPersonaId
     );
     let currentCharacter = $derived(
         [...$characters, ...$multiRoomCharacters].find(
@@ -203,7 +189,7 @@
     let speakerName = $derived(
         (isUser ? currentPersona?.name : currentCharacter?.name) ??
             activeSwipe?.speakerName ??
-            (isUser ? 'User' : characterName || 'Assistant')
+            (isUser ? 'User' : 'Assistant')
     );
     let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
@@ -285,12 +271,134 @@
     async function handleCopy() {
         if (!(await copyTextToClipboard(visibleContent, 'Copied message'))) return;
         copied = true;
-        onCopy();
         setTimeout(() => (copied = false), 2000);
     }
 
-    async function handleTranslate() {
-        translationActionError = '';
+    async function runMessageAction(
+        type: MessageAction,
+        errorTitle: string,
+        action: () => Promise<void>
+    ): Promise<void> {
+        if (busyAction) return;
+        busyAction = type;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
+    }
+
+    function startEdit(): void {
+        isEditingTranslation = false;
+        editText = currentContent;
+        isEditing = true;
+    }
+
+    function startTranslationEdit(): void {
+        isEditingTranslation = true;
+        editText = activeSwipe?.translation?.text ?? '';
+        isEditing = true;
+    }
+
+    function cancelEdit(): void {
+        isEditing = false;
+        isEditingTranslation = false;
+        editText = '';
+    }
+
+    async function saveEdit(): Promise<void> {
+        const text = editText.trim();
+        const swipe = activeSwipe;
+        if (!text || !swipe) return;
+
+        if (isEditingTranslation) {
+            if (!swipe.translation) return;
+            const translation = { ...swipe.translation, text: editText };
+            await runMessageAction('save', 'Could not save translation', async () => {
+                await updateMessageSwipe(message.id, message.activeSwipeId, { translation });
+                cancelEdit();
+            });
+            return;
+        }
+
+        const parts = [...swipe.parts];
+        const lastTextIdx = findLastTextIndex(parts);
+        if (lastTextIdx >= 0) {
+            parts[lastTextIdx] = { ...parts[lastTextIdx], type: 'text', text: editText };
+        } else {
+            parts.push({ type: 'text', text: editText });
+        }
+
+        await runMessageAction('save', 'Could not save message', async () => {
+            await updateMessageSwipe(message.id, message.activeSwipeId, { parts });
+            cancelEdit();
+        });
+    }
+
+    async function handleDelete(): Promise<void> {
+        const messageId = message.id;
+        const chatId = message.chatId;
+        await runMessageAction('delete', 'Could not delete message', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete message?',
+                description: 'Delete this message and all of its swipes? This cannot be undone.',
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (confirmed && $activeChat?.id === chatId) {
+                await deleteMessage(chatId, messageId);
+            }
+        });
+    }
+
+    async function handleSwipe(newSwipeId: string): Promise<void> {
+        const messageId = message.id;
+        await runMessageAction('swipe', 'Could not change swipe', async () => {
+            await updateMessage(messageId, { activeSwipeId: newSwipeId });
+        });
+    }
+
+    async function handleFork(): Promise<void> {
+        const sourceChatId = message.chatId;
+        const messageId = message.id;
+        const roomId = $activeRoom?.id;
+        if (!roomId) return;
+        await runMessageAction('fork', 'Could not fork chat', async () => {
+            const newChatId = await forkChat(messageId);
+            if ($activeChat?.id !== sourceChatId) return;
+            await syncChatGreetings(newChatId);
+            await selectChat(newChatId, () => $activeChat?.id === sourceChatId);
+            if ($activeChat?.id !== newChatId) return;
+            navigate({ view: 'room', roomId, chatId: newChatId });
+        });
+    }
+
+    async function handleRegenerate(): Promise<void> {
+        if (actionsDisabled || chatTask?.status === 'generating') return;
+        if (!selectedCharacter) {
+            $characterPickerOpen = true;
+            return;
+        }
+        if (!selectedPersona) {
+            $personaPickerOpen = true;
+            return;
+        }
+        try {
+            await runChat(message.chatId, selectedCharacter.id, selectedPersona.id, {
+                reroll: true
+            });
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start chat generation',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    async function handleTranslate(): Promise<void> {
         showTranslation = true;
         try {
             await runTranslation(message.id, {
@@ -298,49 +406,17 @@
             });
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
-            const task = $translationTasks.get(message.id);
-            if (task?.status !== 'error' || task.sourceHash !== translationSourceHash) {
-                translationActionError = getErrorMessage(error, 'Translation failed');
-            }
-        }
-    }
-
-    async function handleImageTask() {
-        if (imageGenerationTask?.status === 'generating') {
-            stopImageGeneration(message.id);
-            return;
-        }
-        imageGenerationActionError = '';
-        try {
-            await runImageGeneration(message.id);
-        } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') return;
-            if ($imageGenerationTasks.get(message.id)?.status !== 'error') {
-                imageGenerationActionError = getErrorMessage(error, 'Image generation failed');
-            }
-        }
-    }
-
-    async function handleTTSTask() {
-        if (ttsTask?.status === 'generating') {
-            stopTTS(message.id);
-            return;
-        }
-        ttsActionError = '';
-        try {
-            await runTTS(message.id);
-        } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') return;
-            if ($ttsTasks.get(message.id)?.status !== 'error') {
-                ttsActionError = getErrorMessage(error, 'Text to speech failed');
-            }
+            toast.error({
+                title: 'Could not start translation',
+                description: getErrorMessage(error)
+            });
         }
     }
 
     // ── Render context (shared across text parts) ─────────────────────────────
 
     let renderContext = $derived.by(() => {
-        const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
+        const ownerId = message.role === 'assistant' ? displayCharacterId : defaultCharacterId;
         const character = ownerId ? $roomCharacters.find((item) => item.id === ownerId) : undefined;
         const activeModules = selectActiveModules($appSettings, $modules);
         const cssSource = [character?.messageCSS ?? '', ...activeModules.map((m) => m.messageCSS)]
@@ -526,7 +602,7 @@
                         class="gap-1.5"
                         disabled={actionsDisabled}
                         aria-busy={busyAction === 'save'}
-                        onclick={() => onSave(editText)}
+                        onclick={() => void saveEdit()}
                     >
                         <Check class="size-4" /> Save
                     </Button>
@@ -535,7 +611,7 @@
                         variant="outline"
                         class="gap-1.5"
                         disabled={actionsDisabled}
-                        onclick={onCancelEdit}
+                        onclick={cancelEdit}
                     >
                         <X class="size-4" /> Cancel
                     </Button>
@@ -547,7 +623,7 @@
             <TaskErrorNotice
                 title="Generation failed"
                 message={message.errorMessage ?? 'Unknown error'}
-                onDismiss={onDismissError}
+                onDismiss={() => dismissChat(message.chatId)}
             />
 
             <!-- Message Content -->
@@ -669,36 +745,27 @@
                 />
             {/if}
 
-            {#if translationError}
+            {#if matchingTranslationTask?.status === 'error'}
                 <TaskErrorNotice
                     title="Translation failed"
-                    message={translationError}
-                    onDismiss={() => {
-                        translationActionError = '';
-                        dismissTranslation(message.id);
-                    }}
+                    message={matchingTranslationTask.errorMessage ?? 'Unknown error'}
+                    onDismiss={() => dismissTranslation(message.id)}
                 />
             {/if}
 
-            {#if imageGenerationError}
+            {#if imageGenerationTask?.status === 'error'}
                 <TaskErrorNotice
                     title="Image generation failed"
-                    message={imageGenerationError}
-                    onDismiss={() => {
-                        imageGenerationActionError = '';
-                        dismissImageGeneration(message.id);
-                    }}
+                    message={imageGenerationTask.errorMessage ?? 'Unknown error'}
+                    onDismiss={() => dismissImageGeneration(message.id)}
                 />
             {/if}
 
-            {#if ttsError}
+            {#if ttsTask?.status === 'error'}
                 <TaskErrorNotice
                     title="Text to speech failed"
-                    message={ttsError}
-                    onDismiss={() => {
-                        ttsActionError = '';
-                        dismissTTS(message.id);
-                    }}
+                    message={ttsTask.errorMessage ?? 'Unknown error'}
+                    onDismiss={() => dismissTTS(message.id)}
                 />
             {/if}
 
@@ -717,7 +784,7 @@
                             disabled={actionsDisabled || swipePos <= 0}
                             aria-busy={busyAction === 'swipe'}
                             aria-label="Previous swipe"
-                            onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
+                            onclick={() => void handleSwipe(sortedSwipes[swipePos - 1].id)}
                         >
                             <ChevronLeft class="size-3.5" />
                         </button>
@@ -729,7 +796,7 @@
                             disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
                             aria-busy={busyAction === 'swipe'}
                             aria-label="Next swipe"
-                            onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
+                            onclick={() => void handleSwipe(sortedSwipes[swipePos + 1].id)}
                         >
                             <ChevronRight class="size-3.5" />
                         </button>
@@ -798,7 +865,7 @@
                         size="sm"
                         class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                         disabled={actionsDisabled}
-                        onclick={onRegenerate}
+                        onclick={() => void handleRegenerate()}
                         aria-label="Regenerate response"
                     >
                         <RefreshCw class="size-3.5" />
@@ -810,26 +877,18 @@
                     size="sm"
                     class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                     disabled={actionsDisabled}
-                    onclick={onEdit}
+                    onclick={startEdit}
                     aria-label="Edit message"
                 >
                     <Pencil class="size-3.5" />
                 </Button>
 
                 <MessageMoreMenu
-                    disabled={actionsDisabled}
+                    {message}
                     {busyAction}
-                    hasTranslation={cachedTranslation !== null}
-                    hasImageAttachments={imageAttachments.length > 0}
-                    hasAudioAttachments={audioAttachments.length > 0}
-                    imageTaskStatus={imageGenerationTask?.status}
-                    audioTaskStatus={ttsTask?.status}
-                    onGenerateImage={handleImageTask}
-                    onGenerateAudio={handleTTSTask}
-                    onRetranslate={handleTranslate}
-                    {onEditTranslation}
-                    {onFork}
-                    {onDelete}
+                    onEditTranslation={startTranslationEdit}
+                    onFork={() => void handleFork()}
+                    onDelete={() => void handleDelete()}
                 />
             </div>
         {/if}

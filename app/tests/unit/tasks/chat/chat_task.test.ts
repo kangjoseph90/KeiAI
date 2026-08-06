@@ -519,12 +519,10 @@ describe('Chat Pipeline', () => {
             files: { refs: {}, folders: {} }
         });
 
-        await runChat(mockChatId, 'char-missing', 'persona-1');
-
-        expect(setChatTaskError).toHaveBeenCalledWith(
-            mockChatId,
+        await expect(runChat(mockChatId, 'char-missing', 'persona-1')).rejects.toThrow(
             'Character is not available: char-missing'
         );
+        expect(setChatTaskError).not.toHaveBeenCalled();
         expect(createMessage).not.toHaveBeenCalled();
     });
 
@@ -543,12 +541,10 @@ describe('Chat Pipeline', () => {
             inlays: { refs: {}, folders: {} }
         } as Chat);
 
-        await runChat(mockChatId, 'char-1', 'persona-1');
-
-        expect(setChatTaskError).toHaveBeenCalledWith(
-            mockChatId,
+        await expect(runChat(mockChatId, 'char-1', 'persona-1')).rejects.toThrow(
             'Persona is not available: persona-1'
         );
+        expect(setChatTaskError).not.toHaveBeenCalled();
         expect(createMessage).not.toHaveBeenCalled();
     });
 

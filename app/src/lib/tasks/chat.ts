@@ -56,80 +56,80 @@ export async function runChat(
     opts: RunChatOptions = {}
 ): Promise<void> {
     const existing = getChatTask(chatId);
-    if (existing) {
+    if (existing?.status === 'generating') {
         logger.warn(`Chat ${chatId} is already running.`);
         return;
     }
 
+    const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
+
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+    if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
+
+    const room = await getRoom(chat.roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+
+    const characterRef = room.characters.refs[characterId];
+    if (!characterRef) {
+        throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
+    }
+
+    const personaRef = chat.personas.refs[personaId];
+    if (!personaRef) {
+        throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
+    }
+
+    const targetMessage = opts.reroll
+        ? await getLastMessage(chatId)
+        : await createMessage(chatId, {
+              role: 'assistant'
+          });
+    if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+
+    const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
+    const [character, preset, persona] = await Promise.all([
+        getCharacter(characterId),
+        getPreset(settings.presetId),
+        getPersona(personaId)
+    ]);
+
+    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${settings.presetId}`);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    const variables = await getChatVariablesBefore(chatId, targetMessage.sortOrder);
+    const shouldReplaceActiveSwipe =
+        !settings.chat.saveMessagesOnSwipe &&
+        Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
+
+    const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
+        targetMessage,
+        {
+            parts: [],
+            variables,
+            speakerId: character.id,
+            speakerName: character.name,
+            replaceActiveSwipe: shouldReplaceActiveSwipe
+        }
+    );
+
     const controller = new AbortController();
+    createChatTask(chatId, preparedMessage.id, controller, {
+        roomId: chat.roomId,
+        chatId,
+        chatTitle: chat.title,
+        title: 'Chat response'
+    });
+
+    const ctx: RuntimeContext = {
+        roomId: chat.roomId,
+        presetId: settings.presetId,
+        characterId,
+        personaId: persona.id,
+        chatId
+    };
+
     try {
-        const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
-
-        if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-        if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
-
-        const room = await getRoom(chat.roomId);
-        if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
-
-        const characterRef = room.characters.refs[characterId];
-        if (!characterRef) {
-            throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
-        }
-
-        const personaRef = chat.personas.refs[personaId];
-        if (!personaRef) {
-            throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
-        }
-
-        const targetMessage = opts.reroll
-            ? await getLastMessage(chatId)
-            : await createMessage(chatId, {
-                  role: 'assistant'
-              });
-        if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
-
-        const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
-        const [character, preset, persona] = await Promise.all([
-            getCharacter(characterId),
-            getPreset(settings.presetId),
-            getPersona(personaId)
-        ]);
-
-        if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-        if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${settings.presetId}`);
-        if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-
-        const variables = await getChatVariablesBefore(chatId, targetMessage.sortOrder);
-        const shouldReplaceActiveSwipe =
-            !settings.chat.saveMessagesOnSwipe &&
-            Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
-
-        const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
-            targetMessage,
-            {
-                parts: [],
-                variables,
-                speakerId: character.id,
-                speakerName: character.name,
-                replaceActiveSwipe: shouldReplaceActiveSwipe
-            }
-        );
-
-        createChatTask(chatId, preparedMessage.id, controller, {
-            roomId: chat.roomId,
-            chatId,
-            chatTitle: chat.title,
-            title: 'Chat response'
-        });
-
-        const ctx: RuntimeContext = {
-            roomId: chat.roomId,
-            presetId: settings.presetId,
-            characterId,
-            personaId: persona.id,
-            chatId
-        };
-
         const runtime = new WorkflowRuntime(preset.chatWorkflow, {
             ctx,
             messages,
@@ -187,7 +187,6 @@ export async function runChat(
         }
 
         const errMsg = error instanceof Error ? error.message : 'Unknown pipeline error';
-        // setChatTaskError no-ops without a registered task (validation errors), so also log.
         logger.error(`Chat ${chatId} failed: ${errMsg}`);
         setChatTaskError(chatId, errMsg);
         notifyChatTaskError(chatId, errMsg);

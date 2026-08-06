@@ -32,7 +32,7 @@ interface DictationSession {
 const sessions = new Map<string, DictationSession>();
 
 export async function runDictation(chatId: string): Promise<void> {
-    if (getDictationTask(chatId)) {
+    if (getDictationTask(chatId)?.status === 'generating') {
         throw new AppError('INVALID_INPUT', `Dictation is already active: ${chatId}`);
     }
     if (hasRecordingTask()) {
@@ -42,7 +42,7 @@ export async function runDictation(chatId: string): Promise<void> {
     if (!chat) {
         throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
     }
-    if (getDictationTask(chatId)) {
+    if (getDictationTask(chatId)?.status === 'generating') {
         throw new AppError('INVALID_INPUT', `Dictation is already active: ${chatId}`);
     }
     if (hasRecordingTask()) {

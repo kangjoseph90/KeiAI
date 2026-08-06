@@ -109,7 +109,6 @@ export async function runTranslation(
             setTranslationTaskError(messageId, errorMessage);
             notifyTranslationTaskError(messageId, errorMessage);
         }
-        throw error;
     }
 }
 

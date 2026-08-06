@@ -11,37 +11,81 @@
         Pencil,
         Trash2
     } from 'lucide-svelte';
-    import type { TaskStatus } from '$lib/stores';
+    import type { DisplayMessage } from '$lib/stores';
+    import { imageGenerationTasks, ttsTasks } from '$lib/stores';
+    import {
+        runImageGeneration,
+        runTTS,
+        runTranslation,
+        stopImageGeneration,
+        stopTTS
+    } from '$lib/tasks';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
-    let {
-        disabled = false,
-        busyAction = null,
-        hasTranslation = false,
-        hasImageAttachments = false,
-        hasAudioAttachments = false,
-        imageTaskStatus,
-        audioTaskStatus,
-        onGenerateImage = () => {},
-        onGenerateAudio = () => {},
-        onRetranslate = () => {},
-        onEditTranslation = () => {},
-        onFork = () => {},
-        onDelete = () => {}
-    }: {
-        disabled?: boolean;
-        busyAction?: 'save' | 'delete' | 'swipe' | 'fork' | null;
-        hasTranslation?: boolean;
-        hasImageAttachments?: boolean;
-        hasAudioAttachments?: boolean;
-        imageTaskStatus?: TaskStatus;
-        audioTaskStatus?: TaskStatus;
-        onGenerateImage?: () => void;
-        onGenerateAudio?: () => void;
-        onRetranslate?: () => void;
-        onEditTranslation?: () => void;
-        onFork?: () => void;
-        onDelete?: () => void;
-    } = $props();
+    type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
+
+    interface Props {
+        message: DisplayMessage;
+        busyAction?: MessageAction | null;
+        onEditTranslation: () => void;
+        onFork: () => void;
+        onDelete: () => void;
+    }
+
+    let { message, busyAction = null, onEditTranslation, onFork, onDelete }: Props = $props();
+
+    let disabled = $derived(busyAction !== null);
+    let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
+    let hasTranslation = $derived(Boolean(activeSwipe?.translation));
+    let hasImageAttachments = $derived((activeSwipe?.imageAttachments?.length ?? 0) > 0);
+    let hasAudioAttachments = $derived((activeSwipe?.audioAttachments?.length ?? 0) > 0);
+    let imageTaskStatus = $derived($imageGenerationTasks.get(message.id)?.status);
+    let audioTaskStatus = $derived($ttsTasks.get(message.id)?.status);
+
+    async function handleImageTask(): Promise<void> {
+        if (imageTaskStatus === 'generating') {
+            stopImageGeneration(message.id);
+            return;
+        }
+        try {
+            await runImageGeneration(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start image generation',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    async function handleAudioTask(): Promise<void> {
+        if (audioTaskStatus === 'generating') {
+            stopTTS(message.id);
+            return;
+        }
+        try {
+            await runTTS(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start text to speech',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    async function handleTranslationTask(): Promise<void> {
+        try {
+            await runTranslation(message.id, { force: hasTranslation });
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start translation',
+                description: getErrorMessage(error)
+            });
+        }
+    }
 </script>
 
 <DropdownMenu.Root>
@@ -60,7 +104,7 @@
         <DropdownMenu.Item
             class="cursor-pointer whitespace-nowrap"
             {disabled}
-            onclick={onGenerateImage}
+            onclick={() => void handleImageTask()}
         >
             {#if imageTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
@@ -73,7 +117,7 @@
         <DropdownMenu.Item
             class="cursor-pointer whitespace-nowrap"
             {disabled}
-            onclick={onGenerateAudio}
+            onclick={() => void handleAudioTask()}
         >
             {#if audioTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
@@ -85,7 +129,11 @@
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
         {#if hasTranslation}
-            <DropdownMenu.Item class="cursor-pointer" {disabled} onclick={onRetranslate}>
+            <DropdownMenu.Item
+                class="cursor-pointer"
+                {disabled}
+                onclick={() => void handleTranslationTask()}
+            >
                 <Languages class="size-4" />
                 Retranslate
             </DropdownMenu.Item>
