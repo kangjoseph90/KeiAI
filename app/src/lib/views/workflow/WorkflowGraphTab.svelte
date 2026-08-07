@@ -10,7 +10,24 @@
         type NodeTypes
     } from '@xyflow/svelte';
     import '@xyflow/svelte/dist/style.css';
-    import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert } from 'lucide-svelte';
+    import {
+        Bot,
+        CheckCircle2,
+        ChevronDown,
+        ChevronRight,
+        FileCode,
+        GitFork,
+        Hash,
+        History,
+        Layers,
+        Plus,
+        ToggleLeft,
+        Trash2,
+        TriangleAlert,
+        Type,
+        Variable as VariableIcon
+    } from 'lucide-svelte';
+    import { slide } from 'svelte/transition';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
     import { appConfirm } from '$lib/ui';
@@ -63,7 +80,39 @@
             .map(([nodeClass]) => nodeClass)
     })).filter((group) => group.classes.length > 0);
 
-    const expandedGroups = new SvelteSet<string>();
+    const categoryMeta: Record<string, { icon: typeof Bot; color: string; bg: string }> = {
+        Agent: { icon: Bot, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-500/15' },
+        History: { icon: History, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/15' },
+        String: {
+            icon: Type,
+            color: 'text-emerald-600 dark:text-emerald-400',
+            bg: 'bg-emerald-500/15'
+        },
+        Number: { icon: Hash, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/15' },
+        Boolean: {
+            icon: ToggleLeft,
+            color: 'text-rose-600 dark:text-rose-400',
+            bg: 'bg-rose-500/15'
+        },
+        Variable: {
+            icon: VariableIcon,
+            color: 'text-indigo-600 dark:text-indigo-400',
+            bg: 'bg-indigo-500/15'
+        },
+        Flow: { icon: GitFork, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-500/15' },
+        File: {
+            icon: FileCode,
+            color: 'text-slate-600 dark:text-slate-400',
+            bg: 'bg-slate-500/15'
+        },
+        Result: {
+            icon: CheckCircle2,
+            color: 'text-green-600 dark:text-green-400',
+            bg: 'bg-green-500/15'
+        }
+    };
+
+    const expandedGroups = new SvelteSet<string>(['Agent']);
     let mobileNodePanelOpen = $state(false);
 
     function toggleGroup(label: string) {
@@ -282,72 +331,97 @@
 </script>
 
 {#snippet nodeAddList()}
-    {#each nodeGroups as group (group.label)}
-        {@const isExpanded = expandedGroups.has(group.label)}
-        <div class="flex flex-col gap-0.5">
-            <button
-                type="button"
-                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hover:bg-muted/60 hover:text-foreground"
-                onclick={() => toggleGroup(group.label)}
-                aria-expanded={isExpanded}
+    <div class="flex flex-col gap-1 pr-0.5">
+        {#each nodeGroups as group (group.label)}
+            {@const isExpanded = expandedGroups.has(group.label)}
+            {@const meta = categoryMeta[group.label] ?? {
+                icon: Layers,
+                color: 'text-primary',
+                bg: 'bg-primary/10'
+            }}
+            {@const GroupIcon = meta.icon}
+            <div
+                class="flex flex-col rounded-lg transition-colors {isExpanded ? 'bg-muted/40' : ''}"
             >
+                <button
+                    type="button"
+                    class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold text-foreground/90 transition-colors hover:bg-muted/70"
+                    onclick={() => toggleGroup(group.label)}
+                    aria-expanded={isExpanded}
+                >
+                    <div class="flex min-w-0 items-center gap-2">
+                        <div
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md {meta.bg} {meta.color}"
+                        >
+                            <GroupIcon class="size-3" />
+                        </div>
+                        <span class="truncate">{group.label}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="font-mono text-[10px] text-muted-foreground/60"
+                            >{group.classes.length}</span
+                        >
+                        {#if isExpanded}
+                            <ChevronDown class="size-3 text-muted-foreground" />
+                        {:else}
+                            <ChevronRight class="size-3 text-muted-foreground" />
+                        {/if}
+                    </div>
+                </button>
                 {#if isExpanded}
-                    <ChevronDown class="size-3.5" />
-                {:else}
-                    <ChevronRight class="size-3.5" />
-                {/if}
-                {group.label}
-            </button>
-            {#if isExpanded}
-                {#each group.classes as nodeClass (nodeClass)}
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        class="h-7 justify-start pl-6 pr-3 text-xs"
-                        disabled={nodeClass === 'Output' &&
-                            Object.values(workflow.nodes).some(isOutputNode)}
-                        onclick={() => addWorkflowNode(nodeClass)}
+                    <div
+                        transition:slide={{ duration: 150 }}
+                        class="flex flex-col gap-0.5 px-1 pt-0.5 pb-1"
                     >
-                        {WORKFLOW_NODE_DEFINITIONS[nodeClass].label}
-                    </Button>
-                {/each}
-            {/if}
-        </div>
-    {/each}
+                        {#each group.classes as nodeClass (nodeClass)}
+                            {@const disabled =
+                                nodeClass === 'Output' &&
+                                Object.values(workflow.nodes).some(isOutputNode)}
+                            <button
+                                type="button"
+                                class="group/item flex items-center justify-between rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-all hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+                                {disabled}
+                                onclick={() => addWorkflowNode(nodeClass)}
+                            >
+                                <span class="truncate"
+                                    >{WORKFLOW_NODE_DEFINITIONS[nodeClass].label}</span
+                                >
+                                <Plus
+                                    class="size-3 text-primary opacity-0 transition-opacity shrink-0 group-hover/item:opacity-100"
+                                />
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {/each}
+    </div>
 {/snippet}
 
-<div class="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/20">
-    <!-- Mobile: floating title + close -->
-    {#if title !== undefined}
-        <div
-            class="absolute left-1/2 top-3 z-20 flex h-8 max-w-[60%] -translate-x-1/2 items-center rounded-full border bg-background/95 px-3 text-xs font-medium shadow-sm backdrop-blur md:hidden"
-        >
-            <span class="truncate">{title}</span>
-        </div>
-    {/if}
+<div class="relative min-h-0 flex-1 overflow-hidden bg-muted/10">
     <!-- Desktop: left-top panel -->
     <div
-        class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-6rem)] w-56 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur md:flex"
+        class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-2rem)] w-56 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-1.5 shadow-md backdrop-blur md:flex"
     >
         {@render nodeAddList()}
     </div>
 
     {#if selectedNode}
         <div
-            class="absolute right-3 top-14 z-10 flex h-9 max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full border bg-background/95 px-4 text-xs font-medium shadow-sm backdrop-blur md:top-3"
+            class="absolute right-3 top-3 z-10 flex h-8 max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full border bg-background/90 px-3 text-xs font-medium shadow-xs backdrop-blur"
         >
             <span class="min-w-0 max-w-40 truncate">{selectedNode.name}</span>
             {#if selectedNode.class === 'Output'}
-                <span class="text-[10px] text-muted-foreground">Required</span>
+                <span class="font-mono text-[10px] text-muted-foreground">Required</span>
             {:else}
                 <button
                     type="button"
-                    class="-mr-2 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+                    class="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
                     title="Delete selected node"
                     aria-label="Delete selected node"
                     onclick={deleteSelectedNode}
                 >
-                    <Trash2 class="size-3.5" />
+                    <Trash2 class="size-3" />
                 </button>
             {/if}
         </div>
@@ -413,6 +487,7 @@
     <div class="absolute inset-x-0 bottom-0 z-20 md:hidden">
         {#if mobileNodePanelOpen}
             <div
+                transition:slide={{ duration: 150 }}
                 class="flex max-h-[60vh] flex-col overflow-hidden rounded-t-xl border-x border-t bg-background/95 shadow-lg backdrop-blur"
             >
                 <div class="flex shrink-0 items-center justify-between px-3 py-2">
@@ -433,6 +508,7 @@
         {:else}
             <button
                 type="button"
+                transition:slide={{ duration: 150 }}
                 class="mx-auto mb-2 flex h-9 items-center gap-1.5 rounded-full border bg-background/95 px-4 text-xs font-medium shadow-sm backdrop-blur hover:bg-muted"
                 onclick={() => (mobileNodePanelOpen = true)}
             >

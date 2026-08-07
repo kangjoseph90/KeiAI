@@ -3,19 +3,15 @@
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { activePreset, updatePreset } from '$lib/stores';
-    import type { WorkflowDefinition, WorkflowEditResult } from '$lib/workflow';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
-    import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
+    import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import ScriptsTab from './chatbot/ScriptsTab.svelte';
     import TogglesTab from './chatbot/TogglesTab.svelte';
-    import { toast } from '$lib/ui';
-    import { getErrorMessage } from '$lib/types/errors';
 
     type Tab = 'workflow' | 'scripts' | 'toggles' | 'presets';
     let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
-    let selectedPromptNodeId = $state<string | null>(null);
 
     const tabs: Array<{ id: Tab; label: string }> = [
         { id: 'workflow', label: 'Workflow' },
@@ -23,46 +19,6 @@
         { id: 'toggles', label: 'Toggles' },
         { id: 'presets', label: 'Presets' }
     ];
-
-    $effect(() => {
-        const workflow = $activePreset?.chatWorkflow;
-        selectedPromptNodeId = workflow ? selectExistingNode(workflow, selectedPromptNodeId) : null;
-    });
-
-    async function applyPromptEdit(result: WorkflowEditResult) {
-        const preset = $activePreset;
-        if (!preset) return;
-
-        try {
-            await updatePreset(preset.id, { chatWorkflow: result.patch });
-            if ($activePreset?.id === preset.id) {
-                selectedPromptNodeId = selectExistingNode(result.workflow, selectedPromptNodeId);
-            }
-        } catch (error) {
-            toast.error({
-                title: 'Prompt update failed',
-                description: getErrorMessage(error, 'The prompt change could not be saved')
-            });
-        }
-    }
-
-    function findFirstAgentId(workflow: WorkflowDefinition): string | null {
-        return Object.values(workflow.nodes).find((node) => node.class === 'Agent')?.id ?? null;
-    }
-
-    function selectExistingNode(
-        workflow: WorkflowDefinition,
-        currentNodeId: string | null
-    ): string | null {
-        if (currentNodeId && workflow.nodes[currentNodeId]) return currentNodeId;
-        return findFirstAgentId(workflow);
-    }
-
-    function handleEditPrompt(nodeId: string) {
-        selectedPromptNodeId = nodeId;
-        activeTab = 'workflow';
-        chatWorkflowEditorOpen = false;
-    }
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
@@ -96,13 +52,11 @@
         </ScrollArea>
     {:else if $activePreset && activeTab === 'workflow'}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <WorkflowPromptTab
+            <WorkflowSummaryCard
                 workflow={$activePreset.chatWorkflow}
-                selectedNodeId={selectedPromptNodeId}
-                onSelectNode={(nodeId) => (selectedPromptNodeId = nodeId)}
-                onEdit={applyPromptEdit}
                 onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
                 workflowLabel="Chat workflow"
+                editWorkflowLabel="Edit workflow"
             />
         </ScrollArea>
     {:else if $activePreset}
@@ -124,6 +78,5 @@
         workflow={$activePreset.chatWorkflow}
         title="Chat Workflow"
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
-        onEditPrompt={handleEditPrompt}
     />
 {/if}

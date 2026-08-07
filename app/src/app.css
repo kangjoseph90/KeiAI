@@ -209,8 +209,7 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     height: 100dvh;
     max-height: none;
     border-radius: 0;
-    padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom)
-        var(--safe-area-left);
+    padding: 0;
     overflow: hidden;
 }
 
@@ -229,7 +228,7 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
         height: 90vh;
         height: 90dvh;
         border-radius: var(--radius);
-        padding: 1.5rem;
+        padding: 0;
     }
 }
 

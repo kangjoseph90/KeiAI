@@ -44,9 +44,9 @@
     } from '$lib/types/models/tts';
     import { getErrorMessage } from '$lib/types/errors';
     import { toast } from '$lib/ui';
-    import type { WorkflowDefinition, WorkflowEditResult, WorkflowPatch } from '$lib/workflow';
+    import type { WorkflowPatch } from '$lib/workflow';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
-    import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
+    import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import { pluginManager } from '$lib/plugins';
 
     type Feature = 'imagegen' | 'tts' | 'stt' | 'embedding' | 'reranker';
@@ -169,7 +169,6 @@
     let showSecrets = $state(false);
     let saving = $state(false);
     let workflowEditorOpen = $state(false);
-    let selectedWorkflowNodeId = $state<string | null>(null);
 
     const feature = $derived(FEATURES.find((item) => item.id === activeFeature) ?? FEATURES[0]);
     const activeProvider = $derived(getActiveProvider($appSettings, activeFeature));
@@ -184,14 +183,6 @@
               ? $appSettings?.tts.workflow
               : undefined
     );
-
-    $effect(() => {
-        if (!activeWorkflow) {
-            selectedWorkflowNodeId = null;
-            return;
-        }
-        selectedWorkflowNodeId = selectExistingNode(activeWorkflow, selectedWorkflowNodeId);
-    });
 
     function getActiveProvider(
         settings: AppSettings | null,
@@ -927,24 +918,6 @@
             ? save({ imageGeneration: { workflow: patch } })
             : save({ tts: { workflow: patch } });
     }
-
-    async function applyWorkflowPromptEdit(result: WorkflowEditResult): Promise<void> {
-        await updateWorkflow(result.patch);
-        selectedWorkflowNodeId = selectExistingNode(result.workflow, selectedWorkflowNodeId);
-    }
-
-    function selectExistingNode(
-        workflow: WorkflowDefinition,
-        currentNodeId: string | null
-    ): string | null {
-        if (currentNodeId && workflow.nodes[currentNodeId]) return currentNodeId;
-        return Object.values(workflow.nodes).find((node) => node.class === 'Agent')?.id ?? null;
-    }
-
-    function handleEditPrompt(nodeId: string): void {
-        selectedWorkflowNodeId = nodeId;
-        workflowEditorOpen = false;
-    }
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
@@ -1142,11 +1115,8 @@
             </Card>
 
             {#if activeWorkflow}
-                <WorkflowPromptTab
+                <WorkflowSummaryCard
                     workflow={activeWorkflow}
-                    selectedNodeId={selectedWorkflowNodeId}
-                    onSelectNode={(nodeId) => (selectedWorkflowNodeId = nodeId)}
-                    onEdit={applyWorkflowPromptEdit}
                     onEditWorkflow={() => (workflowEditorOpen = true)}
                     workflowLabel={activeFeature === 'imagegen'
                         ? 'Image generation workflow'
@@ -1166,6 +1136,5 @@
         workflow={activeWorkflow}
         title={activeFeature === 'imagegen' ? 'Image Generation Workflow' : 'TTS Workflow'}
         onPatch={updateWorkflow}
-        onEditPrompt={handleEditPrompt}
     />
 {/if}

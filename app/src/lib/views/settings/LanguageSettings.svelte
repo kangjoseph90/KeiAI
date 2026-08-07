@@ -4,36 +4,12 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { appSettings, updateSettings } from '$lib/stores';
-    import type { WorkflowDefinition, WorkflowEditResult } from '$lib/workflow';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
-    import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
+    import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
     let translationWorkflowEditorOpen = $state(false);
-    let selectedTranslationNodeId = $state<string | null>(null);
-
-    $effect(() => {
-        const workflow = $appSettings?.translation.workflow;
-        selectedTranslationNodeId = workflow
-            ? selectExistingNode(workflow, selectedTranslationNodeId)
-            : null;
-    });
-
-    async function applyTranslationPromptEdit(result: WorkflowEditResult) {
-        try {
-            await updateSettings({ translation: { workflow: result.patch } });
-            selectedTranslationNodeId = selectExistingNode(
-                result.workflow,
-                selectedTranslationNodeId
-            );
-        } catch (error) {
-            toast.error({
-                title: 'Translation workflow update failed',
-                description: getErrorMessage(error, 'The workflow change could not be saved')
-            });
-        }
-    }
 
     async function updateTranslationSettings(
         changes: Parameters<typeof updateSettings>[0]
@@ -46,23 +22,6 @@
                 description: getErrorMessage(error, 'The translation setting could not be saved')
             });
         }
-    }
-
-    function findFirstAgentId(workflow: WorkflowDefinition): string | null {
-        return Object.values(workflow.nodes).find((node) => node.class === 'Agent')?.id ?? null;
-    }
-
-    function selectExistingNode(
-        workflow: WorkflowDefinition,
-        currentNodeId: string | null
-    ): string | null {
-        if (currentNodeId && workflow.nodes[currentNodeId]) return currentNodeId;
-        return findFirstAgentId(workflow);
-    }
-
-    function handleEditPrompt(nodeId: string) {
-        selectedTranslationNodeId = nodeId;
-        translationWorkflowEditorOpen = false;
     }
 </script>
 
@@ -111,11 +70,8 @@
     </Card>
 
     {#if $appSettings}
-        <WorkflowPromptTab
+        <WorkflowSummaryCard
             workflow={$appSettings.translation.workflow}
-            selectedNodeId={selectedTranslationNodeId}
-            onSelectNode={(nodeId) => (selectedTranslationNodeId = nodeId)}
-            onEdit={applyTranslationPromptEdit}
             onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
             workflowLabel="Translation workflow"
             editWorkflowLabel="Edit translation workflow"
@@ -129,6 +85,5 @@
         workflow={$appSettings.translation.workflow}
         title="Translation Workflow"
         onPatch={(patch) => updateSettings({ translation: { workflow: patch } })}
-        onEditPrompt={handleEditPrompt}
     />
 {/if}
