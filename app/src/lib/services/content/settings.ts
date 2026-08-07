@@ -34,6 +34,7 @@ import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 import { normalizeWorkflow } from '$lib/workflow/normalization';
+import type { LanguageCode } from '$lib/language';
 import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -46,7 +47,9 @@ export interface AppSettingsContent {
         autoGenerateResponse: boolean;
     };
     translation: {
-        targetLanguage: string;
+        targetLanguage: LanguageCode;
+        bidirectional: boolean;
+        secondaryLanguage: LanguageCode;
         workflow: WorkflowDefinition;
         autoShowTranslation: boolean;
     };
@@ -105,7 +108,9 @@ export const defaultSettings: AppSettings = {
         autoGenerateResponse: true
     },
     translation: {
-        targetLanguage: '',
+        targetLanguage: 'ko',
+        bidirectional: false,
+        secondaryLanguage: 'en',
         workflow: { nodes: {} },
         autoShowTranslation: false
     },

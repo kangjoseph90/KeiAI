@@ -15,3 +15,6 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Editor / agent tooling
+.zcode/

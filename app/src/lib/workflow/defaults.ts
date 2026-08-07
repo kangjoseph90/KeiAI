@@ -79,7 +79,7 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
                 type: 'message',
                 role: 'user',
                 content:
-                    'Translate the following text into {{targetlang}}. Return only the translated text.\n\n{{source}}',
+                    'Translate the following text from {{sourcelang}} into {{targetlang}}. Return only the translated text.\n\n{{source}}',
                 sortOrder: 'a0',
                 enabled: true
             }

@@ -1,5 +1,6 @@
 import type { Chat, IndexedMessage, PagedMessages } from '$lib/services';
 import { createTranslationSourceHash } from '$lib/tasks/translation';
+import { resolveTranslationPair } from '$lib/language';
 import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 import { AppError } from '$lib/types/errors';
 import { getAppSettings, getChat, updateMessageSwipe } from '$lib/stores';
@@ -96,14 +97,9 @@ export async function executeSetTranslationNode({
     const swipe = target.message.swipes[target.message.activeSwipeId];
     if (!swipe) throw new AppError('INVALID_INPUT', 'History message has no active swipe');
 
-    const targetLanguage = settings.translation.targetLanguage.trim();
-    if (!targetLanguage) {
-        throw new AppError('INVALID_INPUT', 'Translation target language is required');
-    }
-    const sourceHash = await createTranslationSourceHash(
-        getLastTextContent(swipe.parts),
-        targetLanguage
-    );
+    const sourceText = getLastTextContent(swipe.parts);
+    const pair = resolveTranslationPair(sourceText, settings.translation);
+    const sourceHash = await createTranslationSourceHash(sourceText, pair.source, pair.target);
     throwIfAborted(signal);
     await updateMessageSwipe(target.message.id, swipe.id, {
         translation: { sourceHash, text: content }

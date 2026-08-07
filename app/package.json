@@ -91,6 +91,7 @@
         "pocketbase": "^0.26.8",
         "postcss": "^8.5.8",
         "postcss-selector-parser": "^7.1.1",
-        "quickjs-emscripten": "^0.32.0"
+        "quickjs-emscripten": "^0.32.0",
+        "tinyld": "^1.3.4"
     }
 }

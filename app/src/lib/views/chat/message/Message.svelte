@@ -73,6 +73,7 @@
         runTranslation,
         stopTranslation
     } from '$lib/tasks';
+    import { resolveTranslationPair } from '$lib/language';
     import { forkChat, syncChatGreetings } from '$lib/managers';
     import { navigate } from '$lib/router';
     import {
@@ -124,6 +125,7 @@
     let messageStyleVersion = 0;
     let messageElement = $state<HTMLDivElement | null>(null);
     let translationMinHeight = $state(0);
+    let translationMinWidth = $state(0);
     let translationLockKey = '';
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -154,7 +156,8 @@
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
     );
     let cachedTranslation = $derived(
-        activeSwipe?.translation?.sourceHash === translationSourceHash
+        activeSwipe?.translation?.sourceHash === translationSourceHash &&
+            activeSwipe.translation.text
             ? activeSwipe.translation
             : null
     );
@@ -212,6 +215,7 @@
 
         if (!isStreamingTranslation || !task) {
             translationMinHeight = 0;
+            translationMinWidth = 0;
             translationLockKey = '';
             return;
         }
@@ -227,7 +231,9 @@
             );
             if (!lastTextPart) return;
 
-            translationMinHeight = lastTextPart.getBoundingClientRect().height;
+            const rect = lastTextPart.getBoundingClientRect();
+            translationMinHeight = rect.height;
+            translationMinWidth = rect.width;
             translationLockKey = lockKey;
         });
 
@@ -530,14 +536,24 @@
 
     $effect(() => {
         const source = currentContent;
-        const targetLanguage = $appSettings?.translation.targetLanguage.trim() ?? '';
-        translationSourceHash = '';
+        const translation = $appSettings?.translation;
 
-        if (source && targetLanguage) {
-            void createTranslationSourceHash(source, targetLanguage).then((sourceHash) => {
-                translationSourceHash = sourceHash;
-            });
+        if (!source || !translation || message.displayStatus === 'generating') {
+            translationSourceHash = '';
+            return;
         }
+
+        let cancelled = false;
+        const pair = resolveTranslationPair(source, translation);
+        void createTranslationSourceHash(source, pair.source, pair.target).then((sourceHash) => {
+            if (!cancelled) {
+                translationSourceHash = sourceHash;
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
     });
 
     onDestroy(() => {
@@ -692,6 +708,10 @@
                                     style:min-height={entry.index === lastTextIdx &&
                                     translationMinHeight > 0
                                         ? `${translationMinHeight}px`
+                                        : undefined}
+                                    style:min-width={entry.index === lastTextIdx &&
+                                    translationMinWidth > 0
+                                        ? `${translationMinWidth}px`
                                         : undefined}
                                 >
                                     {#if entry.part.type === 'thought'}
