@@ -345,14 +345,16 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 [...roomIndexIds].map((id) => appMulti.getRoomIndex(id))
             );
             await this.pushWritableRoomIndexes(
-                records.filter((r): r is MultiRoomIndexRecord => r !== null)
+                records.filter((r): r is MultiRoomIndexRecord => r !== null),
+                false
             );
         }
 
         if (memberIds.size > 0) {
             const records = await Promise.all([...memberIds].map((id) => appMulti.getMember(id)));
             await this.pushWritableMembers(
-                records.filter((r): r is MultiRoomMemberRecord => r !== null)
+                records.filter((r): r is MultiRoomMemberRecord => r !== null),
+                false
             );
         }
     }

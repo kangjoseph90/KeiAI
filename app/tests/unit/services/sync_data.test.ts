@@ -360,6 +360,23 @@ describe('DataRecordSyncEngine', () => {
             );
             expect(mockBatch.send).toHaveBeenCalled();
         });
+
+        it('keeps the network error state when a buffered push fails', async () => {
+            vi.useFakeTimers();
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('existing-1'));
+            mockBatch.send.mockRejectedValueOnce(new Error('network down'));
+
+            DataRecordSyncEngine.handleLocalWrite({
+                tableName: 'characters',
+                operation: 'put',
+                ids: ['existing-1'],
+                origin: 'local'
+            });
+
+            await vi.advanceTimersByTimeAsync(3_000);
+
+            expect(DataRecordSyncEngine.getState().state).toBe('network_error');
+        });
     });
 
     describe('Delete-wins merge', () => {

@@ -223,6 +223,23 @@ describe('MultiRecordSyncEngine', () => {
         );
     });
 
+    it('keeps the network error state when a buffered push fails', async () => {
+        vi.useFakeTimers();
+        vi.mocked(appMulti.getRoomIndex).mockResolvedValue(roomIndex());
+        mockBatch.send.mockRejectedValueOnce(new Error('network down'));
+
+        service.handleLocalWrite({
+            tableName: 'multi_room_index',
+            operation: 'put',
+            ids: ['room-1'],
+            origin: 'local'
+        });
+
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        expect(service.getState().state).toBe('network_error');
+    });
+
     it('bootstraps a room index when an accepted own membership arrives', async () => {
         vi.mocked(mockCollection.getList)
             .mockResolvedValueOnce({

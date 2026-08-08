@@ -477,7 +477,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         }
         if (changes.length === 0) return;
 
-        await this.pushChangesForActiveScopes(changes);
+        await this.pushChangesForActiveScopes(changes, false);
     }
 
     private async handleRealtimeEvent(

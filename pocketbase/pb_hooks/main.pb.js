@@ -139,25 +139,29 @@ var syncCollections = [
   "multi_room_members",
 ];
 
-syncCollections.forEach((collectionName) => {
-  onRecordCreate((e) => {
+onRecordCreate(
+  (e) => {
     if (e.record) {
       var h = require(`${__hooks}/keiai.js`);
       h.stampSyncRecordCreate(e.record);
     }
     e.next();
-  }, collectionName);
+  },
+  ...syncCollections,
+);
 
-  onRecordUpdate((e) => {
+onRecordUpdate(
+  (e) => {
     if (e.record) {
       require(`${__hooks}/keiai.js`).applySyncRecordUpdate(
         e.record,
-        collectionName,
+        e.record.collection().name,
       );
     }
     e.next();
-  }, collectionName);
-});
+  },
+  ...syncCollections,
+);
 
 // A room-index tombstone must go through the owner deletion endpoint so the
 // related room records are removed in the same server transaction. These
