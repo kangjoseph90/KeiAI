@@ -9,6 +9,7 @@ import {
 import { clearTTSTask, createTTSTask, setTTSTaskError } from '$lib/stores/tasks/tts';
 
 describe('media task stores', () => {
+    const metadata = { roomId: 'room-1', chatId: 'chat-1', chatTitle: 'Chat 1', title: 'Media' };
     afterEach(() => {
         imageGenerationTasks.set(new Map());
         ttsTasks.set(new Map());
@@ -18,20 +19,22 @@ describe('media task stores', () => {
         const imageController = new AbortController();
         const ttsController = new AbortController();
 
-        createImageGenerationTask('message-1', imageController);
-        createTTSTask('message-1', ttsController);
+        createImageGenerationTask('message-1', imageController, metadata);
+        createTTSTask('message-1', ttsController, metadata);
         setImageGenerationTaskError('message-1', 'image failed');
         setTTSTaskError('message-1', 'audio failed');
 
-        expect(get(imageGenerationTasks).get('message-1')).toEqual({
+        expect(get(imageGenerationTasks).get('message-1')).toMatchObject({
             status: 'error',
             errorMessage: 'image failed',
-            controller: imageController
+            controller: undefined,
+            ...metadata
         });
-        expect(get(ttsTasks).get('message-1')).toEqual({
+        expect(get(ttsTasks).get('message-1')).toMatchObject({
             status: 'error',
             errorMessage: 'audio failed',
-            controller: ttsController
+            controller: undefined,
+            ...metadata
         });
 
         clearImageGenerationTask('message-1');

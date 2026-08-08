@@ -9,3 +9,16 @@ export {
 export type { RunTranslationOptions } from './translation';
 export { dismissImageGeneration, runImageGeneration, stopImageGeneration } from './image';
 export { dismissTTS, runTTS, stopTTS } from './tts';
+export {
+    dismissInputTranslation,
+    runInputTranslation,
+    stopInputTranslation,
+    stopInputTranslationForChat
+} from './input_translation';
+export {
+    dismissSuggestion,
+    runSuggestion,
+    stopSuggestion,
+    stopSuggestionForChat
+} from './suggestion';
+export { cancelDictation, dismissDictation, finishDictation, runDictation } from './dictation';

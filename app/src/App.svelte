@@ -50,6 +50,7 @@
     import { createLogger } from '$lib/adapters/logger';
     import ModalHost from '$lib/components/app/ModalHost.svelte';
     import ToastHost from '$lib/components/app/ToastHost.svelte';
+    import TaskCenter from '$lib/components/app/TaskCenter.svelte';
     import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
     import { getEnvironmentConfigIssue } from '$lib/config';
 
@@ -325,7 +326,7 @@
                 {label}
             </div>
             <h1 class="text-xl font-semibold">{title}</h1>
-            <p class="mt-3 break-words text-sm leading-6 text-muted-foreground">{message}</p>
+            <p class="mt-3 wrap-break-word text-sm leading-6 text-muted-foreground">{message}</p>
             {#if instructions.length > 0}
                 <div class="mt-5 rounded-lg border bg-muted/30 p-4 text-sm">
                     <p class="font-medium">How to continue</p>
@@ -414,7 +415,6 @@
             {#if $route.view === 'room' && $route.roomId}
                 <ChatView
                     roomId={$route.roomId}
-                    chatId={$route.chatId}
                     bind:inspectorOpen={chatPanelOpen}
                     onRequestInspectorOpen={handleChatPanelOpen}
                     onRequestInspectorClose={handleChatPanelClose}
@@ -438,4 +438,5 @@
 </main>
 
 <ModalHost />
+<TaskCenter />
 <ToastHost />

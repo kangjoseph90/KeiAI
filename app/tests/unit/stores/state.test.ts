@@ -21,6 +21,11 @@ import type { ChatTask } from '$lib/stores/types';
 
 function makeMockTask(overrides: Partial<ChatTask> = {}): ChatTask {
     return {
+        roomId: 'room-1',
+        chatId: 'chat-1',
+        chatTitle: 'Chat 1',
+        title: 'Chat response',
+        startedAt: 1,
         status: 'generating',
         messageId: 'm-gen',
         controller: new AbortController(),

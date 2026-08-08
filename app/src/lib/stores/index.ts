@@ -63,6 +63,11 @@ export const chatTasks = readonly(StoreState.chatTasks);
 export const translationTasks = readonly(StoreState.translationTasks);
 export const imageGenerationTasks = readonly(StoreState.imageGenerationTasks);
 export const ttsTasks = readonly(StoreState.ttsTasks);
+export const inputTranslationTasks = readonly(StoreState.inputTranslationTasks);
+export const suggestionTasks = readonly(StoreState.suggestionTasks);
+export const dictationTasks = readonly(StoreState.dictationTasks);
+export const chatDrafts = readonly(StoreState.chatDrafts);
+export const collectedTasks = readonly(StoreState.collectedTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
@@ -73,6 +78,7 @@ export {
     hasActivePersona,
     hasActiveChat,
     isChatRunning,
+    hasRecordingDictation,
     displayMessages,
     isLoggedIn,
     userEmail,
@@ -84,9 +90,20 @@ export {
 export type {
     DisplayMessage,
     DisplayMessageStatus,
+    InputTranslationTask,
     MediaTask,
+    SuggestionTask,
     TaskStatus,
     TranslationTask
+} from './types';
+export type { ChatDraft, DictationPhase, DictationTask } from './types';
+export type {
+    ChatTaskIndicator,
+    CollectedTask,
+    CollectedTaskKind,
+    CollectedTaskStatus,
+    CreateTaskMetadata,
+    TaskMetadata
 } from './types';
 
 export * from './content/settings';
@@ -96,6 +113,7 @@ export * from './content/character';
 export * from './content/persona';
 export * from './content/preset';
 export * from './content/chat';
+export * from './content/draft';
 export * from './content/module';
 export * from './content/plugin';
 export * from './content/message';
@@ -104,6 +122,10 @@ export * from './tasks/chat';
 export * from './tasks/translation';
 export * from './tasks/image';
 export * from './tasks/tts';
+export * from './tasks/input_translation';
+export * from './tasks/suggestion';
+export * from './tasks/dictation';
+export * from './tasks/activity';
 export * from './auth';
 export * from './connection';
 export * from './user';

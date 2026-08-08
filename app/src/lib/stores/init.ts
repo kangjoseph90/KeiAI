@@ -11,6 +11,7 @@ import { loadMultiRooms } from './content/multi';
 import {
     createDefaultChatWorkflow,
     createDefaultImageGenerationWorkflow,
+    createDefaultSuggestionWorkflow,
     createDefaultTTSWorkflow,
     createDefaultTranslationWorkflow
 } from '$lib/workflow/defaults';
@@ -45,6 +46,7 @@ export async function initDefaultContents(): Promise<void> {
     await updateSettings({
         translation: { workflow: createDefaultTranslationWorkflow() },
         imageGeneration: { workflow: createDefaultImageGenerationWorkflow() },
-        tts: { workflow: createDefaultTTSWorkflow() }
+        tts: { workflow: createDefaultTTSWorkflow() },
+        suggestion: { workflow: createDefaultSuggestionWorkflow() }
     });
 }

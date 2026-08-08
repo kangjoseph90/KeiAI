@@ -24,7 +24,7 @@ vi.mock('$lib/stores', () => ({
 
 vi.mock('$lib/services', () => ({
     PagedMessages: {
-        createThrough: mocks.createPagedMessages
+        createBefore: mocks.createPagedMessages
     }
 }));
 
@@ -89,9 +89,7 @@ describe('media tasks', () => {
     it('stores only image outputs from the image generation workflow', async () => {
         await runImageGeneration('message-1');
 
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
-        );
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
         expect(mocks.updateMessageSwipe).toHaveBeenCalledWith('message-1', 'swipe-1', {
             imageAttachments: ['image-1']
         });
@@ -99,16 +97,14 @@ describe('media tasks', () => {
             ctx: { messageId: string; messageIndex: number };
             localMacros: Map<string, { run: (args: string[]) => string }>;
         };
-        expect(options.ctx).toMatchObject({ messageId: 'message-1', messageIndex: 2 });
+        expect(options.ctx).toMatchObject({ messageId: 'message-1', messageIndex: 3 });
         expect(options.localMacros.get('source')?.run([])).toBe('describe this scene');
     });
 
     it('stores only audio outputs from the TTS workflow', async () => {
         await runTTS('message-1');
 
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
-        );
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
         expect(mocks.updateMessageSwipe).toHaveBeenCalledWith('message-1', 'swipe-1', {
             audioAttachments: ['audio-1']
         });
@@ -120,7 +116,7 @@ describe('media tasks', () => {
             throw new Error('provider failed');
         });
 
-        await expect(runImageGeneration('message-1')).rejects.toThrow('provider failed');
+        await expect(runImageGeneration('message-1')).resolves.toBeUndefined();
         expect(get(imageGenerationTasks).get('message-1')).toMatchObject({
             status: 'error',
             errorMessage: 'provider failed'

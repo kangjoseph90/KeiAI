@@ -54,6 +54,7 @@ A Workflow is the execution graph inside a Task. Workflow nodes compute or call 
 ## State and I/O
 
 - Declare writable Svelte stores in `stores/state.ts` and expose readonly state to UI code.
+- Components must not receive state or callbacks that are merely lifted from their domain; pass entity data the parent already naturally owns, call ID-based actions directly, and keep local UI state local.
 - Clear child context when its parent context ends, and guard async updates when the active context can change.
 - Notify sync after successful local writes; do not wait for the remote write.
 - Keep Web/Tauri differences behind shared Adapter interfaces.

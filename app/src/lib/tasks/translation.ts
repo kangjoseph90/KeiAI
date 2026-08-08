@@ -1,6 +1,11 @@
 import { sha256 } from '$lib/crypto';
 import { AppError, getErrorMessage } from '$lib/types/errors';
 import type { Macro } from '$lib/template';
+import {
+    resolveTranslationPair,
+    type LanguageCode,
+    type ResolvedLanguagePair
+} from '$lib/language';
 import type { RuntimeContext } from '$lib/types/context';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import { getAppSettings } from '$lib/stores/content/settings';
@@ -12,6 +17,7 @@ import {
     getTranslationTask,
     notifyTranslationTaskComplete,
     notifyTranslationTaskError,
+    setTranslationTaskComplete,
     setTranslationTaskError
 } from '$lib/stores/tasks/translation';
 import { WorkflowRuntime } from '$lib/workflow';
@@ -24,9 +30,10 @@ export interface RunTranslationOptions {
 
 export async function createTranslationSourceHash(
     source: string,
+    sourceLanguage: string,
     targetLanguage: string
 ): Promise<string> {
-    return sha256(`${targetLanguage}\0${source}`);
+    return sha256(`${sourceLanguage}\0${targetLanguage}\0${source}`);
 }
 
 export async function runTranslation(
@@ -48,30 +55,40 @@ export async function runTranslation(
     const source = getLastTextContent(activeSwipe.parts);
     if (!source.trim()) throw new AppError('INVALID_INPUT', 'Translation source is empty');
 
-    const targetLanguage = settings.translation.targetLanguage.trim();
-    if (!targetLanguage) throw new AppError('INVALID_INPUT', 'Target language is required');
+    const pair: ResolvedLanguagePair = resolveTranslationPair(source, settings.translation);
 
-    const sourceHash = await createTranslationSourceHash(source, targetLanguage);
-    if (activeSwipe.translation?.sourceHash === sourceHash && !options.force) return;
+    const sourceHash = await createTranslationSourceHash(source, pair.source, pair.target);
+    if (
+        !options.force &&
+        activeSwipe.translation?.sourceHash === sourceHash &&
+        activeSwipe.translation.text
+    ) {
+        return;
+    }
 
     const chat = await getChat(message.chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${message.chatId}`);
 
-    const messages = await PagedMessages.createThrough(message);
+    const messages = await PagedMessages.createBefore(message.chatId, message.sortOrder);
     const baseCtx: RuntimeContext = {
         roomId: chat.roomId,
         presetId: settings.presetId,
         chatId: chat.id
     };
-    const ctx = toMessageContext(message, messages.length - 1, baseCtx);
+    const ctx = toMessageContext(message, messages.length, baseCtx);
     const controller = new AbortController();
-    const localMacros = createTranslationMacros(source, targetLanguage);
+    const localMacros = createTranslationMacros(source, pair.source, pair.target);
     const swipeId = activeSwipe.id;
     await updateMessageSwipe(message.id, swipeId, {
         translation: { sourceHash, text: '' }
     });
 
-    createTranslationTask(messageId, sourceHash, controller);
+    createTranslationTask(messageId, sourceHash, controller, {
+        roomId: chat.roomId,
+        chatId: chat.id,
+        chatTitle: chat.title,
+        title: 'Translation'
+    });
 
     try {
         const runtime = new WorkflowRuntime(settings.translation.workflow, {
@@ -93,7 +110,7 @@ export async function runTranslation(
             throw new AppError('INVALID_INPUT', 'Translation workflow returned empty output');
         }
 
-        clearTranslationTask(messageId);
+        setTranslationTaskComplete(messageId);
         notifyTranslationTaskComplete(messageId);
     } catch (error) {
         if (controller.signal.aborted) {
@@ -103,7 +120,6 @@ export async function runTranslation(
             setTranslationTaskError(messageId, errorMessage);
             notifyTranslationTaskError(messageId, errorMessage);
         }
-        throw error;
     }
 }
 
@@ -125,16 +141,21 @@ async function saveTranslationText(
 
 export function stopTranslation(messageId: string): void {
     const task = getTranslationTask(messageId);
-    task?.controller.abort();
+    task?.controller?.abort();
 }
 
 export function dismissTranslation(messageId: string): void {
     clearTranslationTask(messageId);
 }
 
-function createTranslationMacros(source: string, targetLanguage: string): Map<string, Macro> {
+function createTranslationMacros(
+    source: string,
+    sourceLanguage: LanguageCode,
+    targetLanguage: LanguageCode
+): Map<string, Macro> {
     return new Map([
         ['source', createValueMacro('source', source)],
+        ['sourcelang', createValueMacro('sourcelang', sourceLanguage)],
         ['targetlang', createValueMacro('targetlang', targetLanguage)]
     ]);
 }

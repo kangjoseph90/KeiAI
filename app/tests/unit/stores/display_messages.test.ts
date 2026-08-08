@@ -86,6 +86,11 @@ describe('displayMessages UI model', () => {
                 [
                     'chat-1',
                     {
+                        roomId: 'room-1',
+                        chatId: 'chat-1',
+                        chatTitle: 'Chat 1',
+                        title: 'Chat response',
+                        startedAt: 1,
                         status: 'error',
                         messageId: 'msg-2',
                         errorMessage: 'No character selected',
@@ -114,6 +119,11 @@ describe('displayMessages UI model', () => {
                 [
                     'chat-1',
                     {
+                        roomId: 'room-1',
+                        chatId: 'chat-1',
+                        chatTitle: 'Chat 1',
+                        title: 'Chat response',
+                        startedAt: 1,
                         status: 'generating',
                         messageId: 'msg-1',
                         controller: new AbortController()

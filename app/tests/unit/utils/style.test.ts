@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createAssetUri } from '$lib/services/asset';
-import { sanitizeWithStyle, scopeCss, scopeStyleBlocks } from '$lib/utils/style';
+import { parseMarkdownAsync } from '$lib/markdown';
+import {
+    protectHtmlStyles,
+    restoreHtmlStyles,
+    sanitizeWithStyle,
+    scopeCss,
+    scopeStyleBlocks
+} from '$lib/utils/style';
 
 describe('style scoping', () => {
     const scope = '[data-keiai-message-scope="message-1"]';
@@ -77,5 +84,18 @@ describe('style scoping', () => {
         const sanitized = sanitizeWithStyle(`<img src="${uri}">`);
 
         expect(sanitized).toContain(`src="${uri}"`);
+    });
+
+    it('preserves a style block at the start of rendered message HTML', async () => {
+        const input =
+            '<style>.container { display: grid; place-items: center; width: 100%; }</style><div class="container">Content</div>';
+        const scoped = scopeStyleBlocks(input, scope);
+        const protectedHtml = protectHtmlStyles(scoped);
+        const markdown = await parseMarkdownAsync(protectedHtml.text);
+        const restored = restoreHtmlStyles(markdown, protectedHtml.styles);
+        const sanitized = sanitizeWithStyle(restored);
+
+        expect(sanitized).toContain(`<style>${scope} .container`);
+        expect(sanitized).toContain('<div class="container">Content</div>');
     });
 });

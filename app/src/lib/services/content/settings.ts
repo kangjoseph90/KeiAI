@@ -34,6 +34,7 @@ import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 import { normalizeWorkflow } from '$lib/workflow/normalization';
+import type { LanguageCode } from '$lib/language';
 import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -46,7 +47,9 @@ export interface AppSettingsContent {
         autoGenerateResponse: boolean;
     };
     translation: {
-        targetLanguage: string;
+        targetLanguage: LanguageCode;
+        bidirectional: boolean;
+        secondaryLanguage: LanguageCode;
         workflow: WorkflowDefinition;
         autoShowTranslation: boolean;
     };
@@ -54,6 +57,9 @@ export interface AppSettingsContent {
         workflow: WorkflowDefinition;
     };
     tts: {
+        workflow: WorkflowDefinition;
+    };
+    suggestion: {
         workflow: WorkflowDefinition;
     };
     openai: OpenAIProviderConfig;
@@ -105,7 +111,9 @@ export const defaultSettings: AppSettings = {
         autoGenerateResponse: true
     },
     translation: {
-        targetLanguage: '',
+        targetLanguage: 'ko',
+        bidirectional: false,
+        secondaryLanguage: 'en',
         workflow: { nodes: {} },
         autoShowTranslation: false
     },
@@ -113,6 +121,9 @@ export const defaultSettings: AppSettings = {
         workflow: { nodes: {} }
     },
     tts: {
+        workflow: { nodes: {} }
+    },
+    suggestion: {
         workflow: { nodes: {} }
     },
     openai: {
@@ -310,6 +321,7 @@ function parseFields(data: Record<string, unknown>): AppSettings {
     fields.translation.workflow = normalizeWorkflow(fields.translation.workflow);
     fields.imageGeneration.workflow = normalizeWorkflow(fields.imageGeneration.workflow);
     fields.tts.workflow = normalizeWorkflow(fields.tts.workflow);
+    fields.suggestion.workflow = normalizeWorkflow(fields.suggestion.workflow);
     fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }

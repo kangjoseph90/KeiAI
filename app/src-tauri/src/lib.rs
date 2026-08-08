@@ -1,3 +1,4 @@
+mod recording;
 mod tokenizer;
 
 use tauri::Manager;
@@ -29,8 +30,14 @@ pub fn run() {
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .manage(std::sync::Mutex::new(recording::RecordingState::new()))
         .manage(std::sync::Mutex::new(tokenizer::TokenizerState::new()))
-        .invoke_handler(tauri::generate_handler![tokenizer::count_tokens])
+        .invoke_handler(tauri::generate_handler![
+            tokenizer::count_tokens,
+            recording::start_audio_recording,
+            recording::finish_audio_recording,
+            recording::cancel_audio_recording
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -14,6 +14,7 @@
         minRows = 1,
         classname = '',
         onheightchange = (_height: number) => {},
+        oninput = (_e: Event) => {},
         onkeydown = (_e: KeyboardEvent) => {},
         onpaste = (_e: ClipboardEvent) => {}
     }: {
@@ -24,6 +25,7 @@
         minRows?: number;
         classname?: string;
         onheightchange?: (height: number) => void;
+        oninput?: (e: Event) => void;
         onkeydown?: (e: KeyboardEvent) => void;
         onpaste?: (e: ClipboardEvent) => void;
     } = $props();
@@ -45,6 +47,11 @@
         }
     }
 
+    function handleInput(event: Event): void {
+        resize();
+        oninput(event);
+    }
+
     $effect(() => {
         // Resize whenever value changes
         void value;
@@ -64,7 +71,7 @@
     aria-label="Message"
     {disabled}
     rows={minRows}
-    oninput={resize}
+    oninput={handleInput}
     {onkeydown}
     {onpaste}
     class={cn(

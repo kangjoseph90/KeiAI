@@ -8,6 +8,8 @@ export const DEFAULT_IMAGE_GENERATION_NODE_ID = 'image_generation';
 export const DEFAULT_IMAGE_GENERATION_OUTPUT_ID = 'image_generation_output';
 export const DEFAULT_TTS_NODE_ID = 'tts';
 export const DEFAULT_TTS_OUTPUT_ID = 'tts_output';
+export const DEFAULT_SUGGESTION_AGENT_ID = 'suggestion_agent';
+export const DEFAULT_SUGGESTION_OUTPUT_ID = 'suggestion_output';
 
 export interface DefaultChatWorkflowOptions {
     agentName?: string;
@@ -79,7 +81,7 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
                 type: 'message',
                 role: 'user',
                 content:
-                    'Translate the following text into {{targetlang}}. Return only the translated text.\n\n{{source}}',
+                    'Translate the following text from {{sourcelang}} into {{targetlang}}. Return only the translated text.\n\n{{source}}',
                 sortOrder: 'a0',
                 enabled: true
             }
@@ -196,6 +198,59 @@ export function createDefaultTTSWorkflow(): WorkflowDefinition {
                 inputs: {
                     content: {
                         sourceNode: DEFAULT_TTS_NODE_ID,
+                        sourcePort: 0
+                    }
+                },
+                inputValues: {}
+            }
+        }
+    };
+}
+
+export function createDefaultSuggestionWorkflow(): WorkflowDefinition {
+    const instructionId = 'suggestion_instruction';
+    const agent: AgentNode = {
+        id: DEFAULT_SUGGESTION_AGENT_ID,
+        name: 'Suggester',
+        class: 'Agent',
+        position: { x: 0, y: 0 },
+        collapsed: false,
+        llmType: 'chat',
+        toolIds: [],
+        promptBlocks: {
+            [instructionId]: {
+                id: instructionId,
+                name: 'Suggestion Instruction',
+                type: 'message',
+                role: 'user',
+                content:
+                    'Based on the conversation so far, suggest what the user might want to say next. Return only the suggested message.\n\n{{source}}',
+                sortOrder: 'a0',
+                enabled: true
+            }
+        },
+        maxContext: 60000,
+        maxResponse: 6000,
+        lorebookRatio: 0.2,
+        memoryRatio: 0.2,
+        lorebookScanDepth: 5,
+        slotNames: {},
+        inputs: { stream: null },
+        inputValues: { stream: true }
+    };
+
+    return {
+        nodes: {
+            [agent.id]: agent,
+            [DEFAULT_SUGGESTION_OUTPUT_ID]: {
+                id: DEFAULT_SUGGESTION_OUTPUT_ID,
+                name: 'Output',
+                class: 'Output',
+                position: { x: 360, y: 0 },
+                collapsed: false,
+                inputs: {
+                    content: {
+                        sourceNode: agent.id,
                         sourcePort: 0
                     }
                 },

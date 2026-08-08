@@ -246,4 +246,42 @@ describe('pointerDrag', () => {
         expect(options.onStart).not.toHaveBeenCalled();
         action?.destroy?.();
     });
+
+    it('can start from an interactive control when explicitly allowed', () => {
+        const button = document.createElement('button');
+        node.appendChild(button);
+        options.allowInteractiveTarget = true;
+        const action = pointerDrag(node, options);
+
+        button.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'mouse' }));
+        window.dispatchEvent(
+            pointerEvent('pointermove', {
+                pointerType: 'mouse',
+                clientX: 30,
+                clientY: 32
+            })
+        );
+
+        expect(options.onStart).toHaveBeenCalledWith(30, 32);
+        action?.destroy?.();
+    });
+
+    it('can drag without creating a ghost preview', () => {
+        options.showGhost = false;
+        const action = pointerDrag(node, options);
+
+        node.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'mouse' }));
+        window.dispatchEvent(
+            pointerEvent('pointermove', {
+                pointerType: 'mouse',
+                clientX: 30,
+                clientY: 32
+            })
+        );
+
+        expect(document.body.children).toHaveLength(1);
+        expect(node.classList.contains('pointer-drag-source')).toBe(false);
+        expect(options.onStart).toHaveBeenCalled();
+        action?.destroy?.();
+    });
 });

@@ -13,6 +13,7 @@ import {
     setChatTaskError,
     getChatTask,
     clearChatTask,
+    setChatTaskComplete,
     notifyChatTaskComplete,
     notifyChatTaskError
 } from '$lib/stores/tasks/chat';
@@ -55,39 +56,45 @@ export async function runChat(
     opts: RunChatOptions = {}
 ): Promise<void> {
     const existing = getChatTask(chatId);
-    if (existing) {
+    if (existing?.status === 'generating') {
         logger.warn(`Chat ${chatId} is already running.`);
         return;
     }
 
+    const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
+
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+    if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
+
+    const room = await getRoom(chat.roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+
+    const characterRef = room.characters.refs[characterId];
+    if (!characterRef) {
+        throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
+    }
+
+    const personaRef = chat.personas.refs[personaId];
+    if (!personaRef) {
+        throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
+    }
+
+    const targetMessage = opts.reroll
+        ? await getLastMessage(chatId)
+        : await createMessage(chatId, {
+              role: 'assistant'
+          });
+    if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+
     const controller = new AbortController();
+    createChatTask(chatId, targetMessage.id, controller, {
+        roomId: chat.roomId,
+        chatId,
+        chatTitle: chat.title,
+        title: 'Chat response'
+    });
 
     try {
-        const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
-
-        if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-        if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
-
-        const room = await getRoom(chat.roomId);
-        if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
-
-        const characterRef = room.characters.refs[characterId];
-        if (!characterRef) {
-            throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
-        }
-
-        const personaRef = chat.personas.refs[personaId];
-        if (!personaRef) {
-            throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
-        }
-
-        const targetMessage = opts.reroll
-            ? await getLastMessage(chatId)
-            : await createMessage(chatId, {
-                  role: 'assistant'
-              });
-        if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
-
         const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
         const [character, preset, persona] = await Promise.all([
             getCharacter(characterId),
@@ -103,7 +110,6 @@ export async function runChat(
         const shouldReplaceActiveSwipe =
             !settings.chat.saveMessagesOnSwipe &&
             Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
-
         const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
             targetMessage,
             {
@@ -114,9 +120,6 @@ export async function runChat(
                 replaceActiveSwipe: shouldReplaceActiveSwipe
             }
         );
-
-        createChatTask(chatId, preparedMessage.id, controller);
-
         const ctx: RuntimeContext = {
             roomId: chat.roomId,
             presetId: settings.presetId,
@@ -173,7 +176,7 @@ export async function runChat(
             content: getLastTextContent(finalSwipe.parts)
         });
 
-        clearChatTask(chatId);
+        setChatTaskComplete(chatId);
         notifyChatTaskComplete(chatId);
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -182,7 +185,6 @@ export async function runChat(
         }
 
         const errMsg = error instanceof Error ? error.message : 'Unknown pipeline error';
-        // setChatTaskError no-ops without a registered task (validation errors), so also log.
         logger.error(`Chat ${chatId} failed: ${errMsg}`);
         setChatTaskError(chatId, errMsg);
         notifyChatTaskError(chatId, errMsg);
@@ -191,7 +193,7 @@ export async function runChat(
 
 export function stopChat(chatId: string): void {
     const task = getChatTask(chatId);
-    task?.controller.abort();
+    task?.controller?.abort();
 }
 
 export function dismissChat(chatId: string): void {

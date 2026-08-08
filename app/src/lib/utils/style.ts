@@ -97,6 +97,7 @@ export function restoreHtmlStyles(value: string, styles: string[], prefix = 'kei
 
 export function sanitizeWithStyle(html: string): string {
     return DOMPurify.sanitize(html, {
+        FORCE_BODY: true,
         ADD_TAGS: ['style'],
         ALLOWED_URI_REGEXP:
             /^(?:(?:https?|mailto|tel|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i

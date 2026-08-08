@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     updateMessageSwipe: vi.fn(),
     createTask: vi.fn(),
     clearTask: vi.fn(),
+    completeTask: vi.fn(),
     setTaskError: vi.fn(),
     notifyTaskComplete: vi.fn(),
     notifyTaskError: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('$lib/stores/content/message', () => ({
 vi.mock('$lib/stores/tasks/translation', () => ({
     createTranslationTask: mocks.createTask,
     clearTranslationTask: mocks.clearTask,
+    setTranslationTaskComplete: mocks.completeTask,
     setTranslationTaskError: mocks.setTaskError,
     notifyTranslationTaskComplete: mocks.notifyTaskComplete,
     notifyTranslationTaskError: mocks.notifyTaskError,
@@ -47,7 +49,7 @@ vi.mock('$lib/stores/tasks/translation', () => ({
 
 vi.mock('$lib/services/content/paged_messages', () => ({
     PagedMessages: {
-        createThrough: mocks.createPagedMessages
+        createBefore: mocks.createPagedMessages
     }
 }));
 
@@ -71,7 +73,9 @@ describe('translation task', () => {
         mocks.getSettings.mockResolvedValue({
             presetId: 'preset-1',
             translation: {
-                targetLanguage: ' Korean ',
+                targetLanguage: 'ko',
+                bidirectional: false,
+                secondaryLanguage: 'en',
                 workflow: { nodes: {} }
             }
         });
@@ -86,7 +90,7 @@ describe('translation task', () => {
             swipes: {
                 'swipe-1': {
                     id: 'swipe-1',
-                    parts: [{ type: 'text', text: 'Hello' }],
+                    parts: [{ type: 'text', text: 'Hello world, how are you today?' }],
                     createdAt: 1,
                     speakerId: 'character-1',
                     speakerName: 'Character'
@@ -100,49 +104,48 @@ describe('translation task', () => {
             }
         );
         mocks.getChat.mockResolvedValue({ id: 'chat-1', roomId: 'room-1' });
-        mocks.createPagedMessages.mockResolvedValue({ length: 4 });
+        mocks.createPagedMessages.mockResolvedValue({ length: 3 });
         mocks.runtimeStream.mockImplementation(async function* () {
             yield '안녕';
             yield '안녕하세요';
         });
     });
 
-    it('hashes only the trimmed target language and source snapshot', async () => {
-        await expect(createTranslationSourceHash('Hello', 'Korean')).resolves.toBe(
-            'hash:Korean\0Hello'
-        );
-        expect(mocks.sha256).toHaveBeenCalledWith('Korean\0Hello');
+    it('hashes the source/target languages and source snapshot', async () => {
+        await expect(
+            createTranslationSourceHash('Hello world, how are you today?', 'en', 'ko')
+        ).resolves.toBe('hash:en\0ko\0Hello world, how are you today?');
+        expect(mocks.sha256).toHaveBeenCalledWith('en\0ko\0Hello world, how are you today?');
     });
 
     it('includes the target message in history and streams the workflow result', async () => {
         await runTranslation('message-1');
 
-        expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
+        expect(mocks.completeTask).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskComplete).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskError).not.toHaveBeenCalled();
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
-        );
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
         expect(mocks.createTask).toHaveBeenCalledWith(
             'message-1',
-            'hash:Korean\0Hello',
-            expect.any(AbortController)
+            'hash:en\0ko\0Hello world, how are you today?',
+            expect.any(AbortController),
+            expect.objectContaining({ roomId: 'room-1', chatId: 'chat-1' })
         );
         expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(1, 'message-1', 'swipe-1', {
             translation: {
-                sourceHash: 'hash:Korean\0Hello',
+                sourceHash: 'hash:en\0ko\0Hello world, how are you today?',
                 text: ''
             }
         });
         expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(2, 'message-1', 'swipe-1', {
             translation: {
-                sourceHash: 'hash:Korean\0Hello',
+                sourceHash: 'hash:en\0ko\0Hello world, how are you today?',
                 text: '안녕'
             }
         });
         expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(3, 'message-1', 'swipe-1', {
             translation: {
-                sourceHash: 'hash:Korean\0Hello',
+                sourceHash: 'hash:en\0ko\0Hello world, how are you today?',
                 text: '안녕하세요'
             }
         });
@@ -155,8 +158,9 @@ describe('translation task', () => {
             messageIndex: 3,
             characterId: 'character-1'
         });
-        expect(options.localMacros.get('source')?.run([])).toBe('Hello');
-        expect(options.localMacros.get('targetlang')?.run([])).toBe('Korean');
+        expect(options.localMacros.get('source')?.run([])).toBe('Hello world, how are you today?');
+        expect(options.localMacros.get('sourcelang')?.run([])).toBe('en');
+        expect(options.localMacros.get('targetlang')?.run([])).toBe('ko');
         expect(() => options.localMacros.get('source')?.run(['unexpected'])).toThrow(
             '{{source}} does not accept arguments'
         );
@@ -165,7 +169,7 @@ describe('translation task', () => {
     it('returns a cached translation without running the workflow', async () => {
         const message = await mocks.getMessage();
         message.swipes['swipe-1'].translation = {
-            sourceHash: 'hash:Korean\0Hello',
+            sourceHash: 'hash:en\0ko\0Hello world, how are you today?',
             text: '안녕하세요'
         };
 
@@ -174,13 +178,24 @@ describe('translation task', () => {
         expect(mocks.createTask).not.toHaveBeenCalled();
     });
 
+    it('re-runs when the cached translation has a matching hash but empty text', async () => {
+        const message = await mocks.getMessage();
+        message.swipes['swipe-1'].translation = {
+            sourceHash: 'hash:en\0ko\0Hello world, how are you today?',
+            text: ''
+        };
+
+        await runTranslation('message-1');
+        expect(mocks.completeTask).toHaveBeenCalledWith('message-1');
+    });
+
     it('keeps a failed task available for the UI to dismiss', async () => {
         mocks.runtimeStream.mockImplementation(async function* () {
             yield 'partial';
             throw new Error('provider failed');
         });
 
-        await expect(runTranslation('message-1')).rejects.toThrow('provider failed');
+        await expect(runTranslation('message-1')).resolves.toBeUndefined();
         expect(mocks.setTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
         expect(mocks.notifyTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
         expect(mocks.clearTask).not.toHaveBeenCalled();
@@ -197,7 +212,7 @@ describe('translation task', () => {
             throw new DOMException('Aborted', 'AbortError');
         });
 
-        await expect(runTranslation('message-1')).rejects.toThrow('Aborted');
+        await expect(runTranslation('message-1')).resolves.toBeUndefined();
 
         expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
         expect(mocks.setTaskError).not.toHaveBeenCalled();
