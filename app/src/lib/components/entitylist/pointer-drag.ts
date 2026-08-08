@@ -8,7 +8,9 @@ const MAX_SCROLL_PX = 14;
 
 export interface PointerDragOptions {
     disabled?: boolean;
-    onStart: () => void;
+    allowInteractiveTarget?: boolean;
+    showGhost?: boolean;
+    onStart: (clientX: number, clientY: number) => void;
     onMove: (clientX: number, clientY: number) => void;
     onDrop: (clientX: number, clientY: number) => void | Promise<void>;
     onCancel: () => void;
@@ -162,30 +164,32 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         clearTimer();
         node.setPointerCapture?.(pointerId);
         suppressSelection();
-        node.classList.add('pointer-drag-source');
-        ghost = node.cloneNode(true) as HTMLElement;
-        ghost.removeAttribute('id');
-        Object.assign(ghost.style, {
-            position: 'fixed',
-            left: '0',
-            top: '0',
-            width: `${node.getBoundingClientRect().width}px`,
-            zIndex: '9999',
-            opacity: '0.85',
-            pointerEvents: 'none',
-            transition: 'none',
-            animation: 'none',
-            willChange: 'transform',
-            transform: 'translate3d(0, 0, 0)'
-        });
-        updateGhost(latest);
-        document.body.appendChild(ghost);
+        if (options.showGhost !== false) {
+            node.classList.add('pointer-drag-source');
+            ghost = node.cloneNode(true) as HTMLElement;
+            ghost.removeAttribute('id');
+            Object.assign(ghost.style, {
+                position: 'fixed',
+                left: '0',
+                top: '0',
+                width: `${node.getBoundingClientRect().width}px`,
+                zIndex: '9999',
+                opacity: '0.85',
+                pointerEvents: 'none',
+                transition: 'none',
+                animation: 'none',
+                willChange: 'transform',
+                transform: 'translate3d(0, 0, 0)'
+            });
+            updateGhost(latest);
+            document.body.appendChild(ghost);
+        }
         try {
             navigator.vibrate?.(20);
         } catch {
             // Haptics are optional and may be blocked by the browser or WebView.
         }
-        options.onStart();
+        options.onStart(latest.x, latest.y);
         animationFrame = requestAnimationFrame(runFrame);
     }
 
@@ -194,7 +198,7 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
             options.disabled ||
             pointerId !== null ||
             event.button !== 0 ||
-            isInteractiveDragTarget(event.target)
+            (!options.allowInteractiveTarget && isInteractiveDragTarget(event.target))
         ) {
             return;
         }
