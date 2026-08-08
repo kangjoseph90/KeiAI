@@ -78,7 +78,7 @@
 </script>
 
 {#snippet fields()}
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="flex flex-col gap-1.5">
             <Label>Provider</Label>
             <select
@@ -104,35 +104,34 @@
                 {/each}
             </select>
         </div>
-    </div>
 
-    {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}
-        <Separator />
-        <div class="flex flex-col gap-1.5">
-            <Label>
-                {getLLMProviderName(config.provider)} API Key
-            </Label>
-            <form onsubmit={(e) => e.preventDefault()} class="flex gap-2">
-                <Input
-                    type={showKey ? 'text' : 'password'}
-                    placeholder="Enter API Key"
-                    value={getProviderApiKey(config.provider)}
-                    oninput={(e) => handleApiKeyChange(config.provider, e.currentTarget.value)}
-                    class="font-mono text-sm"
-                    autocomplete="off"
-                />
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onclick={() => (showKey = !showKey)}
-                    aria-label={showKey ? 'Hide API key' : 'Show API key'}
-                >
-                    {#if showKey}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
-                </Button>
-            </form>
-        </div>
-    {/if}
+        {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}
+            <div class="flex flex-col gap-1.5 sm:col-span-2">
+                <Label>
+                    {getLLMProviderName(config.provider)} API Key
+                </Label>
+                <form onsubmit={(e) => e.preventDefault()} class="flex gap-2">
+                    <Input
+                        type={showKey ? 'text' : 'password'}
+                        placeholder="Enter API Key"
+                        value={getProviderApiKey(config.provider)}
+                        oninput={(e) => handleApiKeyChange(config.provider, e.currentTarget.value)}
+                        class="font-mono text-sm"
+                        autocomplete="off"
+                    />
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onclick={() => (showKey = !showKey)}
+                        aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                    >
+                        {#if showKey}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+                    </Button>
+                </form>
+            </div>
+        {/if}
+    </div>
 {/snippet}
 
 <div class="flex flex-col gap-3">

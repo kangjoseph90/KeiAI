@@ -66,14 +66,19 @@
     }
 </script>
 
-<section class="space-y-3">
-    <h3 class="text-sm font-semibold">Export Character</h3>
+<section class="space-y-4">
+    <div>
+        <h3 class="text-lg font-semibold tracking-tight text-foreground">Export Character</h3>
+        <p class="text-sm text-muted-foreground">
+            Export character card or archive with embedded metadata.
+        </p>
+    </div>
     <div class="flex flex-col gap-2">
         <div class="flex items-center gap-2">
             <div class="min-w-0 flex-1">
                 <select
                     id="export-character-format"
-                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={selectedFormat}
                     onchange={(e) => (selectedFormat = e.currentTarget.value as ExportButton)}
                 >

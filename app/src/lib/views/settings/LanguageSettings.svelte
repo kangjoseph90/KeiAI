@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-    import SettingRow from '$lib/components/SettingRow.svelte';
     import { Label } from '$lib/components/ui/label';
     import { appSettings, updateSettings } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
@@ -25,12 +23,17 @@
     }
 </script>
 
-<div class="flex flex-col gap-5">
-    <Card>
-        <CardHeader>
-            <CardTitle class="text-base">Translation</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
+<div class="space-y-8 pb-8">
+    <!-- Translation Section -->
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">Translation</h3>
+            <p class="text-sm text-muted-foreground">
+                Configure automatic message translation and target languages.
+            </p>
+        </div>
+
+        <div class="space-y-4">
             <div class="flex flex-col gap-1.5">
                 <div class="flex flex-col sm:flex-row gap-4 sm:items-start">
                     <div class="flex flex-col gap-1.5 w-full sm:w-64 max-w-xs">
@@ -79,62 +82,88 @@
                     {/if}
                 </div>
 
-                <p class="text-xs text-muted-foreground">
+                <p class="text-xs text-muted-foreground mt-1">
                     The source language is detected automatically from each message.
                 </p>
             </div>
 
-            <SettingRow>
-                <div class="space-y-0.5">
-                    <Label for="translation-bidirectional">Bidirectional Translation</Label>
-                    <p class="text-xs text-muted-foreground">
-                        Pick a second language and auto-detect the direction per message.
-                    </p>
+            <div class="divide-y divide-border">
+                <div class="flex items-center justify-between py-3.5">
+                    <div class="space-y-0.5 pr-4">
+                        <Label
+                            for="translation-bidirectional"
+                            class="text-sm font-medium cursor-pointer"
+                        >
+                            Bidirectional Translation
+                        </Label>
+                        <p class="text-xs text-muted-foreground">
+                            Pick a second language and auto-detect the direction per message.
+                        </p>
+                    </div>
+                    <input
+                        id="translation-bidirectional"
+                        type="checkbox"
+                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                        checked={$appSettings?.translation?.bidirectional === true}
+                        onchange={(e) =>
+                            updateTranslationSettings({
+                                translation: {
+                                    bidirectional: e.currentTarget.checked
+                                }
+                            })}
+                    />
                 </div>
-                <input
-                    id="translation-bidirectional"
-                    type="checkbox"
-                    class="size-5 shrink-0 rounded border-primary"
-                    checked={$appSettings?.translation?.bidirectional === true}
-                    onchange={(e) =>
-                        updateTranslationSettings({
-                            translation: {
-                                bidirectional: e.currentTarget.checked
-                            }
-                        })}
-                />
-            </SettingRow>
 
-            <SettingRow>
-                <div class="space-y-0.5">
-                    <Label for="translation-auto-show">Auto-show Translation</Label>
-                    <p class="text-xs text-muted-foreground">
-                        Automatically show translations when a message has been translated.
-                    </p>
+                <div class="flex items-center justify-between py-3.5">
+                    <div class="space-y-0.5 pr-4">
+                        <Label
+                            for="translation-auto-show"
+                            class="text-sm font-medium cursor-pointer"
+                        >
+                            Auto-show Translation
+                        </Label>
+                        <p class="text-xs text-muted-foreground">
+                            Automatically show translations when a message has been translated.
+                        </p>
+                    </div>
+                    <input
+                        id="translation-auto-show"
+                        type="checkbox"
+                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                        checked={$appSettings?.translation?.autoShowTranslation === true}
+                        onchange={(e) =>
+                            updateTranslationSettings({
+                                translation: {
+                                    autoShowTranslation: e.currentTarget.checked
+                                }
+                            })}
+                    />
                 </div>
-                <input
-                    id="translation-auto-show"
-                    type="checkbox"
-                    class="size-5 shrink-0 rounded border-primary"
-                    checked={$appSettings?.translation?.autoShowTranslation === true}
-                    onchange={(e) =>
-                        updateTranslationSettings({
-                            translation: {
-                                autoShowTranslation: e.currentTarget.checked
-                            }
-                        })}
-                />
-            </SettingRow>
-        </CardContent>
-    </Card>
+            </div>
+        </div>
+    </section>
 
     {#if $appSettings}
-        <WorkflowSummaryCard
-            workflow={$appSettings.translation.workflow}
-            onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
-            workflowLabel="Translation workflow"
-            editWorkflowLabel="Edit translation workflow"
-        />
+        <div class="border-t border-border"></div>
+
+        <!-- Workflow Section -->
+        <section class="space-y-4">
+            <div>
+                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                    Translation Workflow
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                    Customize the node pipeline used for translating chat messages.
+                </p>
+            </div>
+
+            <WorkflowSummaryCard
+                workflow={$appSettings.translation.workflow}
+                onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
+                workflowLabel="Translation workflow"
+                editWorkflowLabel="Edit translation workflow"
+            />
+        </section>
     {/if}
 </div>
 

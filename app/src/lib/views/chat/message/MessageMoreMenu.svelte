@@ -100,7 +100,12 @@
             <MoreVertical class="size-3.5" />
         </Button>
     </DropdownMenu.Trigger>
-    <DropdownMenu.Content align="end" sideOffset={4} class="w-52 max-w-[calc(100vw-1rem)]">
+    <DropdownMenu.Content
+        align="end"
+        sideOffset={4}
+        class="w-52 max-w-[calc(100vw-1rem)]"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+    >
         <DropdownMenu.Item
             class="cursor-pointer whitespace-nowrap"
             {disabled}

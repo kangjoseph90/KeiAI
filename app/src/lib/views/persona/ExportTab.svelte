@@ -70,15 +70,20 @@
     }
 </script>
 
-<div class="space-y-6">
-    <section class="space-y-3">
-        <h3 class="text-sm font-semibold">Export Persona</h3>
+<div class="space-y-8 pb-8">
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">Export Persona</h3>
+            <p class="text-sm text-muted-foreground">
+                Export persona card or archive with embedded assets.
+            </p>
+        </div>
         <div class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
                 <div class="min-w-0 flex-1">
                     <select
                         id="export-persona-format"
-                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         value={selectedFormat}
                         onchange={(e) => (selectedFormat = e.currentTarget.value as ExportFormat)}
                     >
@@ -102,26 +107,32 @@
         </div>
     </section>
 
-    <section class="space-y-3">
-        <h3 class="text-sm font-semibold text-destructive">Danger Zone</h3>
-        <div
-            class="flex flex-col gap-4 rounded-lg border border-destructive/30 p-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-            <div>
-                <p class="text-sm font-medium">Delete this persona</p>
-                <p class="mt-1 text-xs text-muted-foreground">
-                    This removes the local persona and its owned assets.
-                </p>
+    <div class="border-t border-border"></div>
+
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-destructive">Danger Zone</h3>
+            <p class="text-sm text-muted-foreground">Irreversible actions for this persona.</p>
+        </div>
+
+        <div class="divide-y divide-border">
+            <div class="flex items-center justify-between py-2">
+                <div class="space-y-0.5 pr-4">
+                    <p class="text-sm font-medium text-foreground">Delete this persona</p>
+                    <p class="text-xs text-muted-foreground">
+                        This removes the local persona and its owned assets permanently.
+                    </p>
+                </div>
+                <Button
+                    variant="destructive"
+                    class="gap-1.5 shrink-0"
+                    disabled={deleting}
+                    aria-busy={deleting}
+                    onclick={onDelete}
+                >
+                    <Trash2 class="size-4" /> Delete Persona
+                </Button>
             </div>
-            <Button
-                variant="destructive"
-                class="gap-1.5"
-                disabled={deleting}
-                aria-busy={deleting}
-                onclick={onDelete}
-            >
-                <Trash2 class="size-4" /> Delete Persona
-            </Button>
         </div>
     </section>
 </div>

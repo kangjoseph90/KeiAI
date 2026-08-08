@@ -1,7 +1,6 @@
 <script lang="ts">
     import { ChevronDown, ChevronRight } from 'lucide-svelte';
     import { slide } from 'svelte/transition';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
     import ModelConfigCard from './ModelConfigCard.svelte';
     import { appSettings, updatePreset } from '$lib/stores';
@@ -33,7 +32,8 @@
                 preset.chatWorkflow,
                 $appSettings?.translation.workflow,
                 $appSettings?.imageGeneration.workflow,
-                $appSettings?.tts.workflow
+                $appSettings?.tts.workflow,
+                $appSettings?.suggestion.workflow
             ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
@@ -93,42 +93,52 @@
     }
 </script>
 
-<div class="flex flex-col gap-5">
+<div class="space-y-8 pb-8">
     {#if preset.models.chat}
-        <Card>
-            <CardHeader>
-                <CardTitle class="flex items-center justify-between text-base">
+        <section class="space-y-4">
+            <div>
+                <h3
+                    class="flex items-center justify-between text-lg font-semibold tracking-tight text-foreground"
+                >
                     Chat Model
                     <Badge variant="secondary">chat</Badge>
-                </CardTitle>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-3">
-                <ModelConfigCard
-                    config={preset.models.chat}
-                    onModelChange={(p, m) => handleModelChange('chat', p, m)}
-                />
-            </CardContent>
-        </Card>
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                    Primary model used for main chat completions.
+                </p>
+            </div>
+            <ModelConfigCard
+                config={preset.models.chat}
+                onModelChange={(p, m) => handleModelChange('chat', p, m)}
+            />
+        </section>
     {/if}
 
     {#if preset.models.aux}
-        <Card>
-            <CardHeader>
-                <CardTitle class="flex items-center justify-between text-base">
+        <div class="border-t border-border"></div>
+
+        <section class="space-y-4">
+            <div>
+                <h3
+                    class="flex items-center justify-between text-lg font-semibold tracking-tight text-foreground"
+                >
                     Auxiliary Model
                     <Badge variant="outline">aux</Badge>
-                </CardTitle>
-            </CardHeader>
-            <CardContent class="flex flex-col gap-3">
-                <ModelConfigCard
-                    config={preset.models.aux}
-                    onModelChange={(p, m) => handleModelChange('aux', p, m)}
-                />
-            </CardContent>
-        </Card>
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                    Secondary model for auxiliary reasoning and tasks.
+                </p>
+            </div>
+            <ModelConfigCard
+                config={preset.models.aux}
+                onModelChange={(p, m) => handleModelChange('aux', p, m)}
+            />
+        </section>
     {/if}
 
-    <section class="rounded-lg border bg-card px-5 py-3">
+    <div class="border-t border-border"></div>
+
+    <section class="space-y-4">
         <div class="flex items-center gap-2">
             <button
                 type="button"
@@ -137,62 +147,63 @@
                 aria-label={advancedOpen ? 'Collapse' : 'Expand'}
             >
                 {#if advancedOpen}
-                    <ChevronDown class="size-3.5" />
+                    <ChevronDown class="size-4" />
                 {:else}
-                    <ChevronRight class="size-3.5" />
+                    <ChevronRight class="size-4" />
                 {/if}
             </button>
-            <button
-                type="button"
-                class="text-sm font-medium text-foreground hover:opacity-80 transition-opacity"
-                onclick={() => (advancedOpen = !advancedOpen)}
-            >
-                Model Type Overrides
-            </button>
+            <div>
+                <button
+                    type="button"
+                    class="text-base font-medium text-foreground hover:opacity-80 transition-opacity"
+                    onclick={() => (advancedOpen = !advancedOpen)}
+                >
+                    Model Type Overrides
+                </button>
+                <p class="text-xs text-muted-foreground">
+                    Override model selections for specific agent or workflow roles.
+                </p>
+            </div>
         </div>
 
         {#if advancedOpen}
-            <div class="mt-4 flex flex-col gap-3" transition:slide={{ duration: 150 }}>
+            <div class="pl-6 divide-y divide-border pt-1" transition:slide={{ duration: 150 }}>
                 {#each llmTypes as role (role.type)}
                     {@const config = preset.models[role.type]}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle class="flex items-center justify-between text-base">
-                                <div>
-                                    <div>{role.type}</div>
-                                    {#if role.description}
-                                        <p class="mt-0.5 text-xs font-normal text-muted-foreground">
-                                            {role.description}
-                                        </p>
-                                    {/if}
-                                </div>
-                                <label
-                                    class="flex items-center gap-2 text-xs font-normal text-muted-foreground"
-                                >
-                                    <span>Override</span>
-                                    <input
-                                        type="checkbox"
-                                        class="size-5 shrink-0 rounded border-primary"
-                                        checked={config !== undefined}
-                                        onchange={(e) =>
-                                            e.currentTarget.checked
-                                                ? enableOverride(role.type)
-                                                : disableOverride(role.type)}
-                                    />
-                                </label>
-                            </CardTitle>
-                        </CardHeader>
+                    <div class="py-4 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="text-base font-medium text-foreground">{role.type}</h4>
+                                {#if role.description}
+                                    <p class="text-xs text-muted-foreground">
+                                        {role.description}
+                                    </p>
+                                {/if}
+                            </div>
+                            <label
+                                class="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer"
+                            >
+                                <span>Override</span>
+                                <input
+                                    type="checkbox"
+                                    class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                                    checked={config !== undefined}
+                                    onchange={(e) =>
+                                        e.currentTarget.checked
+                                            ? enableOverride(role.type)
+                                            : disableOverride(role.type)}
+                                />
+                            </label>
+                        </div>
                         {#if config}
                             <div transition:slide={{ duration: 150 }}>
-                                <CardContent class="flex flex-col gap-3">
-                                    <ModelConfigCard
-                                        {config}
-                                        onModelChange={(p, m) => handleModelChange(role.type, p, m)}
-                                    />
-                                </CardContent>
+                                <ModelConfigCard
+                                    {config}
+                                    onModelChange={(p, m) => handleModelChange(role.type, p, m)}
+                                />
                             </div>
                         {/if}
-                    </Card>
+                    </div>
                 {/each}
             </div>
         {/if}

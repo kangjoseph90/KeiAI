@@ -2,13 +2,6 @@
     import { isTauri } from '@tauri-apps/api/core';
     import { AlertTriangle, Cloud, Network, Server, Unplug } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import {
-        Card,
-        CardContent,
-        CardDescription,
-        CardHeader,
-        CardTitle
-    } from '$lib/components/ui/card';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import {
@@ -84,19 +77,25 @@
     }
 </script>
 
-<div class="space-y-5">
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center gap-2"><Server class="size-5" /> Server</CardTitle>
-            <CardDescription>
+<div class="space-y-8 pb-8">
+    <!-- Server Section -->
+    <section class="space-y-4">
+        <div>
+            <h3
+                class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
+            >
+                <Server class="size-5" /> Server
+            </h3>
+            <p class="text-sm text-muted-foreground">
                 Choose the KeiAI server used for accounts, sync, assets, rooms, and other services.
-            </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4" aria-busy={serverBusy || $serverTransitionLocked}>
+            </p>
+        </div>
+
+        <div class="space-y-4" aria-busy={serverBusy || $serverTransitionLocked}>
             <div class="grid gap-2 sm:grid-cols-2">
                 <button
                     type="button"
-                    class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {serverMode ===
+                    class="min-h-[3.25rem] rounded-lg border border-border px-3 py-2 text-left transition-colors {serverMode ===
                     'default'
                         ? 'border-primary bg-primary/5'
                         : 'hover:bg-muted/50'}"
@@ -110,7 +109,7 @@
                 </button>
                 <button
                     type="button"
-                    class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {serverMode ===
+                    class="min-h-[3.25rem] rounded-lg border border-border px-3 py-2 text-left transition-colors {serverMode ===
                     'custom'
                         ? 'border-primary bg-primary/5'
                         : 'hover:bg-muted/50'}"
@@ -163,27 +162,33 @@
                 </div>
             {/if}
 
-            <Button disabled={serverBusy || $serverTransitionLocked} onclick={saveServer}>
+            <Button size="sm" disabled={serverBusy || $serverTransitionLocked} onclick={saveServer}>
                 Save server connection
             </Button>
-        </CardContent>
-    </Card>
+        </div>
+    </section>
 
     {#if !nativeRuntime}
-        <Card>
-            <CardHeader>
-                <CardTitle class="flex items-center gap-2"
-                    ><Network class="size-5" /> Proxy</CardTitle
+        <div class="border-t border-border"></div>
+
+        <!-- Proxy Section -->
+        <section class="space-y-4">
+            <div>
+                <h3
+                    class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
                 >
-                <CardDescription>
+                    <Network class="size-5" /> Proxy
+                </h3>
+                <p class="text-sm text-muted-foreground">
                     Choose how browser requests that require CORS bypass are sent.
-                </CardDescription>
-            </CardHeader>
-            <CardContent class="space-y-4" aria-busy={proxyBusy}>
+                </p>
+            </div>
+
+            <div class="space-y-4" aria-busy={proxyBusy}>
                 <div class="grid gap-2 sm:grid-cols-3">
                     <button
                         type="button"
-                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'default'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"
@@ -197,7 +202,7 @@
                     </button>
                     <button
                         type="button"
-                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'custom'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"
@@ -212,7 +217,7 @@
                     </button>
                     <button
                         type="button"
-                        class="min-h-[3.25rem] rounded-lg border border-foreground/15 px-3 py-2 text-left transition-colors {proxyMode ===
+                        class="min-h-[3.25rem] rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'off'
                             ? 'border-primary bg-primary/5'
                             : 'hover:bg-muted/50'}"
@@ -258,8 +263,10 @@
                     </div>
                 {/if}
 
-                <Button disabled={proxyBusy} onclick={saveProxy}>Save proxy connection</Button>
-            </CardContent>
-        </Card>
+                <Button size="sm" disabled={proxyBusy} onclick={saveProxy}
+                    >Save proxy connection</Button
+                >
+            </div>
+        </section>
     {/if}
 </div>

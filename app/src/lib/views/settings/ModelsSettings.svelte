@@ -36,7 +36,7 @@
         </div>
     {:else}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <div class="flex flex-col gap-5 pb-8">
+            <div class="flex flex-col">
                 {#if activeTab === 'model'}
                     <ModelTab preset={$activePreset!} />
                 {:else if activeTab === 'parameters'}

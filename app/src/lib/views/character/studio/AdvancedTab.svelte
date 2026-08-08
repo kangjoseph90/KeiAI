@@ -7,7 +7,6 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import ExportTab from './ExportTab.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
-    import SettingRow from '$lib/components/SettingRow.svelte';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
 
@@ -42,26 +41,40 @@
     }
 </script>
 
-<div class="space-y-6">
-    <section class="space-y-4">
-        <SettingRow>
-            <div class="space-y-0.5">
-                <Label for="character-allow-low-level">Allow Low Level Access</Label>
-                <p class="text-xs text-muted-foreground">
-                    Bypass standard safety filters and prompt constraints.
-                </p>
-            </div>
-            <input
-                id="character-allow-low-level"
-                type="checkbox"
-                class="size-5 shrink-0 rounded border-primary"
-                checked={character.allowLowLevel}
-                onchange={(e) => onUpdate({ allowLowLevel: e.currentTarget.checked })}
-            />
-        </SettingRow>
+<div class="space-y-8 pb-8">
+    <section class="space-y-6">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">Advanced Options</h3>
+            <p class="text-sm text-muted-foreground">
+                Configure low-level access and initial variables for this character.
+            </p>
+        </div>
 
-        <div class="space-y-1.5">
-            <Label class="text-xs">Default Variables</Label>
+        <div class="divide-y divide-border">
+            <div class="flex items-center justify-between pb-4">
+                <div class="space-y-0.5 pr-4">
+                    <Label
+                        for="character-allow-low-level"
+                        class="text-sm font-medium cursor-pointer"
+                    >
+                        Allow Low Level Access
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                        Bypass standard safety filters and prompt constraints.
+                    </p>
+                </div>
+                <input
+                    id="character-allow-low-level"
+                    type="checkbox"
+                    class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                    checked={character.allowLowLevel}
+                    onchange={(e) => onUpdate({ allowLowLevel: e.currentTarget.checked })}
+                />
+            </div>
+        </div>
+
+        <div class="space-y-2">
+            <Label class="text-sm font-medium">Default Variables</Label>
             <KeyValueEditor
                 emptyMessage="No initial variables defined."
                 data={character.defaultVariables}
@@ -72,28 +85,36 @@
         </div>
     </section>
 
+    <div class="border-t border-border"></div>
+
     <ExportTab {exporting} {showLightExport} {onExport} />
 
-    <section class="space-y-3">
-        <h3 class="text-sm font-semibold text-destructive">Danger Zone</h3>
-        <div
-            class="flex flex-col gap-4 rounded-lg border border-destructive/30 p-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-            <div>
-                <p class="text-sm font-medium">Delete this character</p>
-                <p class="mt-1 text-xs text-muted-foreground">
-                    This removes the character and its owned resources.
-                </p>
+    <div class="border-t border-border"></div>
+
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-destructive">Danger Zone</h3>
+            <p class="text-sm text-muted-foreground">Irreversible actions for this character.</p>
+        </div>
+
+        <div class="divide-y divide-border">
+            <div class="flex items-center justify-between py-2">
+                <div class="space-y-0.5 pr-4">
+                    <p class="text-sm font-medium text-foreground">Delete this character</p>
+                    <p class="text-xs text-muted-foreground">
+                        This removes the character and its owned resources permanently.
+                    </p>
+                </div>
+                <Button
+                    variant="destructive"
+                    class="gap-1.5 shrink-0"
+                    disabled={deleting}
+                    aria-busy={deleting}
+                    onclick={onDelete}
+                >
+                    <Trash2 class="size-4" /> Delete Character
+                </Button>
             </div>
-            <Button
-                variant="destructive"
-                class="gap-1.5"
-                disabled={deleting}
-                aria-busy={deleting}
-                onclick={onDelete}
-            >
-                <Trash2 class="size-4" /> Delete Character
-            </Button>
         </div>
     </section>
 </div>

@@ -24,13 +24,7 @@
     import { WorkspaceShell } from '$lib/components/layout';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle,
-        CardDescription
-    } from '$lib/components/ui/card';
+
     import { Badge } from '$lib/components/ui/badge';
     import {
         appSettings,
@@ -214,18 +208,21 @@
                 {:else if activeTab === 'connections'}
                     <ConnectionsSettings />
                 {:else if activeTab === 'general'}
-                    <div class="space-y-5">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Appearance</CardTitle>
-                                <CardDescription
-                                    >Customize how KeiAI looks on your screen.</CardDescription
-                                >
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <SettingRow>
+                    <div class="space-y-8 pb-8">
+                        <!-- Appearance Section -->
+                        <section class="space-y-3">
+                            <div>
+                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                    Appearance
+                                </h3>
+                                <p class="text-sm text-muted-foreground">
+                                    Customize how KeiAI looks on your screen.
+                                </p>
+                            </div>
+                            <div class="divide-y divide-border">
+                                <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5">
-                                        <Label>Color Theme</Label>
+                                        <Label class="text-sm font-medium">Color Theme</Label>
                                         <p class="text-xs text-muted-foreground">
                                             Switch between light and dark mode.
                                         </p>
@@ -233,7 +230,7 @@
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        class="gap-1.5"
+                                        class="gap-1.5 shrink-0"
                                         disabled={settingsBusy}
                                         aria-busy={settingsBusy}
                                         onclick={handleToggleTheme}
@@ -241,23 +238,31 @@
                                         <RefreshCw class="size-4" />
                                         Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
                                     </Button>
-                                </SettingRow>
-                            </CardContent>
-                        </Card>
+                                </div>
+                            </div>
+                        </section>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Chat Interface</CardTitle>
-                                <CardDescription
-                                    >Configure chat interface behaviors.</CardDescription
-                                >
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <SettingRow>
-                                    <div class="space-y-0.5">
-                                        <Label for="setting-auto-generate-response"
-                                            >Generate response after sending</Label
+                        <div class="border-t border-border"></div>
+
+                        <!-- Chat Interface Section -->
+                        <section class="space-y-3">
+                            <div>
+                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                    Chat Interface
+                                </h3>
+                                <p class="text-sm text-muted-foreground">
+                                    Configure chat interface behaviors.
+                                </p>
+                            </div>
+                            <div class="divide-y divide-border">
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-auto-generate-response"
+                                            class="text-sm font-medium cursor-pointer"
                                         >
+                                            Generate response after sending
+                                        </Label>
                                         <p class="text-xs text-muted-foreground">
                                             Automatically start generating a response after you send
                                             a message.
@@ -266,7 +271,7 @@
                                     <input
                                         id="setting-auto-generate-response"
                                         type="checkbox"
-                                        class="size-5 shrink-0 rounded border-primary"
+                                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
                                         checked={$appSettings?.chat?.autoGenerateResponse !== false}
                                         disabled={settingsBusy}
                                         onchange={(e) =>
@@ -276,13 +281,16 @@
                                                 }
                                             })}
                                     />
-                                </SettingRow>
+                                </div>
 
-                                <SettingRow>
-                                    <div class="space-y-0.5">
-                                        <Label for="setting-save-messages-on-swipe"
-                                            >Save messages on swipe</Label
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-save-messages-on-swipe"
+                                            class="text-sm font-medium cursor-pointer"
                                         >
+                                            Save messages on swipe
+                                        </Label>
                                         <p class="text-xs text-muted-foreground">
                                             Save message history when swiping between alternative
                                             responses.
@@ -291,7 +299,7 @@
                                     <input
                                         id="setting-save-messages-on-swipe"
                                         type="checkbox"
-                                        class="size-5 shrink-0 rounded border-primary"
+                                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
                                         checked={$appSettings?.chat?.saveMessagesOnSwipe !== false}
                                         disabled={settingsBusy}
                                         onchange={(e) =>
@@ -301,13 +309,16 @@
                                                 }
                                             })}
                                     />
-                                </SettingRow>
+                                </div>
 
-                                <SettingRow>
-                                    <div class="space-y-0.5">
-                                        <Label for="setting-expand-steps"
-                                            >Expand trace steps during generation</Label
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-expand-steps"
+                                            class="text-sm font-medium cursor-pointer"
                                         >
+                                            Expand trace steps during generation
+                                        </Label>
                                         <p class="text-xs text-muted-foreground">
                                             Automatically expand reasoning steps when AI is
                                             generating responses.
@@ -316,7 +327,7 @@
                                     <input
                                         id="setting-expand-steps"
                                         type="checkbox"
-                                        class="size-5 shrink-0 rounded border-primary"
+                                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
                                         checked={$appSettings?.chat?.expandStepsOnGeneration !==
                                             false}
                                         disabled={settingsBusy}
@@ -327,46 +338,88 @@
                                                 }
                                             })}
                                     />
-                                </SettingRow>
-                            </CardContent>
-                        </Card>
+                                </div>
+                            </div>
+                        </section>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Local Data Maintenance</CardTitle>
-                                <CardDescription>
+                        <div class="border-t border-border"></div>
+
+                        <!-- Local Data Maintenance Section -->
+                        <section class="space-y-3">
+                            <div>
+                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                    Local Data Maintenance
+                                </h3>
+                                <p class="text-sm text-muted-foreground">
                                     Repair local sync state or permanently remove local data.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-3" aria-busy={maintenanceBusy}>
-                                <Button
-                                    variant="outline"
-                                    class="w-full"
-                                    disabled={maintenanceBusy ||
-                                        !$isLoggedIn ||
-                                        $serverTransitionLocked}
-                                    onclick={handleResetSyncCursors}
-                                >
-                                    <DatabaseZap class="mr-2 size-4" /> Reset Sync Cursors
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    class="w-full"
-                                    disabled={maintenanceBusy || $serverTransitionLocked}
-                                    onclick={handlePurgeOrphans}
-                                >
-                                    <Trash2 class="mr-2 size-4" /> Purge Orphaned Data
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    class="w-full"
-                                    disabled={maintenanceBusy || $serverTransitionLocked}
-                                    onclick={handleDeleteLocalUser}
-                                >
-                                    <Trash2 class="mr-2 size-4" /> Delete Local User
-                                </Button>
-                            </CardContent>
-                        </Card>
+                                </p>
+                            </div>
+                            <div class="divide-y divide-border" aria-busy={maintenanceBusy}>
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label class="text-sm font-medium">Reset Sync Cursors</Label
+                                        >
+                                        <p class="text-xs text-muted-foreground">
+                                            Fetch all data again from the sync server without
+                                            deleting local data.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="gap-1.5 shrink-0"
+                                        disabled={maintenanceBusy ||
+                                            !$isLoggedIn ||
+                                            $serverTransitionLocked}
+                                        onclick={handleResetSyncCursors}
+                                    >
+                                        <DatabaseZap class="size-4" /> Reset Sync Cursors
+                                    </Button>
+                                </div>
+
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label class="text-sm font-medium"
+                                            >Purge Orphaned Data</Label
+                                        >
+                                        <p class="text-xs text-muted-foreground">
+                                            Permanently remove local records and assets that no
+                                            longer belong to an active user.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="gap-1.5 shrink-0"
+                                        disabled={maintenanceBusy || $serverTransitionLocked}
+                                        onclick={handlePurgeOrphans}
+                                    >
+                                        <Trash2 class="size-4" /> Purge Orphaned Data
+                                    </Button>
+                                </div>
+
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label class="text-sm font-medium text-destructive"
+                                            >Delete Local User</Label
+                                        >
+                                        <p class="text-xs text-muted-foreground">
+                                            Permanently remove this user and all local data from
+                                            this device.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        class="gap-1.5 shrink-0"
+                                        disabled={maintenanceBusy || $serverTransitionLocked}
+                                        onclick={handleDeleteLocalUser}
+                                    >
+                                        <Trash2 class="size-4" /> Delete Local User
+                                    </Button>
+                                </div>
+                            </div>
+                        </section>
                     </div>
                 {/if}
             </div>

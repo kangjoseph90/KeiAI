@@ -2,13 +2,7 @@
     import { activeUser, updateUser } from '$lib/stores';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
-    import {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle,
-        CardDescription
-    } from '$lib/components/ui/card';
+
     import { Label } from '$lib/components/ui/label';
     import * as Avatar from '$lib/components/ui/avatar';
     import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
@@ -151,91 +145,102 @@
     }
 </script>
 
-<Card>
-    <CardHeader>
-        <CardTitle>User Profile</CardTitle>
-        <CardDescription>
-            Your profile is stored locally and syncs to your devices securely via PocketBase.
-        </CardDescription>
-    </CardHeader>
-    <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
-        <div class="mb-1 flex items-center gap-4">
-            <div class="shrink-0">
-                <button
-                    type="button"
-                    class="rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {canPreviewAvatar
-                        ? 'cursor-zoom-in hover:brightness-95'
-                        : 'cursor-default'}"
-                    disabled={!canPreviewAvatar}
-                    aria-label={canPreviewAvatar
-                        ? `View ${userName || 'profile'} avatar`
-                        : 'Default profile avatar'}
-                    title={canPreviewAvatar ? 'View avatar' : undefined}
-                    onclick={() => (avatarPreviewOpen = true)}
-                >
-                    <Avatar.Root
-                        class="size-20 border-2 border-muted transition-colors hover:border-primary"
-                    >
-                        <Avatar.Image src={displayedAvatar} alt={userName} class="object-cover" />
-                        <Avatar.Fallback class="text-xl font-bold"
-                            >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
-                        >
-                    </Avatar.Root>
-                </button>
-            </div>
-
-            <div class="min-w-0 flex-1 space-y-2">
-                <Label>Display Name</Label>
-                <Input
-                    bind:value={userName}
-                    placeholder="Your display name"
-                    disabled={loading || avatarPicking}
-                />
-                <div class="flex flex-wrap gap-1">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        class="gap-1 px-2"
-                        disabled={loading || avatarPicking}
-                        aria-busy={avatarPicking}
-                        onclick={handleAvatarUpload}
-                    >
-                        <Upload class="size-4" /> Upload avatar
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        class="gap-1 px-2"
-                        disabled={loading || avatarPicking || !displayedAvatar}
-                        onclick={handleAvatarRemove}
-                    >
-                        <Trash2 class="size-4" /> Remove avatar
-                    </Button>
-                </div>
-            </div>
+<div class="space-y-8 pb-8">
+    <section class="space-y-6">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">User Profile</h3>
+            <p class="text-sm text-muted-foreground">
+                Your profile is stored locally and syncs to your devices securely via PocketBase.
+            </p>
         </div>
 
-        {#if identityFingerprint}
-            <div class="space-y-2">
-                <Label>Identity Fingerprint</Label>
-                <div class="rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm">
-                    {identityFingerprint}
+        <div class="flex flex-col gap-6" aria-busy={loading || avatarPicking}>
+            <div class="flex items-center gap-4">
+                <div class="shrink-0">
+                    <button
+                        type="button"
+                        class="rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {canPreviewAvatar
+                            ? 'cursor-zoom-in hover:brightness-95'
+                            : 'cursor-default'}"
+                        disabled={!canPreviewAvatar}
+                        aria-label={canPreviewAvatar
+                            ? `View ${userName || 'profile'} avatar`
+                            : 'Default profile avatar'}
+                        title={canPreviewAvatar ? 'View avatar' : undefined}
+                        onclick={() => (avatarPreviewOpen = true)}
+                    >
+                        <Avatar.Root
+                            class="size-20 border-2 border-muted transition-colors hover:border-primary"
+                        >
+                            <Avatar.Image
+                                src={displayedAvatar}
+                                alt={userName}
+                                class="object-cover"
+                            />
+                            <Avatar.Fallback class="text-xl font-bold"
+                                >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
+                            >
+                        </Avatar.Root>
+                    </button>
+                </div>
+
+                <div class="min-w-0 flex-1 space-y-2">
+                    <Label for="profile-display-name">Display Name</Label>
+                    <Input
+                        id="profile-display-name"
+                        bind:value={userName}
+                        placeholder="Your display name"
+                        disabled={loading || avatarPicking}
+                    />
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            class="gap-1 px-2.5"
+                            disabled={loading || avatarPicking}
+                            aria-busy={avatarPicking}
+                            onclick={handleAvatarUpload}
+                        >
+                            <Upload class="size-4" /> Upload avatar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            class="gap-1 px-2.5"
+                            disabled={loading || avatarPicking || !displayedAvatar}
+                            onclick={handleAvatarRemove}
+                        >
+                            <Trash2 class="size-4" /> Remove avatar
+                        </Button>
+                    </div>
                 </div>
             </div>
-        {/if}
 
-        <Button
-            class="w-full"
-            disabled={loading || avatarPicking || !userName.trim()}
-            aria-busy={loading}
-            onclick={handleUpdateUser}
-        >
-            <UserRoundPen class="mr-2 size-4" /> Save Profile
-        </Button>
-    </CardContent>
-</Card>
+            {#if identityFingerprint}
+                <div class="space-y-1.5">
+                    <Label>Identity Fingerprint</Label>
+                    <div
+                        class="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-sm"
+                    >
+                        {identityFingerprint}
+                    </div>
+                </div>
+            {/if}
+
+            <div class="pt-2">
+                <Button
+                    disabled={loading || avatarPicking || !userName.trim()}
+                    aria-busy={loading}
+                    onclick={handleUpdateUser}
+                >
+                    <UserRoundPen class="mr-2 size-4" /> Save Profile
+                </Button>
+            </div>
+        </div>
+    </section>
+</div>
 
 <MediaGalleryDialog
     bind:open={avatarPreviewOpen}

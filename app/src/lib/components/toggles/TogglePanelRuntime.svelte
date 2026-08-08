@@ -37,7 +37,7 @@
     mode="browse"
     layout="list"
     listClass="flex w-full flex-col gap-1.5"
-    childContainerClass="ml-2 border-l border-sidebar-border px-2"
+    childContainerClass="ml-2 border-l border-sidebar-border p-2"
     folderWrapperClass={() => 'w-full'}
     itemWrapperClass={() => 'w-full'}
 >

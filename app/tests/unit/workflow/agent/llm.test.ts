@@ -10,7 +10,11 @@ import {
     hasVisibleAgentOutput,
     type AgentPart
 } from '$lib/workflow/agent/llm';
-import { createDefaultChatWorkflow, createDefaultTranslationWorkflow } from '$lib/workflow';
+import {
+    createDefaultChatWorkflow,
+    createDefaultSuggestionWorkflow,
+    createDefaultTranslationWorkflow
+} from '$lib/workflow';
 import type { Chat } from '$lib/services';
 
 const { mockGetToolCall } = vi.hoisted(() => ({ mockGetToolCall: vi.fn() }));
@@ -177,6 +181,17 @@ describe('getWorkflowLLMTypes', () => {
             {
                 type: 'chat',
                 description: 'Model used by Chat Agent'
+            }
+        ]);
+    });
+
+    it('collects Agent types present in a suggestion workflow', () => {
+        const definitions = getWorkflowLLMTypes(createDefaultSuggestionWorkflow());
+
+        expect(definitions).toEqual([
+            {
+                type: 'chat',
+                description: 'Model used by Suggester'
             }
         ]);
     });

@@ -951,7 +951,8 @@
         }
 
         .chat-message:hover .chat-message-actions,
-        .chat-message:focus-within .chat-message-actions {
+        .chat-message:focus-within .chat-message-actions,
+        .chat-message:has(:global([data-state='open'])) .chat-message-actions {
             opacity: 1;
         }
     }

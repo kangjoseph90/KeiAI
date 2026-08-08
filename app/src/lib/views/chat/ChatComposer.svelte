@@ -579,12 +579,24 @@
                         </DropdownMenu.Root>
                     </div>
 
+                    <!-- Hidden measuring ghost to prevent expansion jitter -->
+                    <div
+                        class="col-start-2 row-start-1 invisible pointer-events-none h-0 overflow-hidden"
+                        aria-hidden="true"
+                    >
+                        <AutoResizeTextarea
+                            {value}
+                            disabled={true}
+                            classname="w-full min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none"
+                            onheightchange={(height) => (textHeight = height)}
+                        />
+                    </div>
+
                     <AutoResizeTextarea
                         bind:value
                         classname="min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 {isExpanded
-                            ? 'col-span-3 row-start-1 mx-2 w-auto'
+                            ? 'col-start-1 col-span-3 row-start-1 mx-2 w-auto'
                             : 'col-start-2 row-start-1'}"
-                        onheightchange={(height) => (textHeight = height)}
                         oninput={() => {
                             if ($activeChat) setChatDraftText($activeChat.id, value);
                         }}

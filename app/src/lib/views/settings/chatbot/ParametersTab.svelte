@@ -3,7 +3,6 @@
     import { slide } from 'svelte/transition';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { appSettings, updatePreset } from '$lib/stores';
     import {
         type LLMParameter,
@@ -42,7 +41,8 @@
                 preset.chatWorkflow,
                 $appSettings?.translation.workflow,
                 $appSettings?.imageGeneration.workflow,
-                $appSettings?.tts.workflow
+                $appSettings?.tts.workflow,
+                $appSettings?.suggestion.workflow
             ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
@@ -93,12 +93,15 @@
     }
 </script>
 
-<div class="flex flex-col gap-5">
-    <Card>
-        <CardHeader>
-            <CardTitle class="text-base">Chat Parameters</CardTitle>
-        </CardHeader>
-        <CardContent class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+<div class="space-y-8 pb-8">
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">Chat Parameters</h3>
+            <p class="text-sm text-muted-foreground">
+                Fine-tune generation parameters for chat completions.
+            </p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {#each commonParams as param (param)}
                 <div class="flex flex-col gap-1.5">
                     <Label class="text-xs">{getLLMParameterName(param)}</Label>
@@ -112,10 +115,12 @@
                     />
                 </div>
             {/each}
-        </CardContent>
-    </Card>
+        </div>
+    </section>
 
-    <section class="rounded-lg border bg-card px-5 py-3">
+    <div class="border-t border-border"></div>
+
+    <section class="space-y-4">
         <div class="flex items-center gap-2">
             <button
                 type="button"
@@ -124,56 +129,57 @@
                 aria-label={advancedOpen ? 'Collapse' : 'Expand'}
             >
                 {#if advancedOpen}
-                    <ChevronDown class="size-3.5" />
+                    <ChevronDown class="size-4" />
                 {:else}
-                    <ChevronRight class="size-3.5" />
+                    <ChevronRight class="size-4" />
                 {/if}
             </button>
-            <button
-                type="button"
-                class="text-sm font-medium text-foreground hover:opacity-80 transition-opacity"
-                onclick={() => (advancedOpen = !advancedOpen)}
-            >
-                Model Type Parameter Overrides
-            </button>
+            <div>
+                <button
+                    type="button"
+                    class="text-base font-medium text-foreground hover:opacity-80 transition-opacity"
+                    onclick={() => (advancedOpen = !advancedOpen)}
+                >
+                    Model Type Overrides
+                </button>
+                <p class="text-xs text-muted-foreground">
+                    Override parameters for specific agent or workflow roles.
+                </p>
+            </div>
         </div>
 
         {#if advancedOpen}
-            <div class="mt-4 flex flex-col gap-3" transition:slide={{ duration: 150 }}>
+            <div class="pl-6 divide-y divide-border pt-1" transition:slide={{ duration: 150 }}>
                 {#each llmTypes as role (role.type)}
                     {@const params = preset.parameters[role.type]}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle class="flex items-center justify-between text-base">
-                                <div>
-                                    <div>{role.type}</div>
-                                    {#if role.description}
-                                        <p class="mt-0.5 text-xs font-normal text-muted-foreground">
-                                            {role.description}
-                                        </p>
-                                    {/if}
-                                </div>
-                                <label
-                                    class="flex items-center gap-2 text-xs font-normal text-muted-foreground"
-                                >
-                                    <span>Override</span>
-                                    <input
-                                        type="checkbox"
-                                        class="size-5 shrink-0 rounded border-primary"
-                                        checked={params !== undefined}
-                                        onchange={(e) =>
-                                            e.currentTarget.checked
-                                                ? enableOverride(role.type)
-                                                : disableOverride(role.type)}
-                                    />
-                                </label>
-                            </CardTitle>
-                        </CardHeader>
+                    <div class="py-4 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="text-base font-medium text-foreground">{role.type}</h4>
+                                {#if role.description}
+                                    <p class="text-xs text-muted-foreground">
+                                        {role.description}
+                                    </p>
+                                {/if}
+                            </div>
+                            <label
+                                class="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer"
+                            >
+                                <span>Override</span>
+                                <input
+                                    type="checkbox"
+                                    class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                                    checked={params !== undefined}
+                                    onchange={(e) =>
+                                        e.currentTarget.checked
+                                            ? enableOverride(role.type)
+                                            : disableOverride(role.type)}
+                                />
+                            </label>
+                        </div>
                         {#if params !== undefined}
                             <div transition:slide={{ duration: 150 }}>
-                                <CardContent
-                                    class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3"
-                                >
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                     {#each commonParams as param (param)}
                                         <div class="flex flex-col gap-1.5">
                                             <Label class="text-xs"
@@ -194,10 +200,10 @@
                                             />
                                         </div>
                                     {/each}
-                                </CardContent>
+                                </div>
                             </div>
                         {/if}
-                    </Card>
+                    </div>
                 {/each}
             </div>
         {/if}
