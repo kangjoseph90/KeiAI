@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
         ArrowDown,
+        CornerUpLeft,
         Languages,
         MessageSquare,
         Mic,
@@ -34,6 +35,7 @@
         MAX_CHAT_DRAFT_INLAYS,
         setChatDraftInlayIds,
         setChatDraftText,
+        suggestionTasks,
         type DictationTask
     } from '$lib/stores';
     import {
@@ -43,8 +45,10 @@
         runChat,
         runDictation,
         runInputTranslation,
+        runSuggestion,
         stopChat,
-        stopInputTranslationForChat
+        stopInputTranslationForChat,
+        stopSuggestionForChat
     } from '$lib/tasks';
     import { characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
     import { getChatVariables, prepareNextSwipe } from '$lib/managers';
@@ -121,6 +125,13 @@
         const chatId = $activeChat?.id;
         if (!chatId) return false;
         return Array.from($inputTranslationTasks.values()).some(
+            (task) => task.chatId === chatId && task.status === 'generating'
+        );
+    });
+    const hasGeneratingSuggestion = $derived.by(() => {
+        const chatId = $activeChat?.id;
+        if (!chatId) return false;
+        return Array.from($suggestionTasks.values()).some(
             (task) => task.chatId === chatId && task.status === 'generating'
         );
     });
@@ -288,6 +299,7 @@
         value = '';
         attachmentIds = [];
         stopInputTranslationForChat(targetChatId);
+        stopSuggestionForChat(targetChatId);
         clearChatDraft(targetChatId);
         void flushChatDrafts().catch((error) =>
             logger.warn('Failed to clear cached chat draft:', error)
@@ -397,6 +409,18 @@
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
                 title: 'Could not start input translation',
+                description: getErrorMessage(error)
+            });
+        });
+    }
+
+    function handleSuggestion(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId) return;
+        void runSuggestion(chatId).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start suggestion',
                 description: getErrorMessage(error)
             });
         });
@@ -534,6 +558,14 @@
                                 >
                                     <Paperclip class="size-4" />
                                     Attach media
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={hasGeneratingSuggestion}
+                                    onclick={handleSuggestion}
+                                >
+                                    <CornerUpLeft class="size-4" />
+                                    Suggest input
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"

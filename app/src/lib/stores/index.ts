@@ -64,6 +64,7 @@ export const translationTasks = readonly(StoreState.translationTasks);
 export const imageGenerationTasks = readonly(StoreState.imageGenerationTasks);
 export const ttsTasks = readonly(StoreState.ttsTasks);
 export const inputTranslationTasks = readonly(StoreState.inputTranslationTasks);
+export const suggestionTasks = readonly(StoreState.suggestionTasks);
 export const dictationTasks = readonly(StoreState.dictationTasks);
 export const chatDrafts = readonly(StoreState.chatDrafts);
 export const collectedTasks = readonly(StoreState.collectedTasks);
@@ -91,6 +92,7 @@ export type {
     DisplayMessageStatus,
     InputTranslationTask,
     MediaTask,
+    SuggestionTask,
     TaskStatus,
     TranslationTask
 } from './types';
@@ -121,6 +123,7 @@ export * from './tasks/translation';
 export * from './tasks/image';
 export * from './tasks/tts';
 export * from './tasks/input_translation';
+export * from './tasks/suggestion';
 export * from './tasks/dictation';
 export * from './tasks/activity';
 export * from './auth';

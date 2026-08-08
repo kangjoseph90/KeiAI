@@ -15,4 +15,10 @@ export {
     stopInputTranslation,
     stopInputTranslationForChat
 } from './input_translation';
+export {
+    dismissSuggestion,
+    runSuggestion,
+    stopSuggestion,
+    stopSuggestionForChat
+} from './suggestion';
 export { cancelDictation, dismissDictation, finishDictation, runDictation } from './dictation';

@@ -33,6 +33,7 @@ import type {
     ChatTask,
     InputTranslationTask,
     MediaTask,
+    SuggestionTask,
     TaskMetadata,
     TranslationTask
 } from './types';
@@ -186,6 +187,7 @@ export const translationTasks = writable<Map<string, TranslationTask>>(new Map()
 export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
 export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
 export const inputTranslationTasks = writable<Map<string, InputTranslationTask>>(new Map());
+export const suggestionTasks = writable<Map<string, SuggestionTask>>(new Map());
 export const dictationTasks = writable<Map<string, DictationTask>>(new Map());
 export const chatDrafts = writable<Map<string, ChatDraft>>(new Map());
 
@@ -207,14 +209,24 @@ export const collectedTasks = derived(
         imageGenerationTasks,
         ttsTasks,
         inputTranslationTasks,
+        suggestionTasks,
         dictationTasks
     ],
-    ([chats, translations, images, speech, inputTranslations, dictations]): CollectedTask[] => [
+    ([
+        chats,
+        translations,
+        images,
+        speech,
+        inputTranslations,
+        suggestions,
+        dictations
+    ]): CollectedTask[] => [
         ...collectTasks('chat', chats),
         ...collectTasks('translation', translations),
         ...collectTasks('image', images),
         ...collectTasks('tts', speech),
         ...collectTasks('input_translation', inputTranslations),
+        ...collectTasks('suggestion', suggestions),
         ...collectTasks('dictation', dictations)
     ]
 );

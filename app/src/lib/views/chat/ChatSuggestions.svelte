@@ -7,9 +7,15 @@
         chatDrafts,
         dismissChatDraftSuggestion,
         inputTranslationTasks,
-        setChatDraftText
+        setChatDraftText,
+        suggestionTasks
     } from '$lib/stores';
-    import { dismissInputTranslation, stopInputTranslation } from '$lib/tasks';
+    import {
+        dismissInputTranslation,
+        dismissSuggestion,
+        stopInputTranslation,
+        stopSuggestion
+    } from '$lib/tasks';
     import TaskErrorNotice from './TaskErrorNotice.svelte';
 
     let { chatId, class: className }: { chatId: string; class?: string } = $props();
@@ -17,9 +23,23 @@
     const suggestions = $derived(Object.entries($chatDrafts.get(chatId)?.suggestions ?? {}));
     const draftText = $derived($chatDrafts.get(chatId)?.text ?? '');
 
+    function isInputTranslation(suggestionId: string): boolean {
+        return $inputTranslationTasks.has(suggestionId);
+    }
+
+    function stopTask(suggestionId: string): void {
+        if (isInputTranslation(suggestionId)) stopInputTranslation(suggestionId);
+        else stopSuggestion(suggestionId);
+    }
+
+    function clearTask(suggestionId: string): void {
+        if (isInputTranslation(suggestionId)) dismissInputTranslation(suggestionId);
+        else dismissSuggestion(suggestionId);
+    }
+
     function dismiss(chatId: string, suggestionId: string): void {
         dismissChatDraftSuggestion(chatId, suggestionId);
-        dismissInputTranslation(suggestionId);
+        clearTask(suggestionId);
     }
 
     function applyToDraft(
@@ -29,25 +49,27 @@
     ): void {
         void Promise.resolve(action()).then(() => {
             dismissChatDraftSuggestion(chatId, suggestionId);
-            dismissInputTranslation(suggestionId);
+            clearTask(suggestionId);
         });
     }
 </script>
 
 <div class="flex flex-col gap-2 {className}">
     {#each suggestions as [suggestionId, text] (suggestionId)}
-        {@const inputTranslationTask = $inputTranslationTasks.get(suggestionId)}
-        {@const generating = inputTranslationTask?.status === 'generating'}
-        {@const errored = inputTranslationTask?.status === 'error'}
+        {@const task =
+            $inputTranslationTasks.get(suggestionId) ?? $suggestionTasks.get(suggestionId)}
+        {@const generating = task?.status === 'generating'}
+        {@const errored = task?.status === 'error'}
+        {@const isTranslation = isInputTranslation(suggestionId)}
         {#if errored}
             <TaskErrorNotice
-                title="Input translation failed"
-                message={inputTranslationTask?.errorMessage ?? ''}
+                title={isTranslation ? 'Input translation failed' : 'Suggestion failed'}
+                message={task?.errorMessage ?? ''}
                 onDismiss={() => {
                     if (!text.trim()) {
                         dismissChatDraftSuggestion(chatId, suggestionId);
                     }
-                    dismissInputTranslation(suggestionId);
+                    clearTask(suggestionId);
                 }}
             />
         {:else}
@@ -56,7 +78,9 @@
             >
                 <div class="flex min-w-0 flex-1 items-center self-stretch">
                     {#if generating && !text}
-                        <span class="py-0.5 text-foreground/70">Translating…</span>
+                        <span class="py-0.5 text-foreground/70">
+                            {isTranslation ? 'Translating…' : 'Suggesting…'}
+                        </span>
                     {:else}
                         <AutoResizeTextarea
                             value={text}
@@ -73,7 +97,7 @@
                         class="shrink-0 self-end rounded-full text-muted-foreground"
                         title="Stop"
                         aria-label="Stop"
-                        onclick={() => stopInputTranslation(suggestionId)}
+                        onclick={() => stopTask(suggestionId)}
                     >
                         <Loader2 class="size-4 animate-spin" />
                     </Button>

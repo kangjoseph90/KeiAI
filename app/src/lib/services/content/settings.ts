@@ -59,6 +59,9 @@ export interface AppSettingsContent {
     tts: {
         workflow: WorkflowDefinition;
     };
+    suggestion: {
+        workflow: WorkflowDefinition;
+    };
     openai: OpenAIProviderConfig;
     anthropic: AnthropicProviderConfig;
     google: GoogleProviderConfig;
@@ -118,6 +121,9 @@ export const defaultSettings: AppSettings = {
         workflow: { nodes: {} }
     },
     tts: {
+        workflow: { nodes: {} }
+    },
+    suggestion: {
         workflow: { nodes: {} }
     },
     openai: {
@@ -315,6 +321,7 @@ function parseFields(data: Record<string, unknown>): AppSettings {
     fields.translation.workflow = normalizeWorkflow(fields.translation.workflow);
     fields.imageGeneration.workflow = normalizeWorkflow(fields.imageGeneration.workflow);
     fields.tts.workflow = normalizeWorkflow(fields.tts.workflow);
+    fields.suggestion.workflow = normalizeWorkflow(fields.suggestion.workflow);
     fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }

@@ -2,7 +2,7 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { activePreset, updatePreset } from '$lib/stores';
+    import { activePreset, appSettings, updatePreset, updateSettings } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
@@ -12,6 +12,7 @@
     type Tab = 'workflow' | 'scripts' | 'toggles' | 'presets';
     let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
+    let suggestionWorkflowEditorOpen = $state(false);
 
     const tabs: Array<{ id: Tab; label: string }> = [
         { id: 'workflow', label: 'Workflow' },
@@ -52,12 +53,22 @@
         </ScrollArea>
     {:else if $activePreset && activeTab === 'workflow'}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <WorkflowSummaryCard
-                workflow={$activePreset.chatWorkflow}
-                onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
-                workflowLabel="Chat workflow"
-                editWorkflowLabel="Edit workflow"
-            />
+            <div class="flex flex-col gap-5 pb-8">
+                <WorkflowSummaryCard
+                    workflow={$activePreset.chatWorkflow}
+                    onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
+                    workflowLabel="Chat workflow"
+                    editWorkflowLabel="Edit workflow"
+                />
+                {#if $appSettings}
+                    <WorkflowSummaryCard
+                        workflow={$appSettings.suggestion.workflow}
+                        onEditWorkflow={() => (suggestionWorkflowEditorOpen = true)}
+                        workflowLabel="Suggestion workflow"
+                        editWorkflowLabel="Edit suggestion workflow"
+                    />
+                {/if}
+            </div>
         </ScrollArea>
     {:else if $activePreset}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
@@ -78,5 +89,14 @@
         workflow={$activePreset.chatWorkflow}
         title="Chat Workflow"
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
+    />
+{/if}
+
+{#if $appSettings}
+    <WorkflowEditorModal
+        bind:open={suggestionWorkflowEditorOpen}
+        workflow={$appSettings.suggestion.workflow}
+        title="Suggestion Workflow"
+        onPatch={(patch) => updateSettings({ suggestion: { workflow: patch } })}
     />
 {/if}

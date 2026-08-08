@@ -54,6 +54,12 @@ export interface InputTranslationTask extends TaskMetadata {
     controller?: AbortController;
 }
 
+export interface SuggestionTask extends TaskMetadata {
+    status: TaskStatus;
+    errorMessage?: string;
+    controller?: AbortController;
+}
+
 export interface ChatDraft {
     text: string;
     inlayIds: string[];
@@ -76,7 +82,8 @@ export type CollectedTaskKind =
     | 'translation'
     | 'tts'
     | 'image'
-    | 'input_translation';
+    | 'input_translation'
+    | 'suggestion';
 export type CollectedTaskStatus = 'running' | 'completed' | 'error';
 
 export interface CollectedTask {
