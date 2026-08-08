@@ -22,6 +22,16 @@ vi.mock('$lib/adapters/kv', () => ({
     }
 }));
 
+vi.mock('$lib/adapters/sync', () => ({
+    syncCursorDB: {
+        get: vi.fn(),
+        advance: vi.fn(),
+        delete: vi.fn(),
+        deleteByStream: vi.fn(),
+        deleteByUser: vi.fn()
+    }
+}));
+
 vi.mock('$lib/crypto', () => ({
     generateMasterKey: vi.fn(() => Promise.resolve(mockMasterKey)),
     generateIdentityKeyPair: vi.fn(() => Promise.resolve(mockIdentityKeyPair))
@@ -43,12 +53,15 @@ vi.mock('$lib/adapters/asset', () => ({
         getAllRegistry: vi.fn(() => Promise.resolve([])),
         deleteAsset: vi.fn(() => Promise.resolve()),
         deleteRegistry: vi.fn(() => Promise.resolve()),
+        deleteScopeAssets: vi.fn(() => Promise.resolve()),
         putAsset: vi.fn()
     }
 }));
 vi.mock('$lib/adapters/multi', () => ({
     appMulti: {
-        purgeUserLocal: vi.fn()
+        purgeUserLocal: vi.fn(),
+        getMembersByUser: vi.fn(() => Promise.resolve([])),
+        getRoomIndexes: vi.fn(() => Promise.resolve([]))
     }
 }));
 vi.mock('$lib/adapters/db', () => ({
@@ -66,6 +79,7 @@ vi.mock('$lib/adapters/storage', () => ({
 
 import { appUser } from '$lib/adapters/user';
 import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 
 describe('UserService', () => {
     beforeEach(() => {
@@ -208,5 +222,11 @@ describe('UserService', () => {
         );
         const savedUser = vi.mocked(appUser.saveUser).mock.calls[0][0];
         expect(savedUser).not.toHaveProperty('username');
+    });
+
+    it('deletes all structured sync cursors with the local user', async () => {
+        await UserService.deleteUser('user-1');
+
+        expect(syncCursorDB.deleteByUser).toHaveBeenCalledWith('user-1');
     });
 });

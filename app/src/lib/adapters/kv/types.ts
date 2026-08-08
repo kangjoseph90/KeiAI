@@ -1,8 +1,7 @@
 /**
  * Key-Value Storage Adapter Interface
  *
- * Used for storing lightweight string data: user preferences, active session IDs,
- * sync timestamps, etc.
+ * Used for storing lightweight string data such as user preferences and active session IDs.
  */
 export interface IKeyValueAdapter {
     /** Retrieve a string value. Returns null if not found. */

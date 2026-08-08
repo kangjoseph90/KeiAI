@@ -1,9 +1,10 @@
-import { isErrorCode } from '$lib/types/errors';
+import { AppError, isErrorCode } from '$lib/types/errors';
 import type { DataScope } from '$lib/adapters/db';
 import type { SyncState } from './base';
 import { hasActiveSession, getActiveSession } from '../session';
 import { pb } from '$lib/adapters/pb';
 import { normalizeUrl } from '$lib/utils/url';
+import type { SyncCursorIdentity, SyncCursorStream } from '$lib/adapters/sync';
 
 export const PAGE_SIZE = 200;
 export const CHUNK_SIZE = 100;
@@ -17,10 +18,29 @@ export function isReadyToSync(): boolean {
     return pb.authStore.isValid && hasActiveSession();
 }
 
-export function getSyncKey(entity: string, userId: string, ...segments: string[]): string {
-    const server = encodeURIComponent(normalizeUrl(pb.baseUrl));
-    const scope = segments.length > 0 ? `_${segments.join('_')}` : '';
-    return `lastSync_${entity}_${userId}${scope}_server_${server}`;
+export function getSyncCursorIdentity(
+    stream: SyncCursorStream,
+    userId: string,
+    scope: DataScope
+): SyncCursorIdentity {
+    return {
+        serverUrl: normalizeUrl(pb.baseUrl),
+        userId,
+        stream,
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId
+    };
+}
+
+export async function getServerNow(): Promise<number> {
+    const response = (await pb.send('/api/now', {
+        method: 'GET',
+        requestKey: null
+    })) as { now?: unknown };
+    if (typeof response.now !== 'number' || !Number.isFinite(response.now) || response.now <= 0) {
+        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid timestamp');
+    }
+    return response.now;
 }
 
 export function belongsToScope(

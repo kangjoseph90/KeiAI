@@ -597,13 +597,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
     async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND updatedAt >= $3`,
-            [scope.scopeType, scope.scopeId, sinceUpdatedAt]
+            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND updatedAt > $3 AND updatedAt <= $4`,
+            [scope.scopeType, scope.scopeId, afterUpdatedAt, throughUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));
     }

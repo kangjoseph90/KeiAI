@@ -23,26 +23,24 @@ $app.onServe().bindFunc((e) => {
   try {
     var result = require(`${__hooks}/keiai.js`).recoverR2AssetCatalog();
     if (result.configured) {
-      $app.logger().info(
-        "R2 asset catalog recovery completed.",
-        "scanned",
-        result.scanned,
-        "recovered",
-        result.recovered,
-        "existing",
-        result.existing,
-        "skipped",
-        result.skipped,
-        "failed",
-        result.failed,
-      );
+      $app
+        .logger()
+        .info(
+          "R2 asset catalog recovery completed.",
+          "scanned",
+          result.scanned,
+          "recovered",
+          result.recovered,
+          "existing",
+          result.existing,
+          "skipped",
+          result.skipped,
+          "failed",
+          result.failed,
+        );
     }
   } catch (err) {
-    $app.logger().error(
-      "R2 asset catalog recovery failed.",
-      "error",
-      err,
-    );
+    $app.logger().error("R2 asset catalog recovery failed.", "error", err);
   }
   e.next();
 });
@@ -131,64 +129,51 @@ onRealtimeSubscribeRequest((e) => {
   e.next();
 });
 
-// Delete-wins: prevent resurrection of soft-deleted records
-// (endpoint-only tombstone for multi_room_index)
+// Canonical sync arbitration. Record hooks run for both HTTP requests and
+// programmatic $app.save calls (including the custom endpoint transactions).
+// Never trust a client supplied serverUpdatedAt value.
+var syncCollections = [
+  "records",
+  "multi_room_records",
+  "multi_room_index",
+  "multi_room_members",
+];
 
-onRecordUpdateRequest((e) => {
-  var existing = $app.findRecordById("records", e.record.id);
-  if (existing && existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
-    e.record.set("isDeleted", true);
-    e.record.set("encryptedData", existing.getString("encryptedData"));
-    e.record.set("encryptedDataIV", existing.getString("encryptedDataIV"));
-    e.record.set("assetEntries", existing.getString("assetEntries") || "");
-    var h = require(`${__hooks}/keiai.js`);
-    e.record.set("updatedAt", Math.max(
-      h.getNumberField(existing, "updatedAt", 0),
-      h.getNumberField(e.record, "updatedAt", 0)
-    ));
-  }
-  e.next();
-}, "records");
-
-onRecordUpdateRequest((e) => {
-  var existing = $app.findRecordById("multi_room_records", e.record.id);
-  if (existing && existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
-    e.record.set("isDeleted", true);
-    e.record.set("encryptedData", existing.getString("encryptedData"));
-    e.record.set("encryptedDataIV", existing.getString("encryptedDataIV"));
-    e.record.set("assetEntries", existing.getString("assetEntries") || "");
-    var h = require(`${__hooks}/keiai.js`);
-    e.record.set("updatedAt", Math.max(
-      h.getNumberField(existing, "updatedAt", 0),
-      h.getNumberField(e.record, "updatedAt", 0)
-    ));
-  }
-  e.next();
-}, "multi_room_records");
-
-onRecordUpdateRequest((e) => {
-  var existing = $app.findRecordById("multi_room_index", e.record.id);
-  if (existing) {
-    var h = require(`${__hooks}/keiai.js`);
-    // Block resurrection: existing deleted + incoming live
-    if (existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
-      e.record.set("isDeleted", true);
-      e.record.set("updatedAt", Math.max(
-        h.getNumberField(existing, "updatedAt", 0),
-        h.getNumberField(e.record, "updatedAt", 0)
-      ));
+syncCollections.forEach((collectionName) => {
+  onRecordCreate((e) => {
+    if (e.record) {
+      var h = require(`${__hooks}/keiai.js`);
+      h.stampSyncRecordCreate(e.record);
     }
-    // Block ordinary deletion: existing live + incoming deleted
-    if (!existing.getBool("isDeleted") && e.record.getBool("isDeleted")) {
-      e.record.set("isDeleted", false);
+    e.next();
+  }, collectionName);
+
+  onRecordUpdate((e) => {
+    if (e.record) {
+      require(`${__hooks}/keiai.js`).applySyncRecordUpdate(
+        e.record,
+        collectionName,
+      );
     }
-  }
+    e.next();
+  }, collectionName);
+});
+
+// A room-index tombstone must go through the owner deletion endpoint so the
+// related room records are removed in the same server transaction. These
+// request hooks do not affect that endpoint's programmatic $app.save call.
+onRecordCreateRequest((e) => {
+  if (e.record.getBool("isDeleted")) e.record.set("isDeleted", false);
   e.next();
 }, "multi_room_index");
 
-onRecordCreateRequest((e) => {
-  // Block tombstone creation via ordinary create
-  if (e.record.getBool("isDeleted")) {
+onRecordUpdateRequest((e) => {
+  var existing = $app.findRecordById("multi_room_index", e.record.id);
+  if (
+    existing &&
+    !existing.getBool("isDeleted") &&
+    e.record.getBool("isDeleted")
+  ) {
     e.record.set("isDeleted", false);
   }
   e.next();
@@ -207,6 +192,13 @@ routerAdd("GET", "/api/spec", (e) => {
     app: "keiai",
     protocol: 1,
   });
+});
+
+// Server clock upper bound for bounded remote pulls.
+routerAdd("GET", "/api/now", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var timestamp = h.getServerTimestamp();
+  return e.json(200, { now: timestamp });
 });
 
 // Username salt lookup

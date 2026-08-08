@@ -356,13 +356,18 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
     async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .filter((record: T) => (record.updatedAt ?? 0) >= sinceUpdatedAt)
+            .where('[scopeType+scopeId+updatedAt]')
+            .between(
+                [scope.scopeType, scope.scopeId, afterUpdatedAt],
+                [scope.scopeType, scope.scopeId, throughUpdatedAt],
+                false,
+                true
+            )
             .toArray()) as T[];
     }
 

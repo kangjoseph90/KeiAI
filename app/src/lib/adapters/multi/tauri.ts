@@ -216,11 +216,14 @@ export class TauriMultiAdapter implements IMultiAdapter {
         return rows.map((row) => this.toRoomIndex(row));
     }
 
-    async getRoomIndexesSince(sinceUpdatedAt: number): Promise<MultiRoomIndexRecord[]> {
+    async getRoomIndexesBetween(
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
+    ): Promise<MultiRoomIndexRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomIndexRow[]>(
-            `SELECT * FROM multi_room_index WHERE updatedAt > $1`,
-            [sinceUpdatedAt]
+            `SELECT * FROM multi_room_index WHERE updatedAt > $1 AND updatedAt <= $2`,
+            [afterUpdatedAt, throughUpdatedAt]
         );
         return rows.map((row) => this.toRoomIndex(row));
     }
@@ -273,17 +276,18 @@ export class TauriMultiAdapter implements IMultiAdapter {
         return rows.map((row) => this.toMember(row));
     }
 
-    async getMembersByRoomsSince(
+    async getMembersByRoomsBetween(
         roomIds: string[],
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         if (roomIds.length === 0) return [];
         const records: MultiRoomMemberRecord[] = [];
         for (const roomId of roomIds) {
             const db = await this.getSQLite();
             const rows = await db.select<MultiRoomMemberRow[]>(
-                `SELECT * FROM multi_room_members WHERE roomId = $1 AND updatedAt > $2`,
-                [roomId, sinceUpdatedAt]
+                `SELECT * FROM multi_room_members WHERE roomId = $1 AND updatedAt > $2 AND updatedAt <= $3`,
+                [roomId, afterUpdatedAt, throughUpdatedAt]
             );
             records.push(...rows.map((row) => this.toMember(row)));
         }
@@ -299,14 +303,15 @@ export class TauriMultiAdapter implements IMultiAdapter {
         return rows[0] ? this.toMember(rows[0]) : null;
     }
 
-    async getMembersSince(
+    async getMembersBetween(
         userId: string,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomMemberRow[]>(
-            `SELECT * FROM multi_room_members WHERE userId = $1 AND updatedAt > $2`,
-            [userId, sinceUpdatedAt]
+            `SELECT * FROM multi_room_members WHERE userId = $1 AND updatedAt > $2 AND updatedAt <= $3`,
+            [userId, afterUpdatedAt, throughUpdatedAt]
         );
         return rows.map((row) => this.toMember(row));
     }

@@ -196,6 +196,108 @@ function getNumberField(record, fieldName, fallback) {
   return fallback;
 }
 
+// Canonical sync records use the client supplied updatedAt as their LWW
+// version, but serverUpdatedAt is always assigned by the server. Keep the
+// timestamp monotonic within a running PocketBase process so a sync cursor can
+// safely use it even when several writes land in the same millisecond.
+var lastServerTimestamp = 0;
+
+function getServerTimestamp() {
+  var now = Date.now();
+  if (now <= lastServerTimestamp) now = lastServerTimestamp + 1;
+  lastServerTimestamp = now;
+  return now;
+}
+
+var syncRecordFields = {
+  records: [
+    "userId",
+    "kind",
+    "createdAt",
+    "updatedAt",
+    "encryptedData",
+    "encryptedDataIV",
+    "isDeleted",
+    "assetEntries",
+    "serverUpdatedAt",
+  ],
+  multi_room_records: [
+    "roomId",
+    "kind",
+    "createdAt",
+    "updatedAt",
+    "encryptedData",
+    "encryptedDataIV",
+    "isDeleted",
+    "assetEntries",
+    "serverUpdatedAt",
+  ],
+  multi_room_index: [
+    "ownerUserId",
+    "visibility",
+    "publicName",
+    "createdAt",
+    "updatedAt",
+    "isDeleted",
+    "serverUpdatedAt",
+  ],
+  multi_room_members: [
+    "roomId",
+    "userId",
+    "status",
+    "encryptedRoomKey",
+    "createdAt",
+    "updatedAt",
+    "serverUpdatedAt",
+  ],
+};
+
+function copySyncRecordFields(target, source, collectionName) {
+  var fields = syncRecordFields[collectionName];
+  for (var i = 0; i < fields.length; i++) {
+    var field = fields[i];
+    target.set(field, source.get(field));
+  }
+}
+
+/**
+ * Apply server-side LWW/delete-wins to a canonical sync record update.
+ *
+ * A rejected update is turned into a no-op by restoring every canonical field
+ * from the original record. This is intentional: PocketBase still completes
+ * the request successfully, but serverUpdatedAt (and all other canonical
+ * state) remains unchanged. A deleted record can never be resurrected.
+ */
+function applySyncRecordUpdate(record, collectionName) {
+  var original = record.original();
+  if (!original || !original.id) return true;
+
+  var incomingUpdatedAt = getNumberField(record, "updatedAt", 0);
+  var originalUpdatedAt = getNumberField(original, "updatedAt", 0);
+  var incomingDeleted = !!record.get("isDeleted");
+  var originalDeleted = !!original.get("isDeleted");
+
+  // Delete-wins is unconditional for a tombstone: a live record always accepts
+  // an incoming delete, and no later live write may resurrect it. Records with
+  // the same deletion state use the larger client updatedAt.
+  var accepted =
+    (!originalDeleted && incomingDeleted) ||
+    (incomingDeleted === originalDeleted &&
+      incomingUpdatedAt > originalUpdatedAt);
+
+  if (!accepted) {
+    copySyncRecordFields(record, original, collectionName);
+    return false;
+  }
+
+  record.set("serverUpdatedAt", getServerTimestamp());
+  return true;
+}
+
+function stampSyncRecordCreate(record) {
+  record.set("serverUpdatedAt", getServerTimestamp());
+}
+
 function isNoRowsError(err) {
   var text = String((err && (err.message || err.toString())) || "");
   return /no rows|not found/i.test(text);
@@ -360,6 +462,7 @@ function serializeMultiRoomIndex(record) {
     publicName: record.getString("publicName") || undefined,
     createdAt: getNumberField(record, "createdAt", 0),
     updatedAt: getNumberField(record, "updatedAt", 0),
+    serverUpdatedAt: getNumberField(record, "serverUpdatedAt", 0),
     isDeleted: record.getBool("isDeleted"),
   };
 }
@@ -373,6 +476,7 @@ function serializeMultiRoomMember(record) {
     encryptedRoomKey: record.getString("encryptedRoomKey") || undefined,
     createdAt: getNumberField(record, "createdAt", 0),
     updatedAt: getNumberField(record, "updatedAt", 0),
+    serverUpdatedAt: getNumberField(record, "serverUpdatedAt", 0),
   };
 }
 
@@ -441,7 +545,7 @@ function findRecordsByUser(app, collectionName, userId) {
       "",
       0,
       0,
-      { userId: userId }
+      { userId: userId },
     );
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
@@ -457,7 +561,7 @@ function findOwnedMultiRoomIndexes(app, userId) {
       "",
       0,
       0,
-      { ownerUserId: userId }
+      { ownerUserId: userId },
     );
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
@@ -473,7 +577,7 @@ function findMultiRoomMembershipsByUser(app, userId) {
       "",
       0,
       0,
-      { userId: userId }
+      { userId: userId },
     );
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
@@ -489,7 +593,7 @@ function findAssetUsagesByUser(app, userId) {
       "",
       0,
       0,
-      { userId: userId }
+      { userId: userId },
     );
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
@@ -525,7 +629,7 @@ function deleteUserCascade(userRecord) {
       var roomRecords = findMultiRoomRecordsByRoom(
         txApp,
         "multi_room_records",
-        roomId
+        roomId,
       );
       for (var k = 0; k < roomRecords.length; k++) {
         txApp.delete(roomRecords[k]);
@@ -994,9 +1098,7 @@ function newR2Filesystem() {
 function parseR2AssetObject(object) {
   if (!object || object.isDir) return null;
 
-  var match = /^assets\/([0-9a-f]{64})\.bin$/i.exec(
-    String(object.key || ""),
-  );
+  var match = /^assets\/([0-9a-f]{64})\.bin$/i.exec(String(object.key || ""));
   var size = Number(object.size || 0);
   if (
     !match ||
@@ -1346,6 +1448,9 @@ module.exports = {
   getUserPublicKey: getUserPublicKey,
   getOrCreateAssetAccount: getOrCreateAssetAccount,
   getNumberField: getNumberField,
+  getServerTimestamp: getServerTimestamp,
+  applySyncRecordUpdate: applySyncRecordUpdate,
+  stampSyncRecordCreate: stampSyncRecordCreate,
   getPairingBlobs: getPairingBlobs,
   handleAssetRefTransition: handleAssetRefTransition,
   hasAssetUsage: hasAssetUsage,

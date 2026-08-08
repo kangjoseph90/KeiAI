@@ -6,7 +6,7 @@ import {
     type MultiRoomIndexRecord,
     type MultiRoomMemberRecord
 } from '$lib/adapters/multi';
-import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 
 const mockCollection = {
@@ -29,6 +29,7 @@ vi.mock('$lib/adapters/pb', () => ({
     pb: {
         baseUrl: 'https://sync.example.test',
         authStore: { isValid: true },
+        send: vi.fn().mockResolvedValue({ now: 3000 }),
         collection: vi.fn(() => mockCollection),
         filter: vi.fn((value: string) => value),
         createBatch: vi.fn(() => mockBatch)
@@ -39,27 +40,36 @@ vi.mock('$lib/adapters/multi', () => ({
     appMulti: {
         getRoomIndex: vi.fn(),
         getRoomIndexesByOwner: vi.fn(),
-        getRoomIndexesSince: vi.fn(),
+        getRoomIndexesBetween: vi.fn(),
         saveRoomIndex: vi.fn(),
         purgeRoomLocal: vi.fn(),
         getMember: vi.fn(),
-        getMembersSince: vi.fn(),
-        getMembersByRoomsSince: vi.fn(),
+        getMembersBetween: vi.fn(),
+        getMembersByRoomsBetween: vi.fn(),
         saveMember: vi.fn()
     }
 }));
 
-vi.mock('$lib/adapters/kv', () => ({
-    appKV: {
+vi.mock('$lib/adapters/sync', () => ({
+    syncCursorDB: {
         get: vi.fn(),
-        set: vi.fn(),
-        remove: vi.fn()
+        advance: vi.fn(),
+        delete: vi.fn(),
+        deleteByStream: vi.fn(),
+        deleteByUser: vi.fn()
     }
 }));
 
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
     hasActiveSession: vi.fn()
+}));
+
+vi.mock('$lib/utils/clock', () => ({
+    clock: {
+        now: vi.fn(() => 2500),
+        observe: vi.fn()
+    }
 }));
 
 describe('MultiRecordSyncEngine', () => {
@@ -76,7 +86,10 @@ describe('MultiRecordSyncEngine', () => {
         });
         vi.mocked(hasActiveSession).mockReturnValue(true);
         (pb.authStore as { isValid: boolean }).isValid = true;
-        vi.mocked(appKV.get).mockResolvedValue('1000');
+        vi.mocked(syncCursorDB.get).mockResolvedValue({
+            serverPullCursor: 1000,
+            localPushCursor: 1000
+        });
         vi.mocked(mockCollection.getList).mockResolvedValue({
             items: [],
             page: 1,
@@ -92,9 +105,9 @@ describe('MultiRecordSyncEngine', () => {
             isDeleted: false
         });
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([]);
-        vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([]);
-        vi.mocked(appMulti.getMembersSince).mockResolvedValue([]);
-        vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([]);
+        vi.mocked(appMulti.getRoomIndexesBetween).mockResolvedValue([]);
+        vi.mocked(appMulti.getMembersBetween).mockResolvedValue([]);
+        vi.mocked(appMulti.getMembersByRoomsBetween).mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -147,17 +160,15 @@ describe('MultiRecordSyncEngine', () => {
             expect.objectContaining({ id: 'member-1', roomId: 'room-1' }),
             { origin: 'sync' }
         );
-        expect(appKV.set).toHaveBeenCalledWith(
-            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test',
-            '2500'
-        );
-    });
-
-    it('resets the current user and server metadata cursor', async () => {
-        await service.resetCursor(userId);
-
-        expect(appKV.remove).toHaveBeenCalledWith(
-            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test'
+        expect(syncCursorDB.advance).toHaveBeenCalledWith(
+            {
+                serverUrl: 'https://sync.example.test',
+                userId,
+                stream: 'multi_meta',
+                scopeType: 'user',
+                scopeId: userId
+            },
+            { serverPullCursor: 3000, localPushCursor: 2500 }
         );
     });
 
@@ -167,9 +178,9 @@ describe('MultiRecordSyncEngine', () => {
         const invitedMember = member({ id: 'member-2', userId: 'user-2', updatedAt: 2200 });
 
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([ownedIndex]);
-        vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([ownedIndex]);
-        vi.mocked(appMulti.getMembersSince).mockResolvedValue([ownMember]);
-        vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([invitedMember]);
+        vi.mocked(appMulti.getRoomIndexesBetween).mockResolvedValue([ownedIndex]);
+        vi.mocked(appMulti.getMembersBetween).mockResolvedValue([ownMember]);
+        vi.mocked(appMulti.getMembersByRoomsBetween).mockResolvedValue([invitedMember]);
 
         await service.trigger();
 
@@ -181,9 +192,15 @@ describe('MultiRecordSyncEngine', () => {
         expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'member-2', userId: 'user-2' })
         );
-        expect(appKV.set).toHaveBeenCalledWith(
-            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test',
-            '2200'
+        expect(syncCursorDB.advance).toHaveBeenCalledWith(
+            {
+                serverUrl: 'https://sync.example.test',
+                userId,
+                stream: 'multi_meta',
+                scopeType: 'user',
+                scopeId: userId
+            },
+            { serverPullCursor: 3000, localPushCursor: 2500 }
         );
     });
 
@@ -315,11 +332,11 @@ describe('MultiRecordSyncEngine', () => {
             vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([
                 roomIndex({ updatedAt: 2000 })
             ]);
-            vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([
+            vi.mocked(appMulti.getRoomIndexesBetween).mockResolvedValue([
                 roomIndex({ updatedAt: 2000 })
             ]);
-            vi.mocked(appMulti.getMembersSince).mockResolvedValue([]);
-            vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([]);
+            vi.mocked(appMulti.getMembersBetween).mockResolvedValue([]);
+            vi.mocked(appMulti.getMembersByRoomsBetween).mockResolvedValue([]);
 
             // Server returns deleted room index in batch response
             vi.mocked(mockBatch.send).mockResolvedValue([

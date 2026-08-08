@@ -61,19 +61,27 @@ export interface IMultiAdapter {
     getRoomIndex(roomId: string): Promise<MultiRoomIndexRecord | null>;
     getRoomIndexes(roomIds: string[]): Promise<MultiRoomIndexRecord[]>;
     getRoomIndexesByOwner(ownerUserId: string): Promise<MultiRoomIndexRecord[]>;
-    getRoomIndexesSince(sinceUpdatedAt: number): Promise<MultiRoomIndexRecord[]>;
+    getRoomIndexesBetween(
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
+    ): Promise<MultiRoomIndexRecord[]>;
     saveRoomIndex(record: MultiRoomIndexRecord, options?: MultiWriteOptions): Promise<void>;
     saveRoomIndexes(records: MultiRoomIndexRecord[], options?: MultiWriteOptions): Promise<void>;
 
     getMember(id: string): Promise<MultiRoomMemberRecord | null>;
     getMembersByUser(userId: string): Promise<MultiRoomMemberRecord[]>;
     getMembersByRoom(roomId: string): Promise<MultiRoomMemberRecord[]>;
-    getMembersByRoomsSince(
+    getMembersByRoomsBetween(
         roomIds: string[],
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]>;
     getMembership(roomId: string, userId: string): Promise<MultiRoomMemberRecord | null>;
-    getMembersSince(userId: string, sinceUpdatedAt: number): Promise<MultiRoomMemberRecord[]>;
+    getMembersBetween(
+        userId: string,
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
+    ): Promise<MultiRoomMemberRecord[]>;
     saveMember(record: MultiRoomMemberRecord, options?: MultiWriteOptions): Promise<void>;
     saveMembers(records: MultiRoomMemberRecord[], options?: MultiWriteOptions): Promise<void>;
 

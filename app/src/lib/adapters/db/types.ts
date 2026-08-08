@@ -225,7 +225,8 @@ export interface IDatabaseAdapter {
     getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
     countByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<number>;

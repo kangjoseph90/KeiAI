@@ -91,6 +91,9 @@ migrate(
         new Field({ name: "updatedAt", type: "number", required: true }),
       );
       collection.fields.add(
+        new Field({ name: "serverUpdatedAt", type: "number", required: true }),
+      );
+      collection.fields.add(
         new Field({
           name: "encryptedData",
           type: "text",
@@ -145,6 +148,12 @@ migrate(
           `CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (userId, updatedAt)`,
         )
         .execute();
+      app
+        .db()
+        .newQuery(
+          `CREATE INDEX IF NOT EXISTS "idx_${name}_server_sync" ON "${name}" (userId, serverUpdatedAt)`,
+        )
+        .execute();
       if (includeKind) {
         app
           .db()
@@ -189,6 +198,12 @@ migrate(
           `CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (roomId, updatedAt)`,
         )
         .execute();
+      app
+        .db()
+        .newQuery(
+          `CREATE INDEX IF NOT EXISTS "idx_${name}_server_sync" ON "${name}" (roomId, serverUpdatedAt)`,
+        )
+        .execute();
       if (includeKind) {
         app
           .db()
@@ -224,6 +239,9 @@ migrate(
     roomIndex.fields.add(
       new Field({ name: "updatedAt", type: "number", required: true }),
     );
+    roomIndex.fields.add(
+      new Field({ name: "serverUpdatedAt", type: "number", required: true }),
+    );
     roomIndex.fields.add(new Field({ name: "isDeleted", type: "bool" }));
     app.save(roomIndex);
 
@@ -245,7 +263,12 @@ migrate(
         'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_updated" ON "multi_room_index" (updatedAt)',
       )
       .execute();
-
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_server_updated" ON "multi_room_index" (serverUpdatedAt)',
+      )
+      .execute();
     const members = new Collection({
       name: "multi_room_members",
       type: "base",
@@ -270,6 +293,9 @@ migrate(
     );
     members.fields.add(
       new Field({ name: "updatedAt", type: "number", required: true }),
+    );
+    members.fields.add(
+      new Field({ name: "serverUpdatedAt", type: "number", required: true }),
     );
     app.save(members);
 
@@ -297,7 +323,12 @@ migrate(
         'CREATE INDEX IF NOT EXISTS "idx_multi_room_members_updated" ON "multi_room_members" (updatedAt)',
       )
       .execute();
-
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_members_server_updated" ON "multi_room_members" (serverUpdatedAt)',
+      )
+      .execute();
     const freshRoomIndex = app.findCollectionByNameOrId("multi_room_index");
     freshRoomIndex.listRule = memberMetaRule;
     freshRoomIndex.viewRule = memberMetaRule;
@@ -338,9 +369,7 @@ migrate(
         maxSize: 10 * 1024 * 1024,
       }),
     );
-    catalog.fields.add(
-      new Field({ name: "recoveryProtected", type: "bool" }),
-    );
+    catalog.fields.add(new Field({ name: "recoveryProtected", type: "bool" }));
     catalog.fields.add(
       new Field({ name: "createdAt", type: "number", required: true }),
     );

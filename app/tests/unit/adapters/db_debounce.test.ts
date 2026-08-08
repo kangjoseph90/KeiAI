@@ -105,7 +105,12 @@ describe('WebDatabaseAdapter (Immediate writes)', () => {
         const syncScope = { scopeType: 'user' as const, scopeId: 'sync-user' };
         const rec = createTestRecord('db-6', { scopeId: syncScope.scopeId });
         await localDB.putRecord('settings', rec);
-        const changes = await localDB.getUnsyncedChanges('settings', syncScope, 0);
+        const changes = await localDB.getUnsyncedChanges(
+            'settings',
+            syncScope,
+            0,
+            Number.MAX_SAFE_INTEGER
+        );
 
         expect(changes.length).toBe(1);
         expect(changes[0].id).toBe('db-6');
@@ -117,7 +122,12 @@ describe('WebDatabaseAdapter (Immediate writes)', () => {
         await localDB.putRecord('settings', rec);
 
         rec.updatedAt = 999;
-        const changes = await localDB.getUnsyncedChanges('settings', copyScope, 0);
+        const changes = await localDB.getUnsyncedChanges(
+            'settings',
+            copyScope,
+            0,
+            Number.MAX_SAFE_INTEGER
+        );
         expect(changes[0]?.updatedAt).toBe(100);
     });
 });

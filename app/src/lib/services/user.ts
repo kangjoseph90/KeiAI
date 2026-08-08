@@ -14,6 +14,7 @@ export type { MultiRoomSession, Session, UserSession } from './session';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appMulti } from '$lib/adapters/multi';
 import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
 import { generateId } from '$lib/utils/id';
 import { clock } from '$lib/utils/clock';
@@ -287,13 +288,9 @@ export class UserService {
             localDB.deleteByScope(table, userScope, { origin: 'sync' })
         );
 
-        const cursorKeys = await appKV.keys('lastSync_');
-        const userCursorKeys = cursorKeys.filter((key) => key.includes(`_${userId}_`));
-        const cursorDeletes = userCursorKeys.map((key) => appKV.remove(key));
-
         await Promise.all([
             ...dbPromises,
-            ...cursorDeletes,
+            syncCursorDB.deleteByUser(userId),
             appMulti.purgeUserLocal(userId, { origin: 'sync' })
         ]);
         await purgeOrphanScopes();

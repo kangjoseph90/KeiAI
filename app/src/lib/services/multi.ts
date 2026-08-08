@@ -33,6 +33,8 @@ import { parseFields as parseRoomFields, type Room } from './content/room';
 import { appHttp } from '$lib/adapters/http';
 import { pb } from '$lib/adapters/pb';
 import { MultiRecordSyncEngine, SyncManager } from './sync';
+import { syncCursorDB } from '$lib/adapters/sync';
+import { getSyncCursorIdentity } from './sync/utils';
 import { buildUrl } from '$lib/utils/url';
 import { createLogger } from '$lib/adapters/logger';
 import { AssetService } from './asset';
@@ -587,11 +589,15 @@ export class MultiRoomService {
     }
 
     static async purgeLocalRoomContent(roomId: string): Promise<void> {
+        const { userId } = getActiveSession();
         const roomScope = { scopeType: 'room' as const, scopeId: roomId };
         await AssetService.deleteScopeAssets(roomScope);
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
-        await Promise.all(TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)));
+        await Promise.all([
+            ...TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)),
+            syncCursorDB.delete(getSyncCursorIdentity('records', userId, roomScope))
+        ]);
 
         if (getActiveSession().roomId === roomId) {
             clearMultiRoomSession();

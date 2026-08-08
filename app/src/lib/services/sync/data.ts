@@ -20,7 +20,7 @@ import {
     type DataScope,
     type DatabaseWriteEvent
 } from '$lib/adapters/db';
-import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { clock } from '$lib/utils/clock';
@@ -31,7 +31,8 @@ import {
     PAGE_SIZE,
     CHUNK_SIZE,
     belongsToScope,
-    getSyncKey,
+    getServerNow,
+    getSyncCursorIdentity,
     getActiveSyncScopes,
     getRealtimeScope,
     type SyncScope,
@@ -125,14 +126,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
     /** Wipe the user's record cursors for the active server. */
     async resetCursor(userId: string): Promise<void> {
-        const prefix = `lastSync_records_${userId}_`;
-        const serverSuffix = `_server_${encodeURIComponent(normalizeUrl(pb.baseUrl))}`;
-        const keys = await appKV.keys(prefix);
-        await Promise.all(
-            keys
-                .filter((key) => key.startsWith(prefix) && key.endsWith(serverSuffix))
-                .map((key) => appKV.remove(key))
-        );
+        await syncCursorDB.deleteByStream({
+            serverUrl: normalizeUrl(pb.baseUrl),
+            userId,
+            stream: 'records'
+        });
     }
 
     protected override async syncRecords(): Promise<void> {
@@ -140,11 +138,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
         let firstError: unknown = null;
         let completed = 0;
+        const localUpper = clock.now();
+        const serverUpper = await getServerNow();
         const scopes = getActiveSyncScopes(USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION);
 
         const results = await Promise.allSettled(
             scopes.map(async (scope) => {
-                await this.syncScope(scope);
+                await this.syncScope(scope, localUpper, serverUpper);
                 completed++;
                 this.updateStatus({
                     progress: {
@@ -167,19 +167,18 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         }
     }
 
-    private async syncScope(syncScope: SyncScope): Promise<void> {
+    private async syncScope(
+        syncScope: SyncScope,
+        localUpper: number,
+        serverUpper: number
+    ): Promise<void> {
         const { userId } = getActiveSession();
-        const syncKey = getSyncKey(
-            'records',
-            userId,
-            syncScope.scope.scopeType,
-            syncScope.scope.scopeId
-        );
-        const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
-        let nextCursor = lastSyncTime;
-        let cursorSafeToAdvance = true;
+        const cursorIdentity = getSyncCursorIdentity('records', userId, syncScope.scope);
+        const cursors = await syncCursorDB.get(cursorIdentity);
+        const pullCursor = cursors.serverPullCursor;
+        const pushCursor = cursors.localPushCursor;
         let syncError: unknown = null;
-        let correctionError: unknown = null;
+        let pushError: unknown = null;
         let page = 1;
         const offlineWrites = new Map<string, LocalChange>();
         const cascadeTargets: Array<{ table: TableName; id: string }> = [];
@@ -188,13 +187,14 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             while (true) {
                 const result = await pb.collection(syncScope.collection).getList(page, PAGE_SIZE, {
                     filter: pb.filter(
-                        `${syncScope.ownerField} = {:scopeId} && updatedAt >= {:since}`,
+                        `${syncScope.ownerField} = {:scopeId} && serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}`,
                         {
                             scopeId: syncScope.scope.scopeId,
-                            since: lastSyncTime
+                            after: pullCursor,
+                            through: serverUpper
                         }
                     ),
-                    sort: 'updatedAt'
+                    sort: 'serverUpdatedAt,id'
                 });
 
                 if (result.items.length > 0) {
@@ -275,7 +275,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                                 record: local
                             });
                         }
-                        nextCursor = Math.max(nextCursor, remoteAt);
                     }
 
                     for (const [table, records] of grouped) {
@@ -291,59 +290,68 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                 if (result.page >= result.totalPages) break;
                 page++;
             }
-        } catch (err) {
-            cursorSafeToAdvance = false;
-            syncError = err;
-            logger.error(`Failed to pull ${syncScope.collection}`, err);
-        }
 
-        if (cascadeTargets.length > 0) {
             for (const { table, id } of cascadeTargets) {
                 const cascadeResult = await cascadeDeleteChildren(table, id, { origin: 'local' });
                 await cleanupCascadeAssets(cascadeResult);
             }
+        } catch (err) {
+            syncError = err;
+            logger.error(`Failed to pull ${syncScope.collection}`, err);
         }
 
-        const scannedUnsynced = await this.collectUnsyncedChanges(syncScope.scope, lastSyncTime);
-        for (const change of scannedUnsynced) {
-            offlineWrites.set(this.changeKey(change.table, change.record.id), change);
-        }
-
-        const unsynced = [...offlineWrites.values()];
-        if (unsynced.length > 0) {
-            try {
-                await this.pushChanges(syncScope, unsynced, false);
-                for (const { record } of unsynced) {
-                    nextCursor = Math.max(nextCursor, record.updatedAt ?? 0);
-                }
-            } catch (err) {
-                correctionError = err;
+        const hasPullCorrections = offlineWrites.size > 0;
+        try {
+            const scannedUnsynced = await this.collectUnsyncedChanges(
+                syncScope.scope,
+                pushCursor,
+                localUpper
+            );
+            for (const change of scannedUnsynced) {
+                offlineWrites.set(this.changeKey(change.table, change.record.id), change);
             }
+
+            const unsynced = [...offlineWrites.values()];
+            if (unsynced.length > 0) {
+                await this.pushChanges(syncScope, unsynced, false);
+            }
+        } catch (err) {
+            pushError = err;
         }
 
-        if (cursorSafeToAdvance && !correctionError && nextCursor > lastSyncTime) {
-            await appKV.set(syncKey, nextCursor.toString());
+        const nextPullCursor =
+            !syncError && !(pushError && hasPullCorrections) && serverUpper > pullCursor
+                ? serverUpper
+                : undefined;
+        const nextPushCursor = !pushError && localUpper > pushCursor ? localUpper : undefined;
+        if (nextPullCursor !== undefined || nextPushCursor !== undefined) {
+            await syncCursorDB.advance(cursorIdentity, {
+                serverPullCursor: nextPullCursor,
+                localPushCursor: nextPushCursor
+            });
         }
 
         if (syncError) {
             throw syncError;
         }
 
-        if (correctionError) {
-            throw correctionError;
+        if (pushError) {
+            throw pushError;
         }
     }
 
     private async collectUnsyncedChanges(
         scope: DataScope,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<LocalChange[]> {
         const changes: LocalChange[] = [];
         for (const table of SYNC_TABLES) {
             const records = await localDB.getUnsyncedChanges<DataRecord>(
                 table,
                 scope,
-                sinceUpdatedAt
+                afterUpdatedAt,
+                throughUpdatedAt
             );
             for (const record of records) {
                 changes.push({ table, record });
@@ -370,38 +378,49 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
             try {
                 const results = await batch.send({ requestKey: null });
-                // Handle server-enforced deletes (server hook forced isDeleted=true)
                 const reconciliations: AssetReconciliation[] = [];
+                const cascadeTargets: Array<{ table: TableName; id: string }> = [];
                 for (let j = 0; j < results.length; j++) {
                     const result = results[j];
-                    const change = chunk[j];
-                    if (
-                        result.status === 200 &&
-                        result.body?.isDeleted &&
-                        !change.record.isDeleted
-                    ) {
-                        const remote = await this.pbToLocalRecord(
-                            result.body as Record<string, unknown>,
-                            syncScope
-                        );
-                        const local = await localDB.getRecord<DataRecord>(
-                            remote.table,
-                            remote.record.id
-                        );
+                    if (result.status < 200 || result.status >= 300 || !result.body) continue;
+
+                    const remote = await this.pbToLocalRecord(
+                        result.body as Record<string, unknown>,
+                        syncScope
+                    );
+                    const local = await localDB.getRecord<DataRecord>(
+                        remote.table,
+                        remote.record.id
+                    );
+                    if (!local) continue;
+
+                    const remoteAt = remote.record.updatedAt ?? 0;
+                    const localAt = local.updatedAt ?? 0;
+                    const serverIsCanonical =
+                        (remote.record.isDeleted && !local.isDeleted) ||
+                        (remote.record.isDeleted === local.isDeleted && remoteAt > localAt);
+                    if (serverIsCanonical) {
                         await localDB.putRecord(remote.table, remote.record, {
                             origin: 'sync'
                         });
-                        if (local) {
-                            reconciliations.push({
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            });
+                        reconciliations.push({
+                            table: remote.table,
+                            before: local,
+                            after: remote.record
+                        });
+                        if (remote.record.isDeleted && !local.isDeleted) {
+                            cascadeTargets.push({ table: remote.table, id: remote.record.id });
                         }
                     }
                 }
                 for (const { table, before, after } of reconciliations) {
                     await this.reconcileAssetRegistry(table, before, after);
+                }
+                for (const { table, id } of cascadeTargets) {
+                    const cascadeResult = await cascadeDeleteChildren(table, id, {
+                        origin: 'local'
+                    });
+                    await cleanupCascadeAssets(cascadeResult);
                 }
             } catch (err) {
                 logger.error(`Failed to push batch to ${syncScope.collection}`, err);

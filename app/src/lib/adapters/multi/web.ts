@@ -76,8 +76,14 @@ export class WebMultiAdapter implements IMultiAdapter {
         return await multiDB.roomIndex.where('ownerUserId').equals(ownerUserId).toArray();
     }
 
-    async getRoomIndexesSince(sinceUpdatedAt: number): Promise<MultiRoomIndexRecord[]> {
-        return await multiDB.roomIndex.where('updatedAt').above(sinceUpdatedAt).toArray();
+    async getRoomIndexesBetween(
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
+    ): Promise<MultiRoomIndexRecord[]> {
+        return await multiDB.roomIndex
+            .where('updatedAt')
+            .between(afterUpdatedAt, throughUpdatedAt, false, true)
+            .toArray();
     }
 
     async saveRoomIndex(record: MultiRoomIndexRecord, options?: MultiWriteOptions): Promise<void> {
@@ -111,15 +117,16 @@ export class WebMultiAdapter implements IMultiAdapter {
         return await multiDB.members.where('roomId').equals(roomId).toArray();
     }
 
-    async getMembersByRoomsSince(
+    async getMembersByRoomsBetween(
         roomIds: string[],
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         if (roomIds.length === 0) return [];
         const roomIdSet = new Set(roomIds);
         return await multiDB.members
             .where('updatedAt')
-            .above(sinceUpdatedAt)
+            .between(afterUpdatedAt, throughUpdatedAt, false, true)
             .filter((record) => roomIdSet.has(record.roomId))
             .toArray();
     }
@@ -131,13 +138,14 @@ export class WebMultiAdapter implements IMultiAdapter {
         );
     }
 
-    async getMembersSince(
+    async getMembersBetween(
         userId: string,
-        sinceUpdatedAt: number
+        afterUpdatedAt: number,
+        throughUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         return await multiDB.members
             .where('[userId+updatedAt]')
-            .between([userId, sinceUpdatedAt], [userId, Dexie.maxKey], false, true)
+            .between([userId, afterUpdatedAt], [userId, throughUpdatedAt], false, true)
             .toArray();
     }
 

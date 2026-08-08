@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DataRecordSyncEngine } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
-import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import type { DataRecord } from '$lib/adapters/db';
 
@@ -31,6 +31,7 @@ vi.mock('$lib/adapters/pb', () => ({
     pb: {
         baseUrl: 'https://sync.example.test',
         authStore: { isValid: true },
+        send: vi.fn().mockResolvedValue({ now: 3000 }),
         collection: vi.fn(() => mockCollection),
         filter: vi.fn((s) => s),
         createBatch: vi.fn(() => mockBatch)
@@ -50,12 +51,13 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/kv', () => ({
-    appKV: {
+vi.mock('$lib/adapters/sync', () => ({
+    syncCursorDB: {
         get: vi.fn(),
-        set: vi.fn(),
-        remove: vi.fn(),
-        keys: vi.fn()
+        advance: vi.fn(),
+        delete: vi.fn(),
+        deleteByStream: vi.fn(),
+        deleteByUser: vi.fn()
     }
 }));
 
@@ -73,6 +75,13 @@ vi.mock('$lib/crypto', () => ({
     fromBase64: vi.fn(() => new Uint8Array([1, 2, 3])),
     encrypt: vi.fn(() => ({ ciphertext: new Uint8Array(), iv: new Uint8Array() })),
     decrypt: vi.fn(() => '{}')
+}));
+
+vi.mock('$lib/utils/clock', () => ({
+    clock: {
+        now: vi.fn(() => 2500),
+        observe: vi.fn()
+    }
 }));
 
 describe('DataRecordSyncEngine', () => {
@@ -96,27 +105,15 @@ describe('DataRecordSyncEngine', () => {
             identityKeyPair: {} as CryptoKeyPair
         });
         vi.mocked(hasActiveSession).mockReturnValue(true);
-        vi.mocked(appKV.keys).mockResolvedValue([]);
+        vi.mocked(syncCursorDB.get).mockResolvedValue({
+            serverPullCursor: 0,
+            localPushCursor: 0
+        });
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
 
         vi.mocked(mockCollection.subscribe).mockResolvedValue(() => {});
         vi.mocked(mockCollection.unsubscribe).mockResolvedValue(() => {});
         vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([]);
-    });
-
-    it('resets only record cursors for the active server and user', async () => {
-        vi.mocked(appKV.keys).mockResolvedValue([
-            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fsync.example.test',
-            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fother.example.test',
-            'lastSync_records_user-456_user_user-456_server_https%3A%2F%2Fsync.example.test'
-        ]);
-
-        await DataRecordSyncEngine.resetCursor(mockUserId);
-
-        expect(appKV.remove).toHaveBeenCalledTimes(1);
-        expect(appKV.remove).toHaveBeenCalledWith(
-            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fsync.example.test'
-        );
     });
 
     afterEach(() => {
@@ -140,7 +137,10 @@ describe('DataRecordSyncEngine', () => {
     describe('Pull Logic (trigger)', () => {
         it('should pull changes and handle LWW conflict', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('1000');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
 
             const serverRecord = {
                 id: 'rec-1',
@@ -178,7 +178,10 @@ describe('DataRecordSyncEngine', () => {
         });
 
         it('should push correction if local is newer', async () => {
-            vi.mocked(appKV.get).mockResolvedValue('1000');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
             const serverRecord = {
                 id: 'rec-1',
                 kind: 'characters',
@@ -205,8 +208,11 @@ describe('DataRecordSyncEngine', () => {
             expect(mockBatch.send).toHaveBeenCalled();
         });
 
-        it('should keep cursor unchanged when correction push fails', async () => {
-            vi.mocked(appKV.get).mockResolvedValue('1000');
+        it('should keep both cursors unchanged when a pull correction push fails', async () => {
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
             const serverRecord = {
                 id: 'rec-1',
                 kind: 'characters',
@@ -235,8 +241,43 @@ describe('DataRecordSyncEngine', () => {
 
             await DataRecordSyncEngine.trigger();
 
-            expect(appKV.set).not.toHaveBeenCalled();
+            expect(syncCursorDB.advance).not.toHaveBeenCalled();
             expect(DataRecordSyncEngine.getState().state).toBe('network_error');
+        });
+
+        it('pulls a late server arrival even when its logical timestamp is behind the cursor', async () => {
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 2000,
+                localPushCursor: 1000
+            });
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [
+                    {
+                        id: 'late-record',
+                        kind: 'characters',
+                        userId: mockUserId,
+                        updatedAt: 1500,
+                        serverUpdatedAt: 2500,
+                        encryptedData: 'base64-data',
+                        encryptedDataIV: 'base64-iv'
+                    }
+                ],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(pb.filter).toHaveBeenCalledWith(
+                'userId = {:scopeId} && serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}',
+                { scopeId: mockUserId, after: 2000, through: 3000 }
+            );
+            expect(localDB.putRecords).toHaveBeenCalledWith(
+                'characters',
+                [expect.objectContaining({ id: 'late-record', updatedAt: 1500 })],
+                { origin: 'sync' }
+            );
         });
 
         it('should pull active room scope from multi_room_records', async () => {
@@ -247,7 +288,10 @@ describe('DataRecordSyncEngine', () => {
                 roomId: mockRoomId,
                 roomKey: { type: 'room-key' } as unknown as CryptoKey
             });
-            vi.mocked(appKV.get).mockResolvedValue('1000');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
             vi.mocked(mockCollection.getList)
                 .mockResolvedValueOnce({
                     items: [],
@@ -331,7 +375,10 @@ describe('DataRecordSyncEngine', () => {
 
         it('remote deleted beats local live regardless of timestamp', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 500,
+                localPushCursor: 500
+            });
 
             const serverRecord = {
                 id: 'rec-1',
@@ -372,7 +419,10 @@ describe('DataRecordSyncEngine', () => {
 
         it('local deleted beats remote live ??queues repair push', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 500,
+                localPushCursor: 500
+            });
 
             const serverRecord = {
                 id: 'rec-1',
@@ -406,7 +456,10 @@ describe('DataRecordSyncEngine', () => {
 
         it('deleted record with no local counterpart is skipped', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 500,
+                localPushCursor: 500
+            });
 
             const serverRecord = {
                 id: 'rec-1',
@@ -436,7 +489,10 @@ describe('DataRecordSyncEngine', () => {
 
         it('both deleted uses LWW', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 500,
+                localPushCursor: 500
+            });
 
             const serverRecord = {
                 id: 'rec-1',
@@ -470,7 +526,10 @@ describe('DataRecordSyncEngine', () => {
 
         it('push response handles server-enforced delete', async () => {
             const tableName = 'characters';
-            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 500,
+                localPushCursor: 500
+            });
             vi.mocked(mockCollection.getList).mockResolvedValue({
                 items: [],
                 page: 1,

@@ -32,6 +32,12 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
+vi.mock('$lib/adapters/sync', () => ({
+    syncCursorDB: {
+        delete: vi.fn()
+    }
+}));
+
 vi.mock('$lib/services/content/record_buffer', () => ({
     buffer: {
         get: vi.fn(),
@@ -100,6 +106,7 @@ import { generateId } from '$lib/utils/id';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appHttp } from '$lib/adapters/http';
+import { syncCursorDB } from '$lib/adapters/sync';
 
 describe('MultiRoomService', () => {
     beforeEach(() => {
@@ -310,6 +317,13 @@ describe('MultiRoomService', () => {
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('chats', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('messages', 'scopeId', 'room-1');
+        expect(syncCursorDB.delete).toHaveBeenCalledWith({
+            serverUrl: 'http://pb.test',
+            userId: 'user-1',
+            stream: 'records',
+            scopeType: 'room',
+            scopeId: 'room-1'
+        });
         expect(getActiveSession().roomId).toBeUndefined();
     });
 

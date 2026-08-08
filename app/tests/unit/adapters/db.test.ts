@@ -496,7 +496,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     });
 
     describe('getUnsyncedChanges', () => {
-        it('should get records modified since timestamp', async () => {
+        it('should get records inside the requested timestamp window', async () => {
             const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const now = Date.now();
             const old = now - 10000;
@@ -516,14 +516,15 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
-                now - 5000
+                now - 5000,
+                now
             );
 
             expect(results).toHaveLength(1);
             expect(results[0].id).toBe('recent-rec');
         });
 
-        it('should include records with updatedAt equal to threshold', async () => {
+        it('should include records at the upper bound', async () => {
             const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const now = Date.now();
             const record = createTestRecord({
@@ -537,6 +538,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
+                now - 5001,
                 now - 5000
             );
 

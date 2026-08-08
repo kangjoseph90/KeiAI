@@ -155,19 +155,6 @@ describe('WebKeyValueAdapter (localStorage)', () => {
             expect(await adapter.get('activeSessionId')).toBeNull();
         });
 
-        it('should handle sync timestamp tracking', async () => {
-            const timestamp = Date.now().toString();
-            await adapter.set('lastSyncAt', timestamp);
-
-            expect(await adapter.get('lastSyncAt')).toBe(timestamp);
-
-            // Update sync timestamp
-            const newTimestamp = (Date.now() + 1000).toString();
-            await adapter.set('lastSyncAt', newTimestamp);
-
-            expect(await adapter.get('lastSyncAt')).toBe(newTimestamp);
-        });
-
         it('should handle user preferences', async () => {
             // Store theme preference
             await adapter.set('pref:theme', 'dark');

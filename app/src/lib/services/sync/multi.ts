@@ -15,7 +15,7 @@ import {
     type MultiRoomMemberRecord,
     type MultiWriteEvent
 } from '$lib/adapters/multi';
-import { appKV } from '$lib/adapters/kv';
+import { syncCursorDB } from '$lib/adapters/sync';
 import { MultiRoomService } from '$lib/services';
 import { getActiveSession } from '../session';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
@@ -25,10 +25,12 @@ import {
     normalizeTimestamp,
     PAGE_SIZE,
     CHUNK_SIZE,
-    getSyncKey,
+    getServerNow,
+    getSyncCursorIdentity,
     isReadyToSync,
     type RealtimeEvent
 } from './utils';
+import { normalizeUrl } from '$lib/utils/url';
 
 type MultiCollection = 'multi_room_index' | 'multi_room_members';
 
@@ -86,57 +88,73 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
     }
 
     async resetCursor(userId: string): Promise<void> {
-        await appKV.remove(getSyncKey('multi_meta', userId));
+        await syncCursorDB.deleteByStream({
+            serverUrl: normalizeUrl(pb.baseUrl),
+            userId,
+            stream: 'multi_meta'
+        });
     }
 
     protected override async syncRecords(): Promise<void> {
         if (!isReadyToSync()) return;
         const { userId } = getActiveSession();
+        const localUpper = clock.now();
+        const serverUpper = await getServerNow();
 
-        await this.syncMeta(userId);
+        await this.syncMeta(userId, localUpper, serverUpper);
     }
 
-    private async syncMeta(userId: string): Promise<void> {
-        const syncKey = getSyncKey('multi_meta', userId);
-        const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
-        let nextCursor = lastSyncTime;
-        let cursorSafeToAdvance = true;
+    private async syncMeta(userId: string, localUpper: number, serverUpper: number): Promise<void> {
+        const cursorIdentity = getSyncCursorIdentity('multi_meta', userId, {
+            scopeType: 'user',
+            scopeId: userId
+        });
+        const cursors = await syncCursorDB.get(cursorIdentity);
+        const pullCursor = cursors.serverPullCursor;
+        const pushCursor = cursors.localPushCursor;
         let syncError: unknown = null;
-        let correctionError: unknown = null;
+        let pushError: unknown = null;
 
         try {
-            const pulledIndexCursor = await this.pullRoomIndexes(lastSyncTime);
-            const pulledMemberCursor = await this.pullMembers(lastSyncTime);
-            nextCursor = Math.max(nextCursor, pulledIndexCursor, pulledMemberCursor);
+            await this.pullRoomIndexes(pullCursor, serverUpper);
+            await this.pullMembers(pullCursor, serverUpper);
         } catch (error) {
-            cursorSafeToAdvance = false;
             syncError = error;
             logger.error('Failed to pull multi metadata', error);
         }
 
         try {
-            const pushedCursor = await this.pushLocalChanges(userId, lastSyncTime, false);
-            nextCursor = Math.max(nextCursor, pushedCursor);
+            await this.pushLocalChanges(userId, pushCursor, localUpper, false);
         } catch (error) {
-            correctionError = error;
+            pushError = error;
         }
 
-        if (cursorSafeToAdvance && !correctionError && nextCursor > lastSyncTime) {
-            await appKV.set(syncKey, nextCursor.toString());
+        const nextPullCursor = !syncError && serverUpper > pullCursor ? serverUpper : undefined;
+        const nextPushCursor = !pushError && localUpper > pushCursor ? localUpper : undefined;
+        if (nextPullCursor !== undefined || nextPushCursor !== undefined) {
+            await syncCursorDB.advance(cursorIdentity, {
+                serverPullCursor: nextPullCursor,
+                localPushCursor: nextPushCursor
+            });
         }
 
         if (syncError) throw syncError;
-        if (correctionError) throw correctionError;
+        if (pushError) throw pushError;
     }
 
-    private async pullRoomIndexes(sinceUpdatedAt: number): Promise<number> {
+    private async pullRoomIndexes(
+        afterServerUpdatedAt: number,
+        throughServerUpdatedAt: number
+    ): Promise<void> {
         let page = 1;
-        let nextCursor = sinceUpdatedAt;
 
         while (true) {
             const result = await pb.collection('multi_room_index').getList(page, PAGE_SIZE, {
-                filter: pb.filter('updatedAt >= {:since}', { since: sinceUpdatedAt }),
-                sort: 'updatedAt'
+                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+                    after: afterServerUpdatedAt,
+                    through: throughServerUpdatedAt
+                }),
+                sort: 'serverUpdatedAt,id'
             });
 
             for (const item of result.items) {
@@ -161,24 +179,26 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                         await this.pushWritableRoomIndexes([local], false);
                     }
                 }
-                nextCursor = Math.max(nextCursor, updatedAt);
             }
 
             if (result.page >= result.totalPages) break;
             page++;
         }
-
-        return nextCursor;
     }
 
-    private async pullMembers(sinceUpdatedAt: number): Promise<number> {
+    private async pullMembers(
+        afterServerUpdatedAt: number,
+        throughServerUpdatedAt: number
+    ): Promise<void> {
         let page = 1;
-        let nextCursor = sinceUpdatedAt;
 
         while (true) {
             const result = await pb.collection('multi_room_members').getList(page, PAGE_SIZE, {
-                filter: pb.filter('updatedAt >= {:since}', { since: sinceUpdatedAt }),
-                sort: 'updatedAt'
+                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+                    after: afterServerUpdatedAt,
+                    through: throughServerUpdatedAt
+                }),
+                sort: 'serverUpdatedAt,id'
             });
 
             for (const item of result.items) {
@@ -195,48 +215,40 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 } else if (local.updatedAt > remote.updatedAt) {
                     await this.pushWritableMembers([local], false);
                 }
-                nextCursor = Math.max(nextCursor, remote.updatedAt);
             }
 
             if (result.page >= result.totalPages) break;
             page++;
         }
-
-        return nextCursor;
     }
 
     private async pushLocalChanges(
         userId: string,
-        sinceUpdatedAt: number,
+        afterUpdatedAt: number,
+        throughUpdatedAt: number,
         continueOnError: boolean
-    ): Promise<number> {
-        let nextCursor = sinceUpdatedAt;
+    ): Promise<void> {
         const ownedRoomIndexes = await appMulti.getRoomIndexesByOwner(userId);
         const activeOwnedRoomIds = ownedRoomIndexes.map((room) => room.id);
-        const changedIndexes = (await appMulti.getRoomIndexesSince(sinceUpdatedAt)).filter(
-            (index) => index.ownerUserId === userId
-        );
-        const ownedRoomMemberships = await appMulti.getMembersByRoomsSince(
+        const changedIndexes = (
+            await appMulti.getRoomIndexesBetween(afterUpdatedAt, throughUpdatedAt)
+        ).filter((index) => index.ownerUserId === userId);
+        const ownedRoomMemberships = await appMulti.getMembersByRoomsBetween(
             activeOwnedRoomIds,
-            sinceUpdatedAt
+            afterUpdatedAt,
+            throughUpdatedAt
         );
         const memberById = new Map<string, MultiRoomMemberRecord>();
         for (const member of ownedRoomMemberships) memberById.set(member.id, member);
 
         if (changedIndexes.length > 0) {
             await this.pushRoomIndexes(changedIndexes, continueOnError);
-            for (const record of changedIndexes)
-                nextCursor = Math.max(nextCursor, record.updatedAt);
         }
 
         const changedMembers = [...memberById.values()];
         if (changedMembers.length > 0) {
             await this.pushMembers(changedMembers, continueOnError);
-            for (const record of changedMembers)
-                nextCursor = Math.max(nextCursor, record.updatedAt);
         }
-
-        return nextCursor;
     }
 
     private async pushRoomIndexes(
@@ -267,13 +279,35 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             }
             try {
                 const results = await batch.send({ requestKey: null });
-                // Handle server-enforced deletes for room index
-                if (collection === 'multi_room_index') {
-                    for (const result of results) {
-                        if (result.status === 200 && result.body?.isDeleted) {
-                            const roomId = result.body.id as string;
+                for (const result of results) {
+                    if (result.status < 200 || result.status >= 300 || !result.body) continue;
+                    const raw = result.body as Record<string, unknown>;
+
+                    if (collection === 'multi_room_index') {
+                        if (raw.isDeleted) {
+                            const roomId = raw.id as string;
                             await this.purgeDeletedRoom(roomId);
+                            continue;
                         }
+
+                        const remote = this.pbToRoomIndex(raw);
+                        const local = await appMulti.getRoomIndex(remote.id);
+                        if (!local || remote.updatedAt > local.updatedAt) {
+                            await appMulti.saveRoomIndex(remote, { origin: 'sync' });
+                        }
+                        continue;
+                    }
+
+                    const remote = this.pbToMember(raw);
+                    const local = await appMulti.getMember(remote.id);
+                    const serverIsCanonical =
+                        !local ||
+                        remote.updatedAt > local.updatedAt ||
+                        (this.isOwnInactiveMembership(remote) &&
+                            remote.updatedAt >= local.updatedAt);
+                    if (serverIsCanonical) {
+                        await appMulti.saveMember(remote, { origin: 'sync' });
+                        await this.ensureRoomIndexForMember(remote);
                     }
                 }
             } catch (error) {
