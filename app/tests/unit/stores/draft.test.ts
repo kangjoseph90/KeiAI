@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
     appendChatDraftText,
     clearChatDraft,
+    dismissChatDraftSuggestion,
     flushChatDrafts,
     getChatDraft,
     loadChatDraft,
     setChatDraftInlayIds,
+    setChatDraftSuggestion,
     setChatDraftText
 } from '$lib/stores/content/draft';
 import { chatDrafts } from '$lib/stores/state';
@@ -36,9 +38,10 @@ describe('chat drafts', () => {
 
         expect(getChatDraft(first)).toEqual({
             text: 'hello',
-            inlayIds: ['audio-1', 'image-1']
+            inlayIds: ['audio-1', 'image-1'],
+            suggestions: {}
         });
-        expect(getChatDraft(second)).toEqual({ text: 'other', inlayIds: [] });
+        expect(getChatDraft(second)).toEqual({ text: 'other', inlayIds: [], suggestions: {} });
     });
 
     it('appends a transcript on a new line without changing attachments', async () => {
@@ -50,7 +53,8 @@ describe('chat drafts', () => {
 
         expect(getChatDraft(id)).toEqual({
             text: 'Existing draft\nspoken text',
-            inlayIds: ['inlay-1']
+            inlayIds: ['inlay-1'],
+            suggestions: {}
         });
     });
 
@@ -63,7 +67,24 @@ describe('chat drafts', () => {
 
         await expect(loadChatDraft(id)).resolves.toEqual({
             text: 'persisted',
-            inlayIds: ['inlay-1']
+            inlayIds: ['inlay-1'],
+            suggestions: {}
         });
+    });
+
+    it('stores and dismisses translation suggestions keyed by id', () => {
+        const id = chatId('suggestions');
+        setChatDraftSuggestion(id, 'sugg-1', 'first');
+
+        expect(getChatDraft(id).suggestions).toEqual({ 'sugg-1': 'first' });
+
+        setChatDraftSuggestion(id, 'sugg-2', 'second');
+        expect(getChatDraft(id).suggestions).toEqual({
+            'sugg-1': 'first',
+            'sugg-2': 'second'
+        });
+
+        dismissChatDraftSuggestion(id, 'sugg-1');
+        expect(getChatDraft(id).suggestions).toEqual({ 'sugg-2': 'second' });
     });
 });

@@ -49,7 +49,7 @@ vi.mock('$lib/stores/tasks/translation', () => ({
 
 vi.mock('$lib/services/content/paged_messages', () => ({
     PagedMessages: {
-        createThrough: mocks.createPagedMessages
+        createBefore: mocks.createPagedMessages
     }
 }));
 
@@ -104,7 +104,7 @@ describe('translation task', () => {
             }
         );
         mocks.getChat.mockResolvedValue({ id: 'chat-1', roomId: 'room-1' });
-        mocks.createPagedMessages.mockResolvedValue({ length: 4 });
+        mocks.createPagedMessages.mockResolvedValue({ length: 3 });
         mocks.runtimeStream.mockImplementation(async function* () {
             yield '안녕';
             yield '안녕하세요';
@@ -124,9 +124,7 @@ describe('translation task', () => {
         expect(mocks.completeTask).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskComplete).toHaveBeenCalledWith('message-1');
         expect(mocks.notifyTaskError).not.toHaveBeenCalled();
-        expect(mocks.createPagedMessages).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'message-1', sortOrder: 'b0' })
-        );
+        expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
         expect(mocks.createTask).toHaveBeenCalledWith(
             'message-1',
             'hash:en\0ko\0Hello world, how are you today?',

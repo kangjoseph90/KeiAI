@@ -31,6 +31,7 @@ import type {
     DictationTask,
     DisplayMessage,
     ChatTask,
+    InputTranslationTask,
     MediaTask,
     TaskMetadata,
     TranslationTask
@@ -184,6 +185,7 @@ export const chatTasks = writable<Map<string, ChatTask>>(new Map());
 export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
 export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
 export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
+export const inputTranslationTasks = writable<Map<string, InputTranslationTask>>(new Map());
 export const dictationTasks = writable<Map<string, DictationTask>>(new Map());
 export const chatDrafts = writable<Map<string, ChatDraft>>(new Map());
 
@@ -199,12 +201,20 @@ export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
 );
 
 export const collectedTasks = derived(
-    [chatTasks, translationTasks, imageGenerationTasks, ttsTasks, dictationTasks],
-    ([chats, translations, images, speech, dictations]): CollectedTask[] => [
+    [
+        chatTasks,
+        translationTasks,
+        imageGenerationTasks,
+        ttsTasks,
+        inputTranslationTasks,
+        dictationTasks
+    ],
+    ([chats, translations, images, speech, inputTranslations, dictations]): CollectedTask[] => [
         ...collectTasks('chat', chats),
         ...collectTasks('translation', translations),
         ...collectTasks('image', images),
         ...collectTasks('tts', speech),
+        ...collectTasks('input_translation', inputTranslations),
         ...collectTasks('dictation', dictations)
     ]
 );

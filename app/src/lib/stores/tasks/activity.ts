@@ -2,6 +2,7 @@ import {
     chatTasks,
     dictationTasks,
     imageGenerationTasks,
+    inputTranslationTasks,
     translationTasks,
     ttsTasks
 } from '../state';
@@ -13,6 +14,7 @@ export function consumeCompletedTasks(chatId: string): void {
     consumeCompleted(translationTasks, chatId);
     consumeCompleted(imageGenerationTasks, chatId);
     consumeCompleted(ttsTasks, chatId);
+    consumeCompleted(inputTranslationTasks, chatId);
     consumeCompleted(dictationTasks, chatId);
 }
 

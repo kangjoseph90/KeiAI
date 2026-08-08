@@ -48,9 +48,16 @@ export interface MediaTask extends TaskMetadata {
     controller?: AbortController;
 }
 
+export interface InputTranslationTask extends TaskMetadata {
+    status: TaskStatus;
+    errorMessage?: string;
+    controller?: AbortController;
+}
+
 export interface ChatDraft {
     text: string;
     inlayIds: string[];
+    suggestions: Record<string, string>;
 }
 
 export type DictationPhase = 'recording' | 'transcribing' | 'error';
@@ -63,7 +70,13 @@ export interface DictationTask extends TaskMetadata {
     errorMessage?: string;
 }
 
-export type CollectedTaskKind = 'chat' | 'dictation' | 'translation' | 'tts' | 'image';
+export type CollectedTaskKind =
+    | 'chat'
+    | 'dictation'
+    | 'translation'
+    | 'tts'
+    | 'image'
+    | 'input_translation';
 export type CollectedTaskStatus = 'running' | 'completed' | 'error';
 
 export interface CollectedTask {

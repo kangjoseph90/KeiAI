@@ -32,7 +32,7 @@ export async function runImageGeneration(messageId: string): Promise<void> {
 
     const chat = await getChat(message.chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${message.chatId}`);
-    const messages = await PagedMessages.createThrough(message);
+    const messages = await PagedMessages.createBefore(message.chatId, message.sortOrder);
     const baseCtx: RuntimeContext = {
         roomId: chat.roomId,
         presetId: settings.presetId,
@@ -48,7 +48,7 @@ export async function runImageGeneration(messageId: string): Promise<void> {
 
     try {
         const runtime = new WorkflowRuntime(settings.imageGeneration.workflow, {
-            ctx: toMessageContext(message, messages.length - 1, baseCtx),
+            ctx: toMessageContext(message, messages.length, baseCtx),
             localMacros: createSourceMacros(source),
             messages,
             signal: controller.signal

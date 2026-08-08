@@ -63,6 +63,7 @@ export const chatTasks = readonly(StoreState.chatTasks);
 export const translationTasks = readonly(StoreState.translationTasks);
 export const imageGenerationTasks = readonly(StoreState.imageGenerationTasks);
 export const ttsTasks = readonly(StoreState.ttsTasks);
+export const inputTranslationTasks = readonly(StoreState.inputTranslationTasks);
 export const dictationTasks = readonly(StoreState.dictationTasks);
 export const chatDrafts = readonly(StoreState.chatDrafts);
 export const collectedTasks = readonly(StoreState.collectedTasks);
@@ -88,6 +89,7 @@ export {
 export type {
     DisplayMessage,
     DisplayMessageStatus,
+    InputTranslationTask,
     MediaTask,
     TaskStatus,
     TranslationTask
@@ -118,6 +120,7 @@ export * from './tasks/chat';
 export * from './tasks/translation';
 export * from './tasks/image';
 export * from './tasks/tts';
+export * from './tasks/input_translation';
 export * from './tasks/dictation';
 export * from './tasks/activity';
 export * from './auth';

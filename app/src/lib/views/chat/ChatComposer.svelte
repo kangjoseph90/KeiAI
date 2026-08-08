@@ -1,14 +1,17 @@
 <script lang="ts">
     import {
         ArrowDown,
+        Languages,
         MessageSquare,
         Mic,
         Paperclip,
+        Plus,
         SendHorizontal,
         Square,
         X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import {
@@ -21,6 +24,7 @@
         createMessage,
         dictationTasks,
         hasRecordingDictation,
+        inputTranslationTasks,
         isChatRunning,
         roomCharacters,
         addChatDraftInlay,
@@ -38,7 +42,9 @@
         finishDictation,
         runChat,
         runDictation,
-        stopChat
+        runInputTranslation,
+        stopChat,
+        stopInputTranslationForChat
     } from '$lib/tasks';
     import { characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
     import { getChatVariables, prepareNextSwipe } from '$lib/managers';
@@ -53,6 +59,7 @@
     import { type AgentPart } from '$lib/workflow/agent/llm';
     import { untrack } from 'svelte';
     import DictationControls from './DictationControls.svelte';
+    import ChatSuggestions from './ChatSuggestions.svelte';
 
     let {
         showScrollToBottom = false,
@@ -104,6 +111,18 @@
         const characterId = $activeChat?.defaultCharacterId;
         if (!characterId) return null;
         return $roomCharacters.find((character) => character.id === characterId) ?? null;
+    });
+    const hasSuggestions = $derived.by(() => {
+        const chatId = $activeChat?.id;
+        if (!chatId) return false;
+        return Object.keys($chatDrafts.get(chatId)?.suggestions ?? {}).length > 0;
+    });
+    const hasGeneratingInputTranslation = $derived.by(() => {
+        const chatId = $activeChat?.id;
+        if (!chatId) return false;
+        return Array.from($inputTranslationTasks.values()).some(
+            (task) => task.chatId === chatId && task.status === 'generating'
+        );
     });
 
     $effect(() => {
@@ -268,6 +287,7 @@
 
         value = '';
         attachmentIds = [];
+        stopInputTranslationForChat(targetChatId);
         clearChatDraft(targetChatId);
         void flushChatDrafts().catch((error) =>
             logger.warn('Failed to clear cached chat draft:', error)
@@ -369,6 +389,18 @@
         const chatId = $activeChat?.id;
         if (chatId) dismissDictation(chatId);
     }
+
+    function handleInputTranslation(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId || !value.trim()) return;
+        void runInputTranslation(chatId).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start input translation',
+                description: getErrorMessage(error)
+            });
+        });
+    }
 </script>
 
 <div
@@ -400,161 +432,194 @@
         </div>
     {/if}
 
-    <div
-        bind:this={composerElement}
-        class="relative mx-auto w-full max-w-3xl rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
-    >
-        {#if isDragging && !dictationBusy}
-            <div
-                class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
-            >
-                Drop images, audio, or video to attach
-            </div>
+    <div bind:this={composerElement} class="mx-auto w-full max-w-3xl">
+        {#if hasSuggestions && $activeChat}
+            <ChatSuggestions chatId={$activeChat.id} class="mb-2" />
         {/if}
+        <div
+            class="relative rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
+        >
+            {#if isDragging && !dictationBusy}
+                <div
+                    class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
+                >
+                    Drop images, audio, or video to attach
+                </div>
+            {/if}
 
-        {#if !dictationBusy && pendingInlays.length > 0 && $activeChat}
-            <div class="flex gap-2 overflow-x-auto px-2 pb-2 pt-1">
-                {#each pendingInlays as ref (ref.id)}
-                    <div class="relative size-18 shrink-0 overflow-visible rounded-lg">
-                        <div class="absolute inset-0 overflow-hidden rounded-lg border">
-                            <AssetView
-                                asset={{
-                                    scopeType: $activeChat.scopeType,
-                                    scopeId: $activeChat.scopeId,
-                                    ownerTable: 'chats',
-                                    ownerId: $activeChat.id,
-                                    hash: ref.hash,
-                                    encKey: ref.encKey,
-                                    mimeType: ref.mimeType
-                                }}
-                                alt={ref.name}
-                                class="size-full object-cover"
-                                fallback="none"
-                            />
+            {#if !dictationBusy && pendingInlays.length > 0 && $activeChat}
+                <div class="flex gap-2 overflow-x-auto px-2 pb-2 pt-1">
+                    {#each pendingInlays as ref (ref.id)}
+                        <div class="relative size-18 shrink-0 overflow-visible rounded-lg">
+                            <div class="absolute inset-0 overflow-hidden rounded-lg border">
+                                <AssetView
+                                    asset={{
+                                        scopeType: $activeChat.scopeType,
+                                        scopeId: $activeChat.scopeId,
+                                        ownerTable: 'chats',
+                                        ownerId: $activeChat.id,
+                                        hash: ref.hash,
+                                        encKey: ref.encKey,
+                                        mimeType: ref.mimeType
+                                    }}
+                                    alt={ref.name}
+                                    class="size-full object-cover"
+                                    fallback="none"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
+                                aria-label={`Remove ${ref.name} attachment`}
+                                onmousedown={(event) => event.preventDefault()}
+                                onclick={() => removeAttachment(ref.id)}
+                            >
+                                <X class="size-3" />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
-                            aria-label={`Remove ${ref.name} attachment`}
-                            onmousedown={(event) => event.preventDefault()}
-                            onclick={() => removeAttachment(ref.id)}
-                        >
-                            <X class="size-3" />
-                        </button>
-                    </div>
-                {/each}
-            </div>
-        {/if}
+                    {/each}
+                </div>
+            {/if}
 
-        {#if dictationBusy && dictationTask}
-            <DictationControls
-                task={dictationTask}
-                onCancel={handleCancelDictation}
-                onFinish={handleFinishDictation}
-                onDismiss={handleDismissDictation}
-            />
-        {:else}
-            {#if dictationTask?.phase === 'error'}
+            {#if dictationBusy && dictationTask}
                 <DictationControls
                     task={dictationTask}
                     onCancel={handleCancelDictation}
                     onFinish={handleFinishDictation}
                     onDismiss={handleDismissDictation}
-                    class="mb-2"
                 />
-            {/if}
-            <div
-                class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1 {isExpanded
-                    ? 'items-end grid-rows-[auto_auto]'
-                    : 'items-center grid-rows-1'}"
-            >
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="col-start-1 shrink-0 rounded-full text-muted-foreground {isExpanded
-                        ? 'row-start-2'
-                        : 'row-start-1'}"
-                    onclick={() => void handleAttachmentUpload()}
-                    disabled={$isChatRunning || attachmentIds.length >= MAX_ATTACHMENTS}
-                    title="Attach media"
-                    aria-label="Attach media"
-                >
-                    <Paperclip class="size-4" />
-                </Button>
-
-                <AutoResizeTextarea
-                    bind:value
-                    classname="min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 {isExpanded
-                        ? 'col-span-3 row-start-1 mx-2 w-auto'
-                        : 'col-start-2 row-start-1'}"
-                    onheightchange={(height) => (textHeight = height)}
-                    oninput={() => {
-                        if ($activeChat) setChatDraftText($activeChat.id, value);
-                    }}
-                    onkeydown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                            event.preventDefault();
-                            void handleSendMessage();
-                        }
-                    }}
-                    onpaste={handlePaste}
-                    placeholder="Type a message..."
-                    disabled={$isChatRunning}
-                />
-
+            {:else}
+                {#if dictationTask?.phase === 'error'}
+                    <DictationControls
+                        task={dictationTask}
+                        onCancel={handleCancelDictation}
+                        onFinish={handleFinishDictation}
+                        onDismiss={handleDismissDictation}
+                        class="mb-2"
+                    />
+                {/if}
                 <div
-                    class="col-start-3 flex shrink-0 items-center gap-1 {isExpanded
-                        ? 'row-start-2'
-                        : 'row-start-1'}"
+                    class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1 {isExpanded
+                        ? 'items-end grid-rows-[auto_auto]'
+                        : 'items-center grid-rows-1'}"
                 >
-                    {#if $isChatRunning}
-                        <Button
-                            variant="destructive"
-                            size="icon"
-                            class="shrink-0 rounded-full"
-                            onclick={handleStop}
-                            title="Stop generation"
-                            aria-label="Stop generation"
-                        >
-                            <Square class="size-4" />
-                        </Button>
-                    {:else}
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            class="shrink-0 rounded-full text-muted-foreground"
-                            onclick={handleStartDictation}
-                            disabled={$hasRecordingDictation || dictationTask !== null}
-                            title="Start dictation"
-                            aria-label="Start dictation"
-                        >
-                            <Mic class="size-4" />
-                        </Button>
-                        {#if hasContent}
+                    <div
+                        class="col-start-1 shrink-0 self-end {isExpanded
+                            ? 'row-start-2'
+                            : 'row-start-1'}"
+                    >
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="rounded-full text-muted-foreground"
+                                    disabled={attachmentIds.length >= MAX_ATTACHMENTS}
+                                    title="Add"
+                                    aria-label="Add"
+                                >
+                                    <Plus class="size-4" />
+                                </Button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Content
+                                side="top"
+                                align="start"
+                                sideOffset={4}
+                                class="w-52"
+                            >
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={attachmentIds.length >= MAX_ATTACHMENTS}
+                                    onclick={() => void handleAttachmentUpload()}
+                                >
+                                    <Paperclip class="size-4" />
+                                    Attach media
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={!value.trim() || hasGeneratingInputTranslation}
+                                    onclick={handleInputTranslation}
+                                >
+                                    <Languages class="size-4" />
+                                    Translate input
+                                </DropdownMenu.Item>
+                            </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                    </div>
+
+                    <AutoResizeTextarea
+                        bind:value
+                        classname="min-h-9 min-w-0 border-0 bg-transparent px-2 py-2 shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 {isExpanded
+                            ? 'col-span-3 row-start-1 mx-2 w-auto'
+                            : 'col-start-2 row-start-1'}"
+                        onheightchange={(height) => (textHeight = height)}
+                        oninput={() => {
+                            if ($activeChat) setChatDraftText($activeChat.id, value);
+                        }}
+                        onkeydown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                void handleSendMessage();
+                            }
+                        }}
+                        onpaste={handlePaste}
+                        placeholder="Type a message..."
+                    />
+
+                    <div
+                        class="col-start-3 flex shrink-0 items-center gap-1 {isExpanded
+                            ? 'row-start-2'
+                            : 'row-start-1'}"
+                    >
+                        {#if $isChatRunning}
                             <Button
+                                variant="destructive"
                                 size="icon"
                                 class="shrink-0 rounded-full"
-                                onclick={() => void handleSendMessage()}
-                                title="Send message"
-                                aria-label="Send message"
+                                onclick={handleStop}
+                                title="Stop generation"
+                                aria-label="Stop generation"
                             >
-                                <SendHorizontal class="size-4" />
+                                <Square class="size-4" />
                             </Button>
                         {:else}
                             <Button
-                                variant="secondary"
+                                variant="ghost"
                                 size="icon"
-                                class="shrink-0 rounded-full"
-                                onclick={handleGenerateResponse}
-                                title="Generate response"
-                                aria-label="Generate response"
+                                class="shrink-0 rounded-full text-muted-foreground"
+                                onclick={handleStartDictation}
+                                disabled={$hasRecordingDictation || dictationTask !== null}
+                                title="Start dictation"
+                                aria-label="Start dictation"
                             >
-                                <MessageSquare class="size-4" />
+                                <Mic class="size-4" />
                             </Button>
+                            {#if hasContent}
+                                <Button
+                                    size="icon"
+                                    class="shrink-0 rounded-full"
+                                    onclick={() => void handleSendMessage()}
+                                    title="Send message"
+                                    aria-label="Send message"
+                                >
+                                    <SendHorizontal class="size-4" />
+                                </Button>
+                            {:else}
+                                <Button
+                                    variant="secondary"
+                                    size="icon"
+                                    class="shrink-0 rounded-full"
+                                    onclick={handleGenerateResponse}
+                                    title="Generate response"
+                                    aria-label="Generate response"
+                                >
+                                    <MessageSquare class="size-4" />
+                                </Button>
+                            {/if}
                         {/if}
-                    {/if}
+                    </div>
                 </div>
-            </div>
-        {/if}
+            {/if}
+        </div>
     </div>
 </div>

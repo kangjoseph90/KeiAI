@@ -8,12 +8,21 @@ const loadingDrafts = new Map<string, Promise<ChatDraft>>();
 export const MAX_CHAT_DRAFT_INLAYS = 4;
 
 function normalizeDraft(value: ChatDraft | undefined): ChatDraft {
-    if (!value) return { text: '', inlayIds: [] };
+    if (!value) return { text: '', inlayIds: [], suggestions: {} };
+    const suggestions =
+        value.suggestions && typeof value.suggestions === 'object'
+            ? Object.fromEntries(
+                  Object.entries(value.suggestions).filter(
+                      ([id, text]) => typeof id === 'string' && typeof text === 'string'
+                  )
+              )
+            : {};
     return {
         text: typeof value.text === 'string' ? value.text : '',
         inlayIds: Array.isArray(value.inlayIds)
             ? Array.from(new Set(value.inlayIds.filter((id) => typeof id === 'string')))
-            : []
+            : [],
+        suggestions
     };
 }
 
@@ -54,7 +63,7 @@ export async function loadChatDraft(chatId: string): Promise<ChatDraft> {
 }
 
 export function getChatDraft(chatId: string): ChatDraft {
-    return get(chatDrafts).get(chatId) ?? { text: '', inlayIds: [] };
+    return get(chatDrafts).get(chatId) ?? { text: '', inlayIds: [], suggestions: {} };
 }
 
 export function setChatDraftText(chatId: string, text: string): void {
@@ -93,6 +102,22 @@ export function clearChatDraft(chatId: string): void {
         return next;
     });
     draftCache.delete(chatId);
+}
+
+export function setChatDraftSuggestion(chatId: string, suggestionId: string, text: string): void {
+    const current = getChatDraft(chatId);
+    saveDraft(chatId, {
+        ...current,
+        suggestions: { ...current.suggestions, [suggestionId]: text }
+    });
+}
+
+export function dismissChatDraftSuggestion(chatId: string, suggestionId: string): void {
+    const current = getChatDraft(chatId);
+    if (!(suggestionId in current.suggestions)) return;
+    const next = { ...current.suggestions };
+    delete next[suggestionId];
+    saveDraft(chatId, { ...current, suggestions: next });
 }
 
 export function flushChatDrafts(): Promise<void> {

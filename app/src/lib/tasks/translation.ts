@@ -69,13 +69,13 @@ export async function runTranslation(
     const chat = await getChat(message.chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${message.chatId}`);
 
-    const messages = await PagedMessages.createThrough(message);
+    const messages = await PagedMessages.createBefore(message.chatId, message.sortOrder);
     const baseCtx: RuntimeContext = {
         roomId: chat.roomId,
         presetId: settings.presetId,
         chatId: chat.id
     };
-    const ctx = toMessageContext(message, messages.length - 1, baseCtx);
+    const ctx = toMessageContext(message, messages.length, baseCtx);
     const controller = new AbortController();
     const localMacros = createTranslationMacros(source, pair.source, pair.target);
     const swipeId = activeSwipe.id;
