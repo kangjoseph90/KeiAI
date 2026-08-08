@@ -519,8 +519,7 @@
                                         {#if block.type === 'message'}
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <div class="flex flex-col gap-1.5">
-                                                    <Label class="text-xs font-semibold">Role</Label
-                                                    >
+                                                    <Label class="text-xs">Role</Label>
                                                     <select
                                                         class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                                         value={block.role ?? 'system'}
@@ -538,7 +537,7 @@
                                             </div>
 
                                             <div class="flex flex-col gap-1.5">
-                                                <Label class="text-xs font-semibold">Content</Label>
+                                                <Label class="text-xs">Content</Label>
                                                 <Textarea
                                                     value={block.content ?? ''}
                                                     placeholder="Write prompt text. Macros are supported."
@@ -552,36 +551,98 @@
                                             </div>
                                         {:else if block.type === 'history'}
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                                <div class="flex flex-col gap-1.5">
-                                                    <Label class="text-xs font-semibold"
-                                                        >History Mode</Label
-                                                    >
-                                                    <select
-                                                        class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                                                        value={block.historyMode ?? 'visible'}
-                                                        onchange={(e) =>
-                                                            applyBlockEdit(block.id, {
-                                                                historyMode: e.currentTarget
-                                                                    .value as
-                                                                    | 'visible'
-                                                                    | 'last_text'
-                                                                    | 'full_trace'
-                                                            })}
-                                                    >
-                                                        <option value="visible">Visible</option>
-                                                        <option value="last_text">Last Text</option>
-                                                        <option value="full_trace"
-                                                            >Full Trace</option
-                                                        >
-                                                    </select>
-                                                </div>
+                                                <WorkflowStringField
+                                                    label="Start"
+                                                    value={block.start}
+                                                    inputmode="numeric"
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, { start: value })}
+                                                />
+                                                <WorkflowStringField
+                                                    label="End"
+                                                    value={block.end}
+                                                    inputmode="numeric"
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, { end: value })}
+                                                />
                                             </div>
-                                        {:else if block.type === 'lorebook'}
+                                            <div class="flex flex-col gap-1.5">
+                                                <Label class="text-xs">History Mode</Label>
+                                                <select
+                                                    class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                                                    value={block.historyMode ?? 'visible'}
+                                                    onchange={(e) =>
+                                                        applyBlockEdit(block.id, {
+                                                            historyMode: e.currentTarget.value as
+                                                                | 'visible'
+                                                                | 'last_text'
+                                                                | 'full_trace'
+                                                        })}
+                                                >
+                                                    <option value="visible">Visible parts</option>
+                                                    <option value="last_text">Last text part</option
+                                                    >
+                                                    <option value="full_trace">Full trace</option>
+                                                </select>
+                                            </div>
                                             <div class="flex flex-col gap-1.5">
                                                 <Label
-                                                    class="text-xs font-semibold flex items-center justify-between"
+                                                    class="text-xs flex items-center justify-between"
                                                 >
-                                                    <span>Format</span>
+                                                    <span>Message format</span>
+                                                    <span
+                                                        class="text-[10px] text-muted-foreground font-normal"
+                                                        >Optional</span
+                                                    >
+                                                </Label>
+                                                <Textarea
+                                                    value={block.format ?? ''}
+                                                    placeholder="Custom format"
+                                                    rows={5}
+                                                    class="resize-y bg-background font-mono text-xs leading-relaxed"
+                                                    oninput={(e) =>
+                                                        applyBlockEdit(block.id, {
+                                                            format:
+                                                                e.currentTarget.value || undefined
+                                                        })}
+                                                />
+                                            </div>
+                                        {:else if block.type === 'lorebook'}
+                                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <WorkflowNumberField
+                                                    label="Min Depth"
+                                                    value={block.minDepth}
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, {
+                                                            minDepth: value
+                                                        })}
+                                                />
+                                                <WorkflowNumberField
+                                                    label="Max Depth"
+                                                    value={block.maxDepth}
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, {
+                                                            maxDepth: value
+                                                        })}
+                                                />
+                                            </div>
+                                            <label
+                                                class="flex w-fit items-center gap-2 text-xs select-none cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={block.reverseOrder ?? false}
+                                                    onchange={(e) =>
+                                                        applyBlockEdit(block.id, {
+                                                            reverseOrder: e.currentTarget.checked
+                                                        })}
+                                                />Reverse insertion order</label
+                                            >
+                                            <div class="flex flex-col gap-1.5">
+                                                <Label
+                                                    class="text-xs flex items-center justify-between"
+                                                >
+                                                    <span>Entry format</span>
                                                     <span
                                                         class="text-[10px] text-muted-foreground font-normal"
                                                         >Optional</span
