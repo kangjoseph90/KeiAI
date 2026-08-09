@@ -44,12 +44,21 @@ export type BuiltInLLMProvider =
     | 'google'
     | 'mistral'
     | 'openrouter'
-    | 'transformers'
     | 'mock';
 
+export type TransformersLLMProvider = 'transformers';
 export type CustomLLMProvider = 'custom';
 export type PluginLLMProvider = 'plugin';
-export type LLMProvider = BuiltInLLMProvider | CustomLLMProvider | PluginLLMProvider;
+export type LLMProvider =
+    | BuiltInLLMProvider
+    | TransformersLLMProvider
+    | CustomLLMProvider
+    | PluginLLMProvider;
+
+export type TransformersLLMRuntime =
+    | { kind: 'pipeline'; task: 'text-generation' }
+    | { kind: 'gemma4' }
+    | { kind: 'qwen35' };
 
 // Parameter
 
@@ -161,6 +170,11 @@ export interface BuiltInLLMModel extends LLMModelBase {
     provider: BuiltInLLMProvider;
 }
 
+export interface TransformersLLMModel extends LLMModelBase {
+    provider: 'transformers';
+    runtime: TransformersLLMRuntime;
+}
+
 export interface CustomLLMModel extends LLMModelBase {
     provider: CustomLLMProvider;
     handler: LLMHandler;
@@ -172,7 +186,7 @@ export interface PluginLLMModel extends LLMModelBase {
     provider: PluginLLMProvider;
 }
 
-export type LLMModel = BuiltInLLMModel | CustomLLMModel | PluginLLMModel;
+export type LLMModel = BuiltInLLMModel | TransformersLLMModel | CustomLLMModel | PluginLLMModel;
 
 export interface LLMModelConfig {
     id: string;
@@ -272,20 +286,13 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
     }
 ];
 
-const TRANSFORMERS_MODELS: BuiltInLLMModel[] = [
+export const TRANSFORMERS_LLM_MODELS: TransformersLLMModel[] = [
     {
         id: 'transformers::onnx-community/LFM2.5-350M-ONNX',
         name: 'LFM2.5 350M',
         modelId: 'onnx-community/LFM2.5-350M-ONNX',
         provider: 'transformers',
-        tokenizer: 'o200k_base',
-        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
-    },
-    {
-        id: 'transformers::onnx-community/LFM2-8B-A1B-ONNX',
-        name: 'LFM2 8B A1B',
-        modelId: 'onnx-community/LFM2-8B-A1B-ONNX',
-        provider: 'transformers',
+        runtime: { kind: 'pipeline', task: 'text-generation' },
         tokenizer: 'o200k_base',
         unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
     },
@@ -294,8 +301,45 @@ const TRANSFORMERS_MODELS: BuiltInLLMModel[] = [
         name: 'LFM2 2.6B',
         modelId: 'onnx-community/LFM2-2.6B-ONNX',
         provider: 'transformers',
+        runtime: { kind: 'pipeline', task: 'text-generation' },
         tokenizer: 'o200k_base',
         unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/gemma-4-E2B-it-ONNX',
+        name: 'Gemma 4 E2B',
+        modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'gemma4' },
+        tokenizer: 'gemma',
+        unsupported: ['video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/gemma-4-E4B-it-ONNX',
+        name: 'Gemma 4 E4B',
+        modelId: 'onnx-community/gemma-4-E4B-it-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'gemma4' },
+        tokenizer: 'gemma',
+        unsupported: ['video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/Qwen3.5-0.8B-ONNX-OPT',
+        name: 'Qwen 3.5 0.8B',
+        modelId: 'onnx-community/Qwen3.5-0.8B-ONNX-OPT',
+        provider: 'transformers',
+        runtime: { kind: 'qwen35' },
+        tokenizer: 'o200k_base',
+        unsupported: ['audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/Qwen3.5-2B-ONNX-OPT',
+        name: 'Qwen 3.5 2B',
+        modelId: 'onnx-community/Qwen3.5-2B-ONNX-OPT',
+        provider: 'transformers',
+        runtime: { kind: 'qwen35' },
+        tokenizer: 'o200k_base',
+        unsupported: ['audio_input', 'video_input', 'tool_call']
     }
 ];
 
@@ -329,6 +373,9 @@ export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
     ...DEEPSEEK_MODELS,
     ...GOOGLE_MODELS,
     ...MISTRAL_MODELS,
-    ...TRANSFORMERS_MODELS,
     ...MOCK_MODELS
 ];
+
+export function getBuiltInLLMModels(provider: BuiltInLLMProvider): readonly BuiltInLLMModel[] {
+    return BUILT_IN_LLM_MODELS.filter((model) => model.provider === provider);
+}

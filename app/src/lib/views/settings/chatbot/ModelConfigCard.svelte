@@ -7,8 +7,9 @@
     import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings } from '$lib/stores';
     import {
-        BUILT_IN_LLM_MODELS,
+        getBuiltInLLMModels,
         getLLMProviderName,
+        TRANSFORMERS_LLM_MODELS,
         type LLMProvider,
         type LLMModelConfig
     } from '$lib/types/models/llm';
@@ -56,7 +57,8 @@
                 return true;
             });
         }
-        return BUILT_IN_LLM_MODELS.filter((m) => m.provider === provider);
+        if (provider === 'transformers') return TRANSFORMERS_LLM_MODELS;
+        return getBuiltInLLMModels(provider);
     }
 
     function getProviderApiKey(provider: LLMProvider): string {

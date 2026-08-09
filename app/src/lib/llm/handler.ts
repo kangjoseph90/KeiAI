@@ -21,7 +21,9 @@ import {
     type BuiltInLLMModel,
     type CustomLLMModel,
     type PluginLLMModel,
+    type TransformersLLMModel,
     BUILT_IN_LLM_MODELS,
+    TRANSFORMERS_LLM_MODELS,
     type LLMCapabilities
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
@@ -51,12 +53,21 @@ export function selectLLMHandler(
     } else if (model.provider === 'plugin') {
         // Plugin models: dispatch by plugin handler
         handler = selectPluginHandler(model);
+    } else if (model.provider === 'transformers') {
+        handler = selectTransformersHandler(model);
     } else {
         // Built-in models: dispatch by provider
         handler = selectBuiltInHandler(model, settings);
     }
 
     return handler ? { handler, unsupported: model.unsupported ?? [] } : null;
+}
+
+function selectTransformersHandler(model: TransformersLLMModel): LLMStreamHandler {
+    return new TransformersLLMStreamHandler({
+        modelId: model.modelId,
+        runtime: model.runtime
+    });
 }
 
 function selectPluginHandler(model: PluginLLMModel): LLMStreamHandler | null {
@@ -128,12 +139,6 @@ function selectBuiltInHandler(
             });
         }
 
-        case 'transformers': {
-            return new TransformersLLMStreamHandler({
-                modelId: model.modelId
-            });
-        }
-
         case 'mock':
             return new MockLLMStreamHandler({ behavior: model.modelId as MockBehavior });
 
@@ -187,6 +192,10 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
             .getInstances()
             .flatMap((instance) => [...instance.llmProviders.values()].map((p) => p.model))
             .find((model) => model.id === config.id);
+    }
+
+    if (config.provider === 'transformers') {
+        return TRANSFORMERS_LLM_MODELS.find((model) => model.id === config.id);
     }
 
     // Dynamic models

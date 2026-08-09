@@ -8,6 +8,20 @@
 
 /** Execution device for local model inference. */
 export type InferenceDevice = 'wasm' | 'webgpu';
+export type InferenceDType =
+    | 'auto'
+    | 'fp32'
+    | 'fp16'
+    | 'q8'
+    | 'int8'
+    | 'uint8'
+    | 'q4'
+    | 'bnb4'
+    | 'q4f16'
+    | 'q2'
+    | 'q2f16'
+    | 'q1'
+    | 'q1f16';
 
 // ─── Model Spec ───────────────────────────────────────────────────────────────
 
@@ -20,7 +34,7 @@ export interface ModelSpec {
     /** HuggingFace revision (branch/tag/commit). Default: `'main'`. */
     revision?: string;
     /** dtype quantization, e.g. `'q8'`, `'fp32'`. Default: runtime-chosen. */
-    quantization?: string;
+    quantization?: InferenceDType;
 }
 
 // ─── Progress ─────────────────────────────────────────────────────────────────
@@ -56,6 +70,16 @@ export interface GenerateOptions {
     top_p?: number;
     top_k?: number;
     repetition_penalty?: number;
+}
+
+export type MultimodalGeneratePart =
+    | { type: 'text'; text: string }
+    | { type: 'image'; mimeType: string; data: string }
+    | { type: 'audio'; mimeType: string; data: string };
+
+export interface MultimodalGenerateMessage {
+    role: string;
+    content: MultimodalGeneratePart[];
 }
 
 export interface TranscribeOptions {
