@@ -25,8 +25,14 @@ const logger = createLogger('inference:transformers');
 
 // ─── Pipeline Cache ───────────────────────────────────────────────────────────
 
+interface PipelineProcessor {
+    readonly tokenizer?: unknown;
+    components?: Record<string, unknown>;
+}
+
 type CachedPipeline = ((...args: unknown[]) => Promise<unknown>) & {
     tokenizer?: unknown;
+    processor?: PipelineProcessor;
     dispose?: () => Promise<void> | void;
 };
 
@@ -34,6 +40,23 @@ const pipelineCache = new Map<string, CachedPipeline>();
 
 function cacheKey(task: string, modelId: string, device: string): string {
     return `${task}::${modelId}::${device}`;
+}
+
+function attachMissingProcessorTokenizer(task: string, pipeline: CachedPipeline): void {
+    const processor = pipeline.processor;
+    if (
+        task !== 'automatic-speech-recognition' ||
+        processor === undefined ||
+        processor.tokenizer !== undefined ||
+        pipeline.tokenizer === undefined ||
+        processor.components === undefined
+    ) {
+        return;
+    }
+
+    // Some converted ASR repositories load the tokenizer separately without including
+    // it in the processor that owns output decoding.
+    processor.components.tokenizer = pipeline.tokenizer;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,6 +104,7 @@ async function getOrLoadPipeline(
     });
 
     const cachedPipeline = p as unknown as CachedPipeline;
+    attachMissingProcessorTokenizer(task, cachedPipeline);
     pipelineCache.set(key, cachedPipeline);
     onProgress?.({ status: 'ready' });
     logger.info(`Pipeline ready: ${key}`);
