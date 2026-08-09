@@ -207,7 +207,7 @@
                                 name: e.currentTarget.value
                             })}
                         aria-label="Model name"
-                        class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                        class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
                     />
 
                     <Badge variant="secondary" class="text-[10px] h-5 px-1.5 shrink-0">

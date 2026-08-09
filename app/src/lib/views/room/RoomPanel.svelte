@@ -694,7 +694,7 @@
                                         {/if}
 
                                         <div
-                                            class="chat-row-desktop-actions pointer-events-none absolute inset-y-0.5 right-1 flex items-center gap-0.5 opacity-0 transition-opacity bg-sidebar-accent pl-1.5 rounded-r-md"
+                                            class="chat-row-desktop-actions pointer-events-none absolute inset-y-0.5 right-1 flex items-center gap-0.5 rounded-r-md bg-inherit pl-1.5 opacity-0 transition-opacity"
                                         >
                                             <Button
                                                 type="button"

@@ -476,7 +476,7 @@
                                     <Input
                                         value={block.name}
                                         aria-label="Block name"
-                                        class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0"
+                                        class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent"
                                         oninput={(e) =>
                                             applyBlockEdit(block.id, {
                                                 name: e.currentTarget.value

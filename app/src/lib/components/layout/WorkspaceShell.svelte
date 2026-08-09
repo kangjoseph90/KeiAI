@@ -96,8 +96,8 @@
                         class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeSection ===
                         section.id
                             ? showDetail
-                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
+                                ? 'bg-accent text-accent-foreground'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-accent md:text-accent-foreground'
                             : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
                         onclick={() => onSelect(section.id)}
                         aria-current={activeSection === section.id ? 'page' : undefined}

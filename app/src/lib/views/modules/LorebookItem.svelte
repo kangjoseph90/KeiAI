@@ -141,7 +141,7 @@
             disabled={busy}
             value={item.name}
             aria-label="Entry name"
-            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
@@ -314,7 +314,7 @@
                             <div class="flex items-center gap-2 select-none">
                                 <input
                                     type="checkbox"
-                                    class="size-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                                    class="size-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
                                     checked={item.scanDepth !== undefined}
                                     disabled={busy}
                                     id="scanDepthToggle"
@@ -347,7 +347,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.useRegex}
                                         disabled={busy}
                                         onchange={(e) => {
@@ -365,7 +365,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.useMultipleKeys}
                                         disabled={busy || item.useRegex}
                                         onchange={(e) =>
@@ -378,7 +378,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.recursive}
                                         disabled={busy}
                                         onchange={(e) =>
@@ -391,7 +391,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.noRecursiveSearch}
                                         disabled={busy}
                                         onchange={(e) =>

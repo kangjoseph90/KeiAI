@@ -85,7 +85,7 @@
                     type="button"
                     class="flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors {mode ===
                     'code'
-                        ? 'bg-background shadow-sm'
+                        ? 'bg-background shadow-sm dark:bg-accent'
                         : 'text-muted-foreground hover:text-foreground'}"
                     onclick={() => {
                         mode = 'code';
@@ -98,7 +98,7 @@
                     type="button"
                     class="flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors {mode ===
                     'discover'
-                        ? 'bg-background shadow-sm'
+                        ? 'bg-background shadow-sm dark:bg-accent'
                         : 'text-muted-foreground hover:text-foreground'}"
                     onclick={() => {
                         mode = 'discover';

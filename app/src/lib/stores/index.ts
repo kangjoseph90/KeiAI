@@ -23,6 +23,7 @@ import { readonly } from 'svelte/store';
 import * as StoreState from './state';
 
 export const appSettings = readonly(StoreState.appSettings);
+export const themePreference = readonly(StoreState.themePreference);
 export const activeUser = readonly(StoreState.activeUser);
 export const localUsers = readonly(StoreState.localUsers);
 export const pbConnected = readonly(StoreState.pbConnected);
@@ -134,3 +135,4 @@ export * from './connection';
 export * from './user';
 export * from './sync';
 export * from './init';
+export * from './theme';

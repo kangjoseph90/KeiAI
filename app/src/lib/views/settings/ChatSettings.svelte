@@ -30,7 +30,7 @@
                 type="button"
                 class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeTab ===
                 tab.id
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                     : 'text-muted-foreground hover:text-foreground'}"
                 onclick={() => (activeTab = tab.id)}
             >

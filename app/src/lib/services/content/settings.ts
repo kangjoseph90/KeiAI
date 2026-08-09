@@ -40,7 +40,6 @@ import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource'
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
-    theme: 'light' | 'dark' | 'system';
     chat: {
         saveMessagesOnSwipe: boolean;
         expandStepsOnGeneration: boolean;
@@ -107,7 +106,6 @@ export interface AppSettingsRefs {
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettings = {
-    theme: 'system',
     chat: {
         saveMessagesOnSwipe: true,
         expandStepsOnGeneration: false,

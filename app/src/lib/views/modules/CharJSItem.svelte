@@ -93,7 +93,7 @@
             disabled={busy}
             value={item.name}
             aria-label="CharJS name"
-            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 

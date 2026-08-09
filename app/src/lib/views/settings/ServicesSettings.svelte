@@ -919,7 +919,7 @@
                 type="button"
                 class="min-w-max basis-24 grow shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
                 item.id
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                     : 'text-muted-foreground hover:text-foreground'}"
                 onclick={() => (activeFeature = item.id)}
             >

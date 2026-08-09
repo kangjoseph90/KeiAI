@@ -98,10 +98,10 @@
                 <div class="grid gap-2 sm:grid-cols-2">
                     <button
                         type="button"
-                        class="flex min-w-0 items-start gap-3 rounded-md border p-3 text-left transition-colors {visibility ===
+                        class="flex min-w-0 items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors {visibility ===
                         'private'
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-foreground/25 hover:bg-muted/40'}"
+                            ? 'border-foreground/25 bg-accent/50'
+                            : 'hover:bg-muted/50'}"
                         aria-pressed={visibility === 'private'}
                         onclick={() => (visibility = 'private')}
                     >
@@ -115,10 +115,10 @@
                     </button>
                     <button
                         type="button"
-                        class="flex min-w-0 items-start gap-3 rounded-md border p-3 text-left transition-colors {visibility ===
+                        class="flex min-w-0 items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors {visibility ===
                         'public'
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-foreground/25 hover:bg-muted/40'}"
+                            ? 'border-foreground/25 bg-accent/50'
+                            : 'hover:bg-muted/50'}"
                         aria-pressed={visibility === 'public'}
                         onclick={() => (visibility = 'public')}
                     >

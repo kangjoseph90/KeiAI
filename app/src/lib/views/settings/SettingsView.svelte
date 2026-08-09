@@ -5,7 +5,6 @@
         Cpu,
         Sparkles,
         Settings,
-        RefreshCw,
         Puzzle,
         MessageSquare,
         Languages,
@@ -28,7 +27,9 @@
     import { Badge } from '$lib/components/ui/badge';
     import {
         appSettings,
+        themePreference,
         updateSettings,
+        updateThemePreference,
         activePreset,
         activeRoom,
         activeChat,
@@ -50,11 +51,13 @@
     import PluginsView from './PluginsView.svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import type { ThemePreference } from '$lib/stores';
 
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
     let localTab = $state<SettingsTab>('models');
     let activeTab = $derived(settingsTab ?? localTab);
     let settingsBusy = $state(false);
+    let themeBusy = $state(false);
     let maintenanceBusy = $state(false);
 
     const tabs = [
@@ -69,9 +72,16 @@
         { id: 'general', label: 'General', icon: Settings }
     ] as const;
 
-    async function handleToggleTheme() {
-        const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
-        await updateSettingsSafely({ theme: currentTheme });
+    async function handleThemeChange(preference: ThemePreference): Promise<void> {
+        if (themeBusy || preference === $themePreference) return;
+        themeBusy = true;
+        try {
+            await updateThemePreference(preference);
+        } catch (error) {
+            toast.error({ title: 'Theme update failed', description: getErrorMessage(error) });
+        } finally {
+            themeBusy = false;
+        }
     }
 
     async function updateSettingsSafely(
@@ -222,22 +232,28 @@
                             <div class="divide-y divide-border">
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5">
-                                        <Label class="text-sm font-medium">Color Theme</Label>
+                                        <Label for="setting-color-theme" class="text-sm font-medium"
+                                            >Color Theme</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
-                                            Switch between light and dark mode.
+                                            Choose a theme for this device.
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5 shrink-0"
-                                        disabled={settingsBusy}
-                                        aria-busy={settingsBusy}
-                                        onclick={handleToggleTheme}
+                                    <select
+                                        id="setting-color-theme"
+                                        class="h-9 min-w-28 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        value={$themePreference}
+                                        disabled={themeBusy}
+                                        aria-busy={themeBusy}
+                                        onchange={(event) =>
+                                            handleThemeChange(
+                                                event.currentTarget.value as ThemePreference
+                                            )}
                                     >
-                                        <RefreshCw class="size-4" />
-                                        Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
-                                    </Button>
+                                        <option value="system">System</option>
+                                        <option value="light">Light</option>
+                                        <option value="dark">Dark</option>
+                                    </select>
                                 </div>
                             </div>
                         </section>

@@ -46,7 +46,7 @@
                 <Button
                     variant="ghost"
                     size="icon-sm"
-                    class="size-6 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground"
+                    class="size-6 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground dark:hover:bg-background/95"
                     aria-label={`Actions for ${name}`}
                     {disabled}
                 >

@@ -183,7 +183,7 @@
             <DialogDescription class="text-xs">{description}</DialogDescription>
         </DialogHeader>
 
-        <div class="border-b bg-muted/20 px-5 py-3">
+        <div class="border-b px-5 py-3">
             {#if hasLibrarySource}
                 <div class="mb-3 flex rounded-md border bg-background p-1">
                     <Button

@@ -234,18 +234,20 @@
             {:else}
                 <CheckCircle2 class="size-5 text-emerald-500" />
             {/if}
-            <span
-                class="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background shadow-sm"
-                aria-hidden="true"
-            >
-                {visibleTasks.length > 9 ? '9+' : visibleTasks.length}
-            </span>
+            {#if visibleTasks.length > 1}
+                <span
+                    class="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background shadow-sm"
+                    aria-hidden="true"
+                >
+                    {visibleTasks.length > 9 ? '9+' : visibleTasks.length}
+                </span>
+            {/if}
         </Button>
     </div>
 
     {#if expanded && visibleTasks.length > 0}
         <aside
-            class="pointer-events-auto absolute flex w-[min(24rem,calc(100vw-2rem))] animate-in flex-col overflow-hidden rounded-xl border border-border/80 bg-background/95 shadow-xl fade-in-0 zoom-in-95 backdrop-blur-xl duration-150 {panelOpensLeft
+            class="pointer-events-auto absolute flex w-[min(24rem,calc(100vw-2rem))] animate-in flex-col overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground shadow-xl fade-in-0 zoom-in-95 duration-150 {panelOpensLeft
                 ? 'right-0 origin-right'
                 : 'left-0 origin-left'} {panelOpensUp
                 ? 'bottom-[calc(100%+0.5rem)]'

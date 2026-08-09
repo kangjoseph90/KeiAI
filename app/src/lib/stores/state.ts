@@ -45,9 +45,11 @@ import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
 import type { AssetReadLocator } from '$lib/services/asset';
 import type { DataScopeType, TableName } from '$lib/adapters/db';
 import type { ConnectionChangeProgress } from '$lib/services';
+import type { ThemePreference } from './theme';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
+export const themePreference = writable<ThemePreference>('system');
 export const activeUser = writable<User | null>(null);
 export const localUsers = writable<User[]>([]);
 
