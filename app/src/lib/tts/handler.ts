@@ -29,6 +29,15 @@ export function selectTTSHandler(provider: TTSProvider, settings: AppSettings): 
             });
         }
 
+        case 'openrouter': {
+            return new OpenAITTSHandler({
+                apiKey: settings.openrouter.apiKey,
+                baseUrl: 'https://openrouter.ai/api/v1',
+                modelId: settings.openrouter.tts.modelId,
+                voiceId: settings.openrouter.tts.voiceId
+            });
+        }
+
         case 'elevenlabs': {
             return new ElevenLabsTTSHandler({
                 apiKey: settings.elevenlabs?.apiKey,

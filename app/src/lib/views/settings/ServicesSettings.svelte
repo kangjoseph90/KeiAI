@@ -47,6 +47,11 @@
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import { pluginManager } from '$lib/plugins';
+    import {
+        listOpenRouterModels,
+        type OpenRouterModelCapability,
+        type OpenRouterModelOption
+    } from '$lib/openrouter/models';
 
     type Feature = 'imagegen' | 'tts' | 'stt' | 'embedding' | 'reranker';
     type ServiceGroup = 'image' | 'audio' | 'retrieval';
@@ -134,8 +139,9 @@
         'openai',
         'google',
         'novelai',
-        'comfyui',
         'stability',
+        'openrouter',
+        'comfyui',
         'mock',
         'plugin'
     ];
@@ -144,6 +150,7 @@
         'google',
         'elevenlabs',
         'novelai',
+        'openrouter',
         'kokoro',
         'transformers',
         'mock',
@@ -153,6 +160,7 @@
         'openai',
         'google',
         'groq',
+        'openrouter',
         'transformers',
         'mock',
         'plugin'
@@ -171,6 +179,7 @@
         'cohere',
         'jina',
         'voyageai',
+        'openrouter',
         'transformers',
         'plugin'
     ];
@@ -179,6 +188,16 @@
     let saving = $state(false);
     let workflowEditorOpen = $state(false);
     let workflowEditorFeature = $state<WorkflowFeature>('imagegen');
+    let openRouterModels = $state<Partial<Record<Feature, OpenRouterModelOption[]>>>({});
+    let loadedOpenRouterApiKeys = $state<Partial<Record<Feature, string>>>({});
+
+    const OPENROUTER_CAPABILITIES: Record<Feature, OpenRouterModelCapability> = {
+        imagegen: 'image',
+        tts: 'tts',
+        stt: 'stt',
+        embedding: 'embedding',
+        reranker: 'reranker'
+    };
 
     const serviceGroup = $derived(
         SERVICE_GROUPS.find((item) => item.id === activeGroup) ?? SERVICE_GROUPS[0]
@@ -188,6 +207,30 @@
             ? $appSettings?.imageGeneration.workflow
             : $appSettings?.tts.workflow
     );
+
+    $effect(() => {
+        const settings = $appSettings;
+        if (!settings) return;
+
+        for (const feature of serviceGroup.features) {
+            if (getActiveProvider(settings, feature) !== 'openrouter') continue;
+
+            const apiKey = settings.openrouter.apiKey?.trim() ?? '';
+            if (!apiKey || loadedOpenRouterApiKeys[feature] === apiKey) continue;
+
+            loadedOpenRouterApiKeys[feature] = apiKey;
+            void listOpenRouterModels(OPENROUTER_CAPABILITIES[feature], { apiKey })
+                .then((models) => {
+                    openRouterModels[feature] = models;
+                })
+                .catch((error: unknown) => {
+                    toast.error({
+                        title: 'OpenRouter model list failed',
+                        description: getErrorMessage(error)
+                    });
+                });
+        }
+    });
 
     function getActiveProvider(
         settings: AppSettings | null,
@@ -292,6 +335,10 @@
         provider: ProviderSettingsKey,
         feature: Feature
     ): readonly string[] | undefined {
+        if (provider === 'openrouter') {
+            return openRouterModels[feature]?.map((model) => model.id) ?? [];
+        }
+
         switch (feature) {
             case 'imagegen':
                 return IMAGEGEN_MODEL_IDS[provider as keyof typeof IMAGEGEN_MODEL_IDS];
@@ -359,6 +406,18 @@
                                 'Model',
                                 settings.openai.imagegen.modelId,
                                 'gpt-image-2'
+                            )
+                        ];
+                    case 'openrouter':
+                        return [
+                            apiKeyField(settings, 'openrouter'),
+                            configField(
+                                'openrouter',
+                                'imagegen',
+                                'modelId',
+                                'Model',
+                                settings.openrouter.imagegen.modelId,
+                                'openai/gpt-image-1'
                             )
                         ];
                     case 'google':
@@ -560,6 +619,26 @@
                                 'alloy'
                             )
                         ];
+                    case 'openrouter':
+                        return [
+                            apiKeyField(settings, 'openrouter'),
+                            configField(
+                                'openrouter',
+                                'tts',
+                                'modelId',
+                                'Model',
+                                settings.openrouter.tts.modelId,
+                                'openai/gpt-4o-mini-tts-2025-12-15'
+                            ),
+                            configField(
+                                'openrouter',
+                                'tts',
+                                'voiceId',
+                                'Voice',
+                                settings.openrouter.tts.voiceId,
+                                'alloy'
+                            )
+                        ];
                     case 'google':
                         return [
                             apiKeyField(settings, 'google'),
@@ -676,6 +755,18 @@
                                 'Model',
                                 settings.openai.stt.modelId,
                                 'whisper-1'
+                            )
+                        ];
+                    case 'openrouter':
+                        return [
+                            apiKeyField(settings, 'openrouter'),
+                            configField(
+                                'openrouter',
+                                'stt',
+                                'modelId',
+                                'Model',
+                                settings.openrouter.stt.modelId,
+                                'openai/whisper-1'
                             )
                         ];
                     case 'google':
@@ -880,6 +971,18 @@
                                 'Model',
                                 settings.voyageai.reranker.modelId,
                                 'rerank-2'
+                            )
+                        ];
+                    case 'openrouter':
+                        return [
+                            apiKeyField(settings, 'openrouter'),
+                            configField(
+                                'openrouter',
+                                'reranker',
+                                'modelId',
+                                'Model',
+                                settings.openrouter.reranker.modelId,
+                                'cohere/rerank-v3.5'
                             )
                         ];
                     case 'transformers':

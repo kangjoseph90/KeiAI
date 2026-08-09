@@ -29,6 +29,7 @@ export interface GoogleTTSConfig {
     baseUrl: string;
     modelId: string;
     voiceId: string;
+    useProxy?: boolean;
 }
 
 export class GoogleTTSHandler implements TTSHandler {
@@ -70,7 +71,7 @@ export class GoogleTTSHandler implements TTSHandler {
                 },
                 body
             },
-            { proxy: true, signal }
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

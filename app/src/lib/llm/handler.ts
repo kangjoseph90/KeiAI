@@ -200,10 +200,12 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
 
     // Dynamic models
     if (config.provider === 'openrouter') {
+        const modelId = config.id.trim();
+        if (!modelId) return undefined;
         const model: BuiltInLLMModel = {
-            id: `${config.provider}::${config.id}`,
-            name: config.id,
-            modelId: config.id,
+            id: `${config.provider}::${modelId}`,
+            name: modelId,
+            modelId,
             provider: config.provider,
             tokenizer: config.tokenizer ?? 'o200k_base'
         };

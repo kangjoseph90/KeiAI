@@ -206,8 +206,22 @@ export const defaultSettings: AppSettings = {
         }
     },
     openrouter: {
+        apiKey: '',
+        imagegen: {
+            modelId: 'openai/gpt-image-1'
+        },
+        tts: {
+            modelId: 'openai/gpt-4o-mini-tts-2025-12-15',
+            voiceId: 'alloy'
+        },
+        stt: {
+            modelId: 'openai/whisper-1'
+        },
         embedding: {
             modelId: 'openai/text-embedding-3-small'
+        },
+        reranker: {
+            modelId: 'cohere/rerank-v3.5'
         }
     },
     transformers: {

@@ -9,6 +9,7 @@ export interface ComfyUIImageGenConfig {
     baseUrl: string;
     workflow: string;
     timeoutSeconds: number;
+    useProxy?: boolean;
 }
 
 interface ComfyNode {
@@ -131,11 +132,15 @@ export class ComfyUIImageGenHandler implements ImageGenHandler {
         form.append('type', 'input');
         form.append('overwrite', 'true');
 
-        const response = await appHttp.fetch(this.url('/upload/image'), {
-            method: 'POST',
-            body: form,
-            signal
-        });
+        const response = await appHttp.fetch(
+            this.url('/upload/image'),
+            {
+                method: 'POST',
+                body: form,
+                signal
+            },
+            { proxy: this.config.useProxy ?? true, signal }
+        );
         if (!response.ok) {
             throw await comfyError(response, 'image upload');
         }
@@ -148,17 +153,21 @@ export class ComfyUIImageGenHandler implements ImageGenHandler {
     }
 
     private async queueWorkflow(workflow: ComfyWorkflow, signal?: AbortSignal): Promise<string> {
-        const response = await appHttp.fetch(this.url('/prompt'), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
+        const response = await appHttp.fetch(
+            this.url('/prompt'),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    prompt: workflow,
+                    client_id: generateId()
+                }),
+                signal
             },
-            body: JSON.stringify({
-                prompt: workflow,
-                client_id: generateId()
-            }),
-            signal
-        });
+            { proxy: this.config.useProxy ?? true, signal }
+        );
         if (!response.ok) {
             throw await comfyError(response, 'workflow submission');
         }
@@ -179,9 +188,11 @@ export class ComfyUIImageGenHandler implements ImageGenHandler {
 
         while (Date.now() < deadline) {
             signal?.throwIfAborted();
-            const response = await appHttp.fetch(this.url(`/history/${promptId}`), {
-                signal
-            });
+            const response = await appHttp.fetch(
+                this.url(`/history/${promptId}`),
+                { signal },
+                { proxy: this.config.useProxy ?? true, signal }
+            );
             if (!response.ok) {
                 throw await comfyError(response, 'history lookup');
             }
@@ -216,9 +227,8 @@ export class ComfyUIImageGenHandler implements ImageGenHandler {
                 subfolder: output.subfolder ?? '',
                 type: output.type ?? 'output'
             }),
-            {
-                signal
-            }
+            { signal },
+            { proxy: this.config.useProxy ?? true, signal }
         );
         if (!response.ok) {
             throw await comfyError(response, 'output download');

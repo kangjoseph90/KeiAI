@@ -20,6 +20,7 @@ export interface StabilityImageGenConfig {
     /** Output format: "png" | "jpeg" | "webp" */
     outputFormat?: string;
     aspectRatio?: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -67,7 +68,8 @@ export class StabilityImageGenHandler implements ImageGenHandler {
                 headers,
                 body,
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

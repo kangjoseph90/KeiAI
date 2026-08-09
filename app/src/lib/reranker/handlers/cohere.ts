@@ -17,6 +17,7 @@ export interface CohereRerankerConfig {
     baseUrl: string;
     /** Max number of results to return */
     topN?: number;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -38,17 +39,21 @@ export class CohereRerankerHandler implements RerankerHandler {
             headers.Authorization = `Bearer ${this.config.apiKey}`;
         }
 
-        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/v1/rerank'), {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: this.config.modelId,
-                query,
-                documents,
-                top_n: this.config.topN ?? documents.length
-            }),
-            signal
-        });
+        const response = await appHttp.fetch(
+            buildUrl(this.config.baseUrl, '/v1/rerank'),
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: this.config.modelId,
+                    query,
+                    documents,
+                    top_n: this.config.topN ?? documents.length
+                }),
+                signal
+            },
+            { proxy: this.config.useProxy ?? true, signal }
+        );
 
         if (!response.ok) {
             throw new AppError('NETWORK_ERROR', `Cohere Reranker failed: ${response.status}`);

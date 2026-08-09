@@ -20,6 +20,7 @@ export interface OpenAIImageGenConfig {
     size?: string;
     /** Response format: "url" | "b64_json" */
     responseFormat?: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -61,18 +62,22 @@ export class OpenAIImageGenHandler implements ImageGenHandler {
         let response: Response;
         if (inputImages.length === 0) {
             headers['Content-Type'] = 'application/json';
-            response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/images/generations'), {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    model: this.config.modelId,
-                    prompt,
-                    n: 1,
-                    size: this.config.size ?? '1024x1024',
-                    response_format: this.config.responseFormat ?? 'b64_json'
-                }),
-                signal
-            });
+            response = await appHttp.fetch(
+                buildUrl(this.config.baseUrl, '/images/generations'),
+                {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        model: this.config.modelId,
+                        prompt,
+                        n: 1,
+                        size: this.config.size ?? '1024x1024',
+                        response_format: this.config.responseFormat ?? 'b64_json'
+                    }),
+                    signal
+                },
+                { proxy: this.config.useProxy ?? true, signal }
+            );
         } else {
             const body = new FormData();
             body.append('model', this.config.modelId);
@@ -87,12 +92,16 @@ export class OpenAIImageGenHandler implements ImageGenHandler {
                     `image-${index + 1}`
                 );
             }
-            response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/images/edits'), {
-                method: 'POST',
-                headers,
-                body,
-                signal
-            });
+            response = await appHttp.fetch(
+                buildUrl(this.config.baseUrl, '/images/edits'),
+                {
+                    method: 'POST',
+                    headers,
+                    body,
+                    signal
+                },
+                { proxy: this.config.useProxy ?? true, signal }
+            );
         }
 
         if (!response.ok) {

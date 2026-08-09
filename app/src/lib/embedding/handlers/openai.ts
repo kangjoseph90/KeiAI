@@ -16,6 +16,7 @@ export interface OpenAIEmbeddingConfig {
     apiKey?: string;
     modelId: string;
     baseUrl: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -35,15 +36,19 @@ export class OpenAIEmbeddingHandler implements EmbeddingHandler {
             headers.Authorization = `Bearer ${this.config.apiKey}`;
         }
 
-        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/embeddings'), {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: this.config.modelId,
-                input: texts
-            }),
-            signal
-        });
+        const response = await appHttp.fetch(
+            buildUrl(this.config.baseUrl, '/embeddings'),
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: this.config.modelId,
+                    input: texts
+                }),
+                signal
+            },
+            { proxy: this.config.useProxy ?? true, signal }
+        );
 
         if (!response.ok) {
             throw new AppError('NETWORK_ERROR', `OpenAI Embedding failed: ${response.status}`);

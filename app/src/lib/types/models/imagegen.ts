@@ -6,6 +6,7 @@
 
 export type BuiltInImageGenProvider =
     | 'openai'
+    | 'openrouter'
     | 'stability'
     | 'google'
     | 'novelai'
@@ -22,6 +23,7 @@ export interface PluginImageGenModel {
 
 export const IMAGEGEN_MODEL_IDS: Partial<Record<BuiltInImageGenProvider, readonly string[]>> = {
     openai: ['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'],
+    openrouter: [],
     google: [
         'gemini-3.1-flash-image',
         'gemini-3.1-flash-lite-image',
@@ -42,6 +44,7 @@ export const IMAGEGEN_MODEL_IDS: Partial<Record<BuiltInImageGenProvider, readonl
 
 const providerNames: Record<ImageGenProvider, string> = {
     openai: 'OpenAI',
+    openrouter: 'OpenRouter',
     stability: 'Stability AI',
     google: 'Google',
     novelai: 'NovelAI',

@@ -143,7 +143,20 @@ export interface MiniLMProviderConfig {
 
 export interface OpenRouterProviderConfig {
     apiKey?: string;
+    imagegen: {
+        modelId: string;
+    };
+    tts: {
+        modelId: string;
+        voiceId: string;
+    };
+    stt: {
+        modelId: string;
+    };
     embedding: {
+        modelId: string;
+    };
+    reranker: {
         modelId: string;
     };
 }

@@ -6,6 +6,7 @@
 
 export type BuiltInTTSProvider =
     | 'openai'
+    | 'openrouter'
     | 'elevenlabs'
     | 'google'
     | 'novelai'
@@ -23,6 +24,7 @@ export interface PluginTTSModel {
 
 export const TTS_MODEL_IDS: Partial<Record<BuiltInTTSProvider, readonly string[]>> = {
     openai: ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'],
+    openrouter: [],
     google: [
         'gemini-3.1-flash-tts-preview',
         'gemini-2.5-flash-preview-tts',
@@ -78,6 +80,7 @@ export function isKokoroVoiceId(value: string): value is KokoroVoiceId {
 
 const providerNames: Record<TTSProvider, string> = {
     openai: 'OpenAI',
+    openrouter: 'OpenRouter',
     elevenlabs: 'ElevenLabs',
     google: 'Google',
     novelai: 'NovelAI',

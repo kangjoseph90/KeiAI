@@ -4,6 +4,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
+    import SuggestedInput from '$lib/components/SuggestedInput.svelte';
     import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings } from '$lib/stores';
     import {
@@ -17,6 +18,7 @@
     import type { AppSettings } from '$lib/services/content/settings';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { compareSortOrder } from '$lib/utils/ordering';
+    import { listOpenRouterModels, type OpenRouterModelOption } from '$lib/openrouter/models';
 
     interface Props {
         config: LLMModelConfig;
@@ -26,6 +28,10 @@
     let { config, onModelChange }: Props = $props();
 
     let showKey = $state(false);
+    let openRouterModels = $state<OpenRouterModelOption[]>([]);
+    let openRouterLoading = $state(false);
+    let openRouterError = $state<string | null>(null);
+    let loadedOpenRouterApiKey = $state('');
 
     const providers: LLMProvider[] = [
         'openai',
@@ -58,8 +64,31 @@
             });
         }
         if (provider === 'transformers') return TRANSFORMERS_LLM_MODELS;
+        if (provider === 'openrouter') {
+            return openRouterModels.map((model) => ({ id: model.id, name: model.name }));
+        }
         return getBuiltInLLMModels(provider);
     }
+
+    $effect(() => {
+        if (config.provider !== 'openrouter') return;
+        const apiKey = $appSettings?.openrouter?.apiKey?.trim() ?? '';
+        if (!apiKey || apiKey === loadedOpenRouterApiKey) return;
+
+        loadedOpenRouterApiKey = apiKey;
+        openRouterLoading = true;
+        openRouterError = null;
+        void listOpenRouterModels('llm', { apiKey })
+            .then((models) => {
+                openRouterModels = models;
+            })
+            .catch((error: unknown) => {
+                openRouterError = error instanceof Error ? error.message : 'Failed to load models';
+            })
+            .finally(() => {
+                openRouterLoading = false;
+            });
+    });
 
     function getProviderApiKey(provider: LLMProvider): string {
         if (!$appSettings) return '';
@@ -100,14 +129,29 @@
         </div>
         <div class="flex flex-col gap-1.5">
             <Label>Model</Label>
-            <OptionSelect
-                value={config.id}
-                options={getModelsForProvider(config.provider).map((model) => ({
-                    value: model.id,
-                    label: model.name
-                }))}
-                onChange={(value) => onModelChange(config.provider, value)}
-            />
+            {#if config.provider === 'openrouter'}
+                <SuggestedInput
+                    id="openrouter-model"
+                    value={config.id}
+                    suggestions={openRouterModels.map((model) => model.id)}
+                    placeholder={openRouterLoading
+                        ? 'Loading OpenRouter models...'
+                        : 'author/model'}
+                    onCommit={(value) => onModelChange(config.provider, value)}
+                />
+                {#if openRouterError}
+                    <p class="text-xs text-destructive">{openRouterError}</p>
+                {/if}
+            {:else}
+                <OptionSelect
+                    value={config.id}
+                    options={getModelsForProvider(config.provider).map((model) => ({
+                        value: model.id,
+                        label: model.name
+                    }))}
+                    onChange={(value) => onModelChange(config.provider, value)}
+                />
+            {/if}
         </div>
 
         {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}

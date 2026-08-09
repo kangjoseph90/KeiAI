@@ -19,6 +19,7 @@ export interface GoogleSTTConfig {
     baseUrl: string;
     /** Language code, e.g. "en-US", "ko-KR" */
     languageCode?: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -54,7 +55,8 @@ export class GoogleSTTHandler implements STTHandler {
                     }
                 }),
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

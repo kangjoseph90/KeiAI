@@ -16,6 +16,7 @@ export interface VoyageAIRerankerConfig {
     modelId: string;
     baseUrl: string;
     topK?: number;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -37,17 +38,21 @@ export class VoyageAIRerankerHandler implements RerankerHandler {
             headers.Authorization = `Bearer ${this.config.apiKey}`;
         }
 
-        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/v1/rerank'), {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: this.config.modelId,
-                query,
-                documents,
-                top_k: this.config.topK ?? documents.length
-            }),
-            signal
-        });
+        const response = await appHttp.fetch(
+            buildUrl(this.config.baseUrl, '/v1/rerank'),
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: this.config.modelId,
+                    query,
+                    documents,
+                    top_k: this.config.topK ?? documents.length
+                }),
+                signal
+            },
+            { proxy: this.config.useProxy ?? true, signal }
+        );
 
         if (!response.ok) {
             throw new AppError('NETWORK_ERROR', `VoyageAI Reranker failed: ${response.status}`);
