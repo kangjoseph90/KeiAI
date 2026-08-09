@@ -44,3 +44,50 @@ describe('Markdown headings', () => {
         expect(parseMarkdown('# Status')).toContain('<h1>Status</h1>');
     });
 });
+
+describe('Markdown dialogue quotes', () => {
+    it('marks paired straight and curly quotes by kind', () => {
+        const rendered = parseMarkdown('"Hello" \'aside\' “Welcome” ‘quietly’');
+
+        expect(rendered).toContain('<mark data-keiai-quote="double">"Hello"</mark>');
+        expect(rendered).toContain('<mark data-keiai-quote="single">\'aside\'</mark>');
+        expect(rendered).toContain('<mark data-keiai-quote="double">“Welcome”</mark>');
+        expect(rendered).toContain('<mark data-keiai-quote="single">‘quietly’</mark>');
+    });
+
+    it('renders Markdown inside a quote', () => {
+        const rendered = parseMarkdown('"Hello, **really**."');
+
+        expect(rendered).toContain(
+            '<mark data-keiai-quote="double">"Hello, <strong>really</strong>."</mark>'
+        );
+    });
+
+    it('does not treat apostrophes as single-quoted dialogue', () => {
+        const rendered = parseMarkdown("Don't change Alice's reply.");
+
+        expect(rendered).not.toContain('data-keiai-quote');
+        expect(rendered).toContain('Don&#39;t change Alice&#39;s reply.');
+    });
+
+    it('leaves escaped, code, and unmatched quotes unmarked', () => {
+        const rendered = parseMarkdown(
+            '\\"escaped\\" `"inline"`\n\n```text\n"fenced"\n```\n\n"open'
+        );
+
+        expect(rendered).not.toContain('data-keiai-quote');
+        expect(rendered).toContain('<code>&quot;inline&quot;</code>');
+        expect(rendered).toContain('&quot;open');
+    });
+
+    it('keeps a partial streaming quote plain until it closes', () => {
+        expect(parseMarkdown('"partial')).not.toContain('data-keiai-quote');
+        expect(parseMarkdown('"partial"')).toContain('data-keiai-quote="double"');
+    });
+
+    it('supports an apostrophe inside single-quoted dialogue', () => {
+        const rendered = parseMarkdown("'I don't know.'");
+
+        expect(rendered).toContain('<mark data-keiai-quote="single">\'I don&#39;t know.\'</mark>');
+    });
+});

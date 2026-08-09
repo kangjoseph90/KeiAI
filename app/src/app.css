@@ -38,6 +38,11 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     --accent-foreground: oklch(0.21 0.006 285.885);
     --destructive: oklch(0.577 0.245 27.325);
     --recording: oklch(0.577 0.245 27.325);
+    --message-bold: var(--foreground);
+    --message-italic: var(--muted-foreground);
+    --message-italic-bold: color-mix(in oklab, var(--foreground) 45%, var(--muted-foreground));
+    --message-quote-single: oklch(0.52 0.16 225);
+    --message-quote-double: oklch(0.58 0.18 55);
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
     --ring: oklch(0.705 0.015 286.067);
@@ -73,6 +78,11 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --recording: oklch(0.704 0.191 22.216);
+    --message-bold: var(--foreground);
+    --message-italic: var(--muted-foreground);
+    --message-italic-bold: color-mix(in oklab, var(--foreground) 45%, var(--muted-foreground));
+    --message-quote-single: oklch(0.8 0.13 215);
+    --message-quote-double: oklch(0.8 0.14 65);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
@@ -331,4 +341,38 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     display: block;
     max-width: 100%;
     overflow-x: auto;
+}
+
+.message-text[data-keiai-message-role='user'] {
+    --message-bold: var(--primary-foreground);
+    --message-italic: color-mix(in oklab, var(--primary-foreground) 72%, transparent);
+    --message-italic-bold: color-mix(in oklab, var(--primary-foreground) 86%, transparent);
+    --message-quote-single: color-mix(in oklab, var(--primary-foreground) 78%, #22d3ee);
+    --message-quote-double: color-mix(in oklab, var(--primary-foreground) 78%, #fb923c);
+}
+
+.message-text strong {
+    color: var(--message-bold);
+}
+
+.message-text em {
+    color: var(--message-italic);
+}
+
+.message-text :is(strong em, em strong) {
+    color: var(--message-italic-bold);
+}
+
+.message-text mark[data-keiai-quote='single'],
+.message-text mark[data-keiai-quote='double'] {
+    padding: 0;
+    background: transparent;
+}
+
+.message-text mark[data-keiai-quote='single'] {
+    color: var(--message-quote-single);
+}
+
+.message-text mark[data-keiai-quote='double'] {
+    color: var(--message-quote-double);
 }

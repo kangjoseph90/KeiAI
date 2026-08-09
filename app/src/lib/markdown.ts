@@ -5,12 +5,104 @@
  * - GFM → tables, strikethrough, task lists
  * - Setext headings and indented code blocks are disabled for chat compatibility
  */
-import { Marked, type Tokenizer, type Tokens } from 'marked';
+import { Marked, type Token, type Tokenizer, type Tokens } from 'marked';
 import hljs from 'highlight.js';
+
+type QuoteKind = 'single' | 'double';
+
+interface QuoteToken extends Tokens.Generic {
+    type: 'quote';
+    kind: QuoteKind;
+    open: string;
+    close: string;
+    tokens: Token[];
+}
+
+const QUOTE_PAIRS: Readonly<Record<string, { close: string; kind: QuoteKind }>> = {
+    '"': { close: '"', kind: 'double' },
+    "'": { close: "'", kind: 'single' },
+    '“': { close: '”', kind: 'double' },
+    '‘': { close: '’', kind: 'single' }
+};
+
+function isAsciiWord(character: string | undefined): boolean {
+    return character !== undefined && /[A-Za-z0-9]/.test(character);
+}
+
+function previousSourceCharacter(tokens: Token[]): string | undefined {
+    const raw = tokens.at(-1)?.raw;
+    return raw?.at(-1);
+}
+
+function findClosingQuote(src: string, open: string, close: string, kind: QuoteKind): number {
+    for (let index = 1; index < src.length; index += 1) {
+        const character = src[index];
+        if (character === '\n' || character === '\r') return -1;
+
+        if (character === '\\') {
+            index += 1;
+            continue;
+        }
+        if (character !== close) continue;
+
+        if (
+            open === "'" &&
+            kind === 'single' &&
+            isAsciiWord(src[index - 1]) &&
+            isAsciiWord(src[index + 1])
+        ) {
+            continue;
+        }
+
+        return index;
+    }
+
+    return -1;
+}
 
 const markedInstance = new Marked({
     breaks: true,
     gfm: true,
+    extensions: [
+        {
+            name: 'quote',
+            level: 'inline',
+            start(src: string) {
+                const index = src.search(/["'“‘]/);
+                return index >= 0 ? index : undefined;
+            },
+            tokenizer(src: string, tokens: Token[]): QuoteToken | undefined {
+                const open = src[0];
+                const pair = QUOTE_PAIRS[open];
+                if (!pair || /^\s$/u.test(src[1] ?? '')) return undefined;
+
+                if (open === "'" && isAsciiWord(previousSourceCharacter(tokens))) {
+                    return undefined;
+                }
+
+                const closeIndex = findClosingQuote(src, open, pair.close, pair.kind);
+                if (closeIndex < 0) return undefined;
+
+                const raw = src.slice(0, closeIndex + 1);
+                const content = src.slice(1, closeIndex);
+                if (!content) return undefined;
+
+                return {
+                    type: 'quote',
+                    raw,
+                    kind: pair.kind,
+                    open,
+                    close: pair.close,
+                    tokens: this.lexer.inlineTokens(content)
+                };
+            },
+            renderer(token: Tokens.Generic) {
+                const quote = token as QuoteToken;
+                return `<mark data-keiai-quote="${quote.kind}">${quote.open}${this.parser.parseInline(quote.tokens)}${quote.close}</mark>`;
+            },
+            childTokens: ['tokens']
+        }
+    ],
     tokenizer: {
         lheading(this: Tokenizer, src: string): Tokens.Heading | undefined {
             const match = this.rules.block.lheading.exec(src);
