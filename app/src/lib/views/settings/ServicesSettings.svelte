@@ -382,7 +382,7 @@
                                 'modelId',
                                 'Model',
                                 settings.stability.imagegen.modelId,
-                                'stable-diffusion-3.5-large'
+                                'sd3.5-large'
                             )
                         ];
                     case 'novelai':

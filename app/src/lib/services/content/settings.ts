@@ -255,7 +255,7 @@ export const defaultSettings: AppSettings = {
     stability: {
         apiKey: '',
         imagegen: {
-            modelId: 'stable-diffusion-3.5-large'
+            modelId: 'sd3.5-large'
         }
     },
     groq: {

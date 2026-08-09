@@ -28,6 +28,7 @@ export const IMAGEGEN_MODEL_IDS: Partial<Record<BuiltInImageGenProvider, readonl
         'gemini-3-pro-image',
         'gemini-2.5-flash-image'
     ],
+    stability: ['ultra', 'core', 'sd3.5-large', 'sd3.5-large-turbo', 'sd3.5-medium', 'sd3.5-flash'],
     novelai: [
         'nai-diffusion-4-5-full',
         'nai-diffusion-4-5-curated',
