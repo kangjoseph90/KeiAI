@@ -10,6 +10,8 @@ export const DEFAULT_TTS_NODE_ID = 'tts';
 export const DEFAULT_TTS_OUTPUT_ID = 'tts_output';
 export const DEFAULT_SUGGESTION_AGENT_ID = 'suggestion_agent';
 export const DEFAULT_SUGGESTION_OUTPUT_ID = 'suggestion_output';
+export const DEFAULT_TITLE_AGENT_ID = 'title_agent';
+export const DEFAULT_TITLE_OUTPUT_ID = 'title_output';
 
 export interface DefaultChatWorkflowOptions {
     agentName?: string;
@@ -244,6 +246,68 @@ export function createDefaultSuggestionWorkflow(): WorkflowDefinition {
             [agent.id]: agent,
             [DEFAULT_SUGGESTION_OUTPUT_ID]: {
                 id: DEFAULT_SUGGESTION_OUTPUT_ID,
+                name: 'Output',
+                class: 'Output',
+                position: { x: 360, y: 0 },
+                collapsed: false,
+                inputs: {
+                    content: {
+                        sourceNode: agent.id,
+                        sourcePort: 0
+                    }
+                },
+                inputValues: {}
+            }
+        }
+    };
+}
+
+export function createDefaultTitleWorkflow(): WorkflowDefinition {
+    const instructionId = 'title_instruction';
+    const historyId = 'title_history';
+    const agent: AgentNode = {
+        id: DEFAULT_TITLE_AGENT_ID,
+        name: 'Titler',
+        class: 'Agent',
+        position: { x: 0, y: 0 },
+        collapsed: false,
+        llmType: 'chat',
+        toolIds: [],
+        promptBlocks: {
+            [instructionId]: {
+                id: instructionId,
+                name: 'Title Instruction',
+                type: 'message',
+                role: 'system',
+                content:
+                    'Summarize the conversation so far into a concise title (max 30 characters). Return only the title text without quotes.',
+                sortOrder: 'a0',
+                enabled: true
+            },
+            [historyId]: {
+                id: historyId,
+                name: 'Conversation',
+                type: 'history',
+                historyMode: 'visible',
+                sortOrder: 'a1',
+                enabled: true
+            }
+        },
+        maxContext: 60000,
+        maxResponse: 200,
+        lorebookRatio: 0,
+        memoryRatio: 0,
+        lorebookScanDepth: 0,
+        slotNames: {},
+        inputs: { stream: null },
+        inputValues: { stream: false }
+    };
+
+    return {
+        nodes: {
+            [agent.id]: agent,
+            [DEFAULT_TITLE_OUTPUT_ID]: {
+                id: DEFAULT_TITLE_OUTPUT_ID,
                 name: 'Output',
                 class: 'Output',
                 position: { x: 360, y: 0 },

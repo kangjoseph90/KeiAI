@@ -12,6 +12,7 @@ import {
     createDefaultChatWorkflow,
     createDefaultImageGenerationWorkflow,
     createDefaultSuggestionWorkflow,
+    createDefaultTitleWorkflow,
     createDefaultTTSWorkflow,
     createDefaultTranslationWorkflow
 } from '$lib/workflow/defaults';
@@ -47,6 +48,7 @@ export async function initDefaultContents(): Promise<void> {
         translation: { workflow: createDefaultTranslationWorkflow() },
         imageGeneration: { workflow: createDefaultImageGenerationWorkflow() },
         tts: { workflow: createDefaultTTSWorkflow() },
-        suggestion: { workflow: createDefaultSuggestionWorkflow() }
+        suggestion: { workflow: createDefaultSuggestionWorkflow() },
+        titleGeneration: { workflow: createDefaultTitleWorkflow() }
     });
 }

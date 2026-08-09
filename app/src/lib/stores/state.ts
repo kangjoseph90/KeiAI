@@ -35,6 +35,7 @@ import type {
     MediaTask,
     SuggestionTask,
     TaskMetadata,
+    TitleTask,
     TranslationTask
 } from './types';
 import { EntityStore } from './entity_store';
@@ -188,6 +189,7 @@ export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
 export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
 export const inputTranslationTasks = writable<Map<string, InputTranslationTask>>(new Map());
 export const suggestionTasks = writable<Map<string, SuggestionTask>>(new Map());
+export const titleTasks = writable<Map<string, TitleTask>>(new Map());
 export const dictationTasks = writable<Map<string, DictationTask>>(new Map());
 export const chatDrafts = writable<Map<string, ChatDraft>>(new Map());
 
@@ -210,6 +212,7 @@ export const collectedTasks = derived(
         ttsTasks,
         inputTranslationTasks,
         suggestionTasks,
+        titleTasks,
         dictationTasks
     ],
     ([
@@ -219,6 +222,7 @@ export const collectedTasks = derived(
         speech,
         inputTranslations,
         suggestions,
+        titles,
         dictations
     ]): CollectedTask[] => [
         ...collectTasks('chat', chats),
@@ -227,6 +231,7 @@ export const collectedTasks = derived(
         ...collectTasks('tts', speech),
         ...collectTasks('input_translation', inputTranslations),
         ...collectTasks('suggestion', suggestions),
+        ...collectTasks('title', titles),
         ...collectTasks('dictation', dictations)
     ]
 );

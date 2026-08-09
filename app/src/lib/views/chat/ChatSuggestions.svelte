@@ -77,7 +77,7 @@
                 class="flex items-end gap-1 rounded-2xl border border-border/80 bg-background/90 py-2 px-3 text-sm shadow-sm backdrop-blur-xl"
             >
                 <div class="flex min-w-0 flex-1 items-center self-stretch">
-                    {#if generating && !text}
+                    {#if generating && !text.trim()}
                         <span class="py-0.5 text-foreground/70">
                             {isTranslation ? 'Translating…' : 'Suggesting…'}
                         </span>

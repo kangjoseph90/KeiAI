@@ -20,11 +20,13 @@
         dismissChat,
         dismissDictation,
         dismissImageGeneration,
+        dismissTitle,
         dismissTranslation,
         dismissTTS,
         finishDictation,
         stopChat,
         stopImageGeneration,
+        stopTitle,
         stopTranslation,
         stopTTS
     } from '$lib/tasks';
@@ -159,6 +161,9 @@
             case 'image':
                 stopImageGeneration(task.taskKey);
                 break;
+            case 'title':
+                stopTitle(task.chatId);
+                break;
         }
     }
 
@@ -178,6 +183,9 @@
                 break;
             case 'image':
                 dismissImageGeneration(task.taskKey);
+                break;
+            case 'title':
+                dismissTitle(task.chatId);
                 break;
         }
     }

@@ -13,6 +13,7 @@
     let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
     let suggestionWorkflowEditorOpen = $state(false);
+    let titleWorkflowEditorOpen = $state(false);
 
     const tabs: Array<{ id: Tab; label: string }> = [
         { id: 'workflow', label: 'Workflow' },
@@ -67,6 +68,12 @@
                         workflowLabel="Suggestion workflow"
                         editWorkflowLabel="Edit suggestion workflow"
                     />
+                    <WorkflowSummaryCard
+                        workflow={$appSettings.titleGeneration.workflow}
+                        onEditWorkflow={() => (titleWorkflowEditorOpen = true)}
+                        workflowLabel="Title generation workflow"
+                        editWorkflowLabel="Edit title workflow"
+                    />
                 {/if}
             </div>
         </ScrollArea>
@@ -98,5 +105,11 @@
         workflow={$appSettings.suggestion.workflow}
         title="Suggestion Workflow"
         onPatch={(patch) => updateSettings({ suggestion: { workflow: patch } })}
+    />
+    <WorkflowEditorModal
+        bind:open={titleWorkflowEditorOpen}
+        workflow={$appSettings.titleGeneration.workflow}
+        title="Title Workflow"
+        onPatch={(patch) => updateSettings({ titleGeneration: { workflow: patch } })}
     />
 {/if}

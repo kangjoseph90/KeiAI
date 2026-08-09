@@ -12,6 +12,7 @@
         Search,
         Trash2,
         UserRound,
+        Wand2,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -43,6 +44,7 @@
         selectActiveModules,
         setChatDefaultCharacter,
         setChatSelectedCharacter,
+        titleTasks,
         updateChat,
         updateRoom,
         updateRoomFolder
@@ -51,6 +53,7 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
     import TogglePanelRuntime from '$lib/components/toggles/TogglePanelRuntime.svelte';
+    import TypewriterText from '$lib/components/TypewriterText.svelte';
     import type { RouteState } from '$lib/router';
     import {
         navigateToCharacterStudio,
@@ -58,6 +61,7 @@
         syncChatGreetings
     } from '$lib/managers';
     import { getErrorMessage } from '$lib/types/errors';
+    import { runTitle } from '$lib/tasks';
 
     interface Props {
         route: RouteState;
@@ -249,6 +253,13 @@
     function startRenameChat(chatId: string, title: string): void {
         editingChatId = chatId;
         editingChatTitle = title;
+    }
+
+    function handleGenerateTitle(chatId: string): void {
+        void runTitle(chatId).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({ title: 'Could not generate title', description: getErrorMessage(error) });
+        });
     }
 
     function initial(name: string): string {
@@ -640,18 +651,25 @@
                                         </Button>
                                     </form>
                                 {:else}
-                                    <div class="flex items-center gap-2">
+                                    <div
+                                        class="flex h-7 items-center justify-between gap-2 min-w-0"
+                                    >
                                         <div
-                                            class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                            class="chat-row-title flex min-w-0 flex-1 items-center gap-2 text-left pr-2 transition-[padding] duration-150 group-hover:pr-23 group-has-focus-visible:pr-23"
                                         >
-                                            <MessageSquare class="size-3.5 shrink-0" />
+                                            <MessageSquare
+                                                class="size-3.5 shrink-0 text-muted-foreground"
+                                            />
                                             <span class="min-w-0 flex-1 truncate text-foreground">
-                                                {chat.title || 'Untitled Chat'}
+                                                <TypewriterText
+                                                    text={chat.title || 'Untitled Chat'}
+                                                />
                                             </span>
                                         </div>
-                                        <div class="chat-row-trailing relative h-7 w-15 shrink-0">
+
+                                        {#if taskIndicator}
                                             <div
-                                                class="chat-row-task-status pointer-events-none absolute inset-y-0 right-2 flex w-4 items-center justify-center transition-opacity"
+                                                class="chat-row-task-status pointer-events-none shrink-0 flex items-center justify-center transition-opacity"
                                             >
                                                 {#if taskIndicator === 'running'}
                                                     <Loader2
@@ -673,95 +691,121 @@
                                                     ></span>
                                                 {/if}
                                             </div>
+                                        {/if}
 
-                                            <div
-                                                class="chat-row-desktop-actions absolute inset-y-0 right-0 flex items-center gap-1 opacity-0 transition-opacity"
+                                        <div
+                                            class="chat-row-desktop-actions pointer-events-none absolute inset-y-0.5 right-1 flex items-center gap-0.5 opacity-0 transition-opacity bg-sidebar-accent pl-1.5 rounded-r-md"
+                                        >
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                title="Generate title"
+                                                aria-label={`Generate title for ${chat.title || 'Untitled Chat'}`}
+                                                disabled={panelAction !== null ||
+                                                    chat.messageCount === 0 ||
+                                                    $titleTasks.get(chat.id)?.status ===
+                                                        'generating'}
+                                                aria-busy={$titleTasks.get(chat.id)?.status ===
+                                                    'generating'}
+                                                onclick={() => handleGenerateTitle(chat.id)}
                                             >
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon-sm"
-                                                    class="text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                    title="Rename chat"
-                                                    aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
-                                                    disabled={panelAction !== null}
-                                                    onclick={() =>
-                                                        startRenameChat(
-                                                            chat.id,
-                                                            chat.title || 'Untitled Chat'
-                                                        )}
-                                                >
-                                                    <Edit3 class="size-3.5" />
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon-sm"
-                                                    class="text-destructive hover:bg-destructive/10"
-                                                    title="Delete chat"
-                                                    aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
-                                                    disabled={panelAction !== null}
-                                                    aria-busy={panelAction ===
-                                                        `delete-chat:${chat.id}`}
-                                                    onclick={() => handleDeleteChat(chat.id)}
-                                                >
-                                                    <Trash2 class="size-3.5" />
-                                                </Button>
-                                            </div>
+                                                <Wand2 class="size-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                title="Rename chat"
+                                                aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
+                                                disabled={panelAction !== null}
+                                                onclick={() =>
+                                                    startRenameChat(
+                                                        chat.id,
+                                                        chat.title || 'Untitled Chat'
+                                                    )}
+                                            >
+                                                <Edit3 class="size-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="text-destructive hover:bg-destructive/10"
+                                                title="Delete chat"
+                                                aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
+                                                disabled={panelAction !== null}
+                                                aria-busy={panelAction === `delete-chat:${chat.id}`}
+                                                onclick={() => handleDeleteChat(chat.id)}
+                                            >
+                                                <Trash2 class="size-3.5" />
+                                            </Button>
+                                        </div>
 
-                                            <div
-                                                class="chat-row-touch-menu absolute inset-y-0 right-0 hidden items-center"
+                                        <div
+                                            class="chat-row-touch-menu shrink-0 hidden items-center"
+                                        >
+                                            <DropdownMenu.Root
+                                                open={openChatMenuId === chat.id}
+                                                onOpenChange={(open) =>
+                                                    (openChatMenuId = open ? chat.id : null)}
                                             >
-                                                <DropdownMenu.Root
-                                                    open={openChatMenuId === chat.id}
-                                                    onOpenChange={(open) =>
-                                                        (openChatMenuId = open ? chat.id : null)}
-                                                >
-                                                    <DropdownMenu.Trigger>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon-sm"
-                                                            class="relative text-muted-foreground after:absolute after:-inset-2"
-                                                            aria-label={`Actions for ${chat.title || 'Untitled Chat'}`}
-                                                            disabled={panelAction !== null}
-                                                        >
-                                                            <MoreVertical class="size-3.5" />
-                                                        </Button>
-                                                    </DropdownMenu.Trigger>
-                                                    <DropdownMenu.Content
-                                                        align="end"
-                                                        sideOffset={4}
-                                                        class="w-40"
+                                                <DropdownMenu.Trigger>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon-sm"
+                                                        class="relative text-muted-foreground after:absolute after:-inset-2"
+                                                        aria-label={`Actions for ${chat.title || 'Untitled Chat'}`}
+                                                        disabled={panelAction !== null}
                                                     >
-                                                        <DropdownMenu.Item
-                                                            class="cursor-pointer"
-                                                            disabled={panelAction !== null}
-                                                            onclick={() =>
-                                                                startRenameChat(
-                                                                    chat.id,
-                                                                    chat.title || 'Untitled Chat'
-                                                                )}
-                                                        >
-                                                            <Edit3 class="size-4" />
-                                                            Rename
-                                                        </DropdownMenu.Item>
-                                                        <DropdownMenu.Separator />
-                                                        <DropdownMenu.Item
-                                                            class="cursor-pointer"
-                                                            variant="destructive"
-                                                            disabled={panelAction !== null}
-                                                            aria-busy={panelAction ===
-                                                                `delete-chat:${chat.id}`}
-                                                            onclick={() =>
-                                                                handleDeleteChat(chat.id)}
-                                                        >
-                                                            <Trash2 class="size-4" />
-                                                            Delete
-                                                        </DropdownMenu.Item>
-                                                    </DropdownMenu.Content>
-                                                </DropdownMenu.Root>
-                                            </div>
+                                                        <MoreVertical class="size-3.5" />
+                                                    </Button>
+                                                </DropdownMenu.Trigger>
+                                                <DropdownMenu.Content
+                                                    align="end"
+                                                    sideOffset={4}
+                                                    class="w-40"
+                                                >
+                                                    <DropdownMenu.Item
+                                                        class="cursor-pointer"
+                                                        disabled={panelAction !== null ||
+                                                            chat.messageCount === 0 ||
+                                                            $titleTasks.get(chat.id)?.status ===
+                                                                'generating'}
+                                                        onclick={() => handleGenerateTitle(chat.id)}
+                                                    >
+                                                        <Wand2 class="size-4" />
+                                                        Generate title
+                                                    </DropdownMenu.Item>
+                                                    <DropdownMenu.Item
+                                                        class="cursor-pointer"
+                                                        disabled={panelAction !== null}
+                                                        onclick={() =>
+                                                            startRenameChat(
+                                                                chat.id,
+                                                                chat.title || 'Untitled Chat'
+                                                            )}
+                                                    >
+                                                        <Edit3 class="size-4" />
+                                                        Rename
+                                                    </DropdownMenu.Item>
+                                                    <DropdownMenu.Separator />
+                                                    <DropdownMenu.Item
+                                                        class="cursor-pointer"
+                                                        variant="destructive"
+                                                        disabled={panelAction !== null}
+                                                        aria-busy={panelAction ===
+                                                            `delete-chat:${chat.id}`}
+                                                        onclick={() => handleDeleteChat(chat.id)}
+                                                    >
+                                                        <Trash2 class="size-4" />
+                                                        Delete
+                                                    </DropdownMenu.Item>
+                                                </DropdownMenu.Content>
+                                            </DropdownMenu.Root>
                                         </div>
                                     </div>
                                 {/if}
@@ -809,32 +853,27 @@
         }
     }
 
-    .chat-row:hover .chat-row-task-status,
-    .chat-row:has(:focus-visible) .chat-row-task-status {
-        opacity: 0;
-    }
+    @media (hover: hover) {
+        .chat-row:hover .chat-row-task-status,
+        .chat-row:has(:focus-visible) .chat-row-task-status {
+            opacity: 0;
+            pointer-events: none;
+        }
 
-    .chat-row:hover .chat-row-desktop-actions,
-    .chat-row:has(:focus-visible) .chat-row-desktop-actions {
-        opacity: 1;
+        .chat-row:hover .chat-row-desktop-actions,
+        .chat-row:has(:focus-visible) .chat-row-desktop-actions {
+            opacity: 1;
+            pointer-events: auto;
+        }
     }
 
     @media (hover: none), (pointer: coarse) {
-        .chat-row-trailing {
-            width: 3rem;
-        }
-
-        .chat-row-task-status {
-            right: 2rem;
-            opacity: 1 !important;
-        }
-
         .chat-row-desktop-actions {
-            display: none;
+            display: none !important;
         }
 
         .chat-row-touch-menu {
-            display: flex;
+            display: flex !important;
         }
     }
 </style>

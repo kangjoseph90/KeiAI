@@ -21,4 +21,5 @@ export {
     stopSuggestion,
     stopSuggestionForChat
 } from './suggestion';
+export { dismissTitle, runTitle, stopTitle, stopTitleForChat } from './title';
 export { cancelDictation, dismissDictation, finishDictation, runDictation } from './dictation';

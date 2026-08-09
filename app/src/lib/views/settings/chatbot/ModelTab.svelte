@@ -33,7 +33,8 @@
                 $appSettings?.translation.workflow,
                 $appSettings?.imageGeneration.workflow,
                 $appSettings?.tts.workflow,
-                $appSettings?.suggestion.workflow
+                $appSettings?.suggestion.workflow,
+                $appSettings?.titleGeneration.workflow
             ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
