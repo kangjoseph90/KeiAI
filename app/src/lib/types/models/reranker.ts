@@ -20,9 +20,20 @@ export interface PluginRerankerModel {
 }
 
 export const RERANKER_MODEL_IDS: Partial<Record<BuiltInRerankerProvider, readonly string[]>> = {
-    cohere: ['rerank-v3.5', 'rerank-multilingual-v3.0', 'rerank-english-v3.0'],
-    jina: ['jina-reranker-v3', 'jina-reranker-v2-base-multilingual'],
-    voyageai: ['rerank-2.5', 'rerank-2.5-lite'],
+    cohere: [
+        'rerank-v4.0-pro',
+        'rerank-v4.0-fast',
+        'rerank-v3.5',
+        'rerank-multilingual-v3.0',
+        'rerank-english-v3.0'
+    ],
+    jina: [
+        'jina-reranker-v3',
+        'jina-reranker-m0',
+        'jina-reranker-v2-base-multilingual',
+        'jina-colbert-v2'
+    ],
+    voyageai: ['rerank-2.5', 'rerank-2.5-lite', 'rerank-2', 'rerank-2-lite'],
     openrouter: [],
     transformers: ['Xenova/bge-reranker-base', 'onnx-community/bge-reranker-base-ONNX']
 };

@@ -23,14 +23,14 @@ export interface PluginTTSModel {
 }
 
 export const TTS_MODEL_IDS: Partial<Record<BuiltInTTSProvider, readonly string[]>> = {
-    openai: ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'],
+    openai: ['gpt-4o-mini-tts', 'gpt-4o-mini-tts-2025-12-15', 'tts-1-hd', 'tts-1'],
     openrouter: [],
     google: [
         'gemini-3.1-flash-tts-preview',
         'gemini-2.5-flash-preview-tts',
         'gemini-2.5-pro-preview-tts'
     ],
-    elevenlabs: ['eleven_v3', 'eleven_multilingual_v2', 'eleven_flash_v2_5', 'eleven_flash_v2'],
+    elevenlabs: ['eleven_v3', 'eleven_flash_v2_5', 'eleven_multilingual_v2', 'eleven_flash_v2'],
     transformers: [
         'onnx-community/Kokoro-82M-v1.0-ONNX',
         'Xenova/mms-tts-eng',

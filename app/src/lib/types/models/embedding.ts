@@ -22,13 +22,24 @@ export interface PluginEmbeddingModel {
 }
 
 export const EMBEDDING_MODEL_IDS: Partial<Record<BuiltInEmbeddingProvider, readonly string[]>> = {
-    openai: ['text-embedding-3-small', 'text-embedding-3-large', 'text-embedding-ada-002'],
+    openai: ['text-embedding-3-large', 'text-embedding-3-small', 'text-embedding-ada-002'],
     google: ['gemini-embedding-2', 'gemini-embedding-001'],
-    voyageai: ['voyage-4-large', 'voyage-4', 'voyage-4-lite', 'voyage-code-3'],
+    voyageai: [
+        'voyage-4-large',
+        'voyage-4',
+        'voyage-4-lite',
+        'voyage-3-large',
+        'voyage-3.5',
+        'voyage-3.5-lite',
+        'voyage-code-3',
+        'voyage-finance-2',
+        'voyage-law-2'
+    ],
     openrouter: [
-        'openai/text-embedding-3-small',
         'openai/text-embedding-3-large',
+        'openai/text-embedding-3-small',
         'qwen/qwen3-embedding-8b',
+        'qwen/qwen3-embedding-0.6b',
         'google/gemini-embedding-001',
         'mistralai/mistral-embed-2312'
     ],

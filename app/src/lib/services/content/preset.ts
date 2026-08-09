@@ -41,8 +41,8 @@ export const defaultPresetFields: PresetFields = {
     name: 'New Preset',
     description: '',
     models: {
-        chat: { id: 'openai::gpt-5.4', provider: 'openai' },
-        aux: { id: 'openai::gpt-5.4', provider: 'openai' }
+        chat: { id: 'openai::gpt-5.6', provider: 'openai' },
+        aux: { id: 'openai::gpt-5.6', provider: 'openai' }
     },
     parameters: {
         chat: {

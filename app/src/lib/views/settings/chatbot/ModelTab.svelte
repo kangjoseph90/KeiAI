@@ -76,7 +76,7 @@
 
     function enableOverride(type: LLMType) {
         const fallback: LLMModelConfig = preset.models.aux ??
-            preset.models.chat ?? { id: 'openai::gpt-5.4', provider: 'openai' };
+            preset.models.chat ?? { id: 'openai::gpt-5.6', provider: 'openai' };
 
         updatePreset(preset.id, {
             models: {

@@ -417,7 +417,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openrouter.imagegen.modelId,
-                                'openai/gpt-image-1'
+                                'openai/gpt-image-2'
                             )
                         ];
                     case 'google':
@@ -429,7 +429,7 @@
                                 'modelId',
                                 'Model',
                                 settings.google.imagegen.modelId,
-                                'gemini-3.1-flash-image'
+                                'gemini-3-pro-image'
                             )
                         ];
                     case 'stability':
@@ -441,7 +441,7 @@
                                 'modelId',
                                 'Model',
                                 settings.stability.imagegen.modelId,
-                                'sd3.5-large'
+                                'ultra'
                             )
                         ];
                     case 'novelai':
@@ -608,7 +608,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openai.tts.modelId,
-                                'tts-1'
+                                'gpt-4o-mini-tts'
                             ),
                             configField(
                                 'openai',
@@ -628,7 +628,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openrouter.tts.modelId,
-                                'openai/gpt-4o-mini-tts-2025-12-15'
+                                'google/gemini-3.1-flash-tts-preview'
                             ),
                             configField(
                                 'openrouter',
@@ -668,7 +668,7 @@
                                 'modelId',
                                 'Model',
                                 settings.elevenlabs.tts.modelId,
-                                'eleven_multilingual_v2'
+                                'eleven_v3'
                             ),
                             configField(
                                 'elevenlabs',
@@ -754,7 +754,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openai.stt.modelId,
-                                'whisper-1'
+                                'gpt-transcribe'
                             )
                         ];
                     case 'openrouter':
@@ -766,7 +766,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openrouter.stt.modelId,
-                                'openai/whisper-1'
+                                'openai/gpt-4o-transcribe'
                             )
                         ];
                     case 'google':
@@ -842,7 +842,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openai.embedding.modelId,
-                                'text-embedding-3-small'
+                                'text-embedding-3-large'
                             )
                         ];
                     case 'google':
@@ -854,7 +854,7 @@
                                 'modelId',
                                 'Model',
                                 settings.google.embedding.modelId,
-                                'gemini-embedding-2-preview'
+                                'gemini-embedding-2'
                             )
                         ];
                     case 'voyageai':
@@ -878,7 +878,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openrouter.embedding.modelId,
-                                'openai/text-embedding-3-small'
+                                'qwen/qwen3-embedding-8b'
                             )
                         ];
                     case 'minilm':
@@ -946,7 +946,7 @@
                                 'modelId',
                                 'Model',
                                 settings.cohere.reranker.modelId,
-                                'rerank-v3.5'
+                                'rerank-v4.0-pro'
                             )
                         ];
                     case 'jina':
@@ -958,7 +958,7 @@
                                 'modelId',
                                 'Model',
                                 settings.jina.reranker.modelId,
-                                'jina-reranker-v2-base-multilingual'
+                                'jina-reranker-v3'
                             )
                         ];
                     case 'voyageai':
@@ -970,7 +970,7 @@
                                 'modelId',
                                 'Model',
                                 settings.voyageai.reranker.modelId,
-                                'rerank-2'
+                                'rerank-2.5'
                             )
                         ];
                     case 'openrouter':
@@ -982,7 +982,7 @@
                                 'modelId',
                                 'Model',
                                 settings.openrouter.reranker.modelId,
-                                'cohere/rerank-v3.5'
+                                'cohere/rerank-4-pro'
                             )
                         ];
                     case 'transformers':
