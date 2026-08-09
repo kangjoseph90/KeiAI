@@ -3,6 +3,7 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings } from '$lib/stores';
     import {
@@ -75,34 +76,36 @@
             [provider]: { apiKey: key.trim() }
         } as DeepPartial<AppSettings>);
     }
+
+    function handleProviderChange(value: string): void {
+        const provider = value as LLMProvider;
+        onModelChange(provider, getModelsForProvider(provider)[0]?.id ?? '');
+    }
 </script>
 
 {#snippet fields()}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="flex flex-col gap-1.5">
             <Label>Provider</Label>
-            <select
-                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <OptionSelect
                 value={config.provider}
-                onchange={(e) => onModelChange(e.currentTarget.value as LLMProvider, '')}
-            >
-                {#each providers as provider (provider)}
-                    <option value={provider}>{getLLMProviderName(provider)}</option>
-                {/each}
-            </select>
+                options={providers.map((provider) => ({
+                    value: provider,
+                    label: getLLMProviderName(provider)
+                }))}
+                onChange={handleProviderChange}
+            />
         </div>
         <div class="flex flex-col gap-1.5">
             <Label>Model</Label>
-            <select
-                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <OptionSelect
                 value={config.id}
-                onchange={(e) => onModelChange(config.provider, e.currentTarget.value)}
-            >
-                <option value="">Select a model...</option>
-                {#each getModelsForProvider(config.provider) as model (model.id)}
-                    <option value={model.id}>{model.name}</option>
-                {/each}
-            </select>
+                options={getModelsForProvider(config.provider).map((model) => ({
+                    value: model.id,
+                    label: model.name
+                }))}
+                onChange={(value) => onModelChange(config.provider, value)}
+            />
         </div>
 
         {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}

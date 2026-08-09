@@ -14,6 +14,7 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import { Badge } from '$lib/components/ui/badge';
     import { appSettings, saveCustomLLMModel, deleteCustomLLMModel } from '$lib/stores';
     import {
@@ -284,37 +285,39 @@
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs">Tokenizer</Label>
-                                <select
-                                    class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
+                                <OptionSelect
+                                    id={`custom-model-tokenizer-${model.id}`}
+                                    class="h-8 text-xs"
                                     value={model.tokenizer}
                                     disabled={busyAction !== null}
-                                    onchange={(e) =>
+                                    options={tokenizers.map((tokenizer) => ({
+                                        value: tokenizer,
+                                        label: getLLMTokenizerName(tokenizer)
+                                    }))}
+                                    onChange={(value) =>
                                         updateModelSafely(model.id, {
-                                            tokenizer: e.currentTarget.value as LLMTokenizer
+                                            tokenizer: value as LLMTokenizer
                                         })}
-                                >
-                                    {#each tokenizers as t (t)}
-                                        <option value={t}>{getLLMTokenizerName(t)}</option>
-                                    {/each}
-                                </select>
+                                />
                             </div>
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs flex items-center gap-1">
                                     <Settings2 class="size-3" /> Format
                                 </Label>
-                                <select
-                                    class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
+                                <OptionSelect
+                                    id={`custom-model-handler-${model.id}`}
+                                    class="h-8 text-xs"
                                     value={model.handler}
                                     disabled={busyAction !== null}
-                                    onchange={(e) =>
+                                    options={handlers.map((handler) => ({
+                                        value: handler,
+                                        label: getLLMHandlerName(handler)
+                                    }))}
+                                    onChange={(value) =>
                                         updateModelSafely(model.id, {
-                                            handler: e.currentTarget.value as LLMHandler
+                                            handler: value as LLMHandler
                                         })}
-                                >
-                                    {#each handlers as h (h)}
-                                        <option value={h}>{getLLMHandlerName(h)}</option>
-                                    {/each}
-                                </select>
+                                />
                             </div>
                         </div>
 

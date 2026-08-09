@@ -5,30 +5,37 @@
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Textarea } from '$lib/components/ui/textarea';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
+    import SuggestedInput from '$lib/components/SuggestedInput.svelte';
     import { appSettings, updateSettings } from '$lib/stores';
     import type { AppSettings } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import {
+        EMBEDDING_MODEL_IDS,
         getEmbeddingProviderName,
         type EmbeddingProvider,
         type PluginEmbeddingModel
     } from '$lib/types/models/embedding';
     import {
+        IMAGEGEN_MODEL_IDS,
         getImageGenProviderName,
         type ImageGenProvider,
         type PluginImageGenModel
     } from '$lib/types/models/imagegen';
     import {
+        RERANKER_MODEL_IDS,
         getRerankerProviderName,
         type PluginRerankerModel,
         type RerankerProvider
     } from '$lib/types/models/reranker';
     import {
+        STT_MODEL_IDS,
         getSTTProviderName,
         type PluginSTTModel,
         type STTProvider
     } from '$lib/types/models/stt';
     import {
+        TTS_MODEL_IDS,
         getTTSProviderName,
         KOKORO_VOICE_IDS,
         type PluginTTSModel,
@@ -42,6 +49,8 @@
     import { pluginManager } from '$lib/plugins';
 
     type Feature = 'imagegen' | 'tts' | 'stt' | 'embedding' | 'reranker';
+    type ServiceGroup = 'image' | 'audio' | 'retrieval';
+    type WorkflowFeature = Extract<Feature, 'imagegen' | 'tts'>;
     type PluginModel =
         | PluginImageGenModel
         | PluginTTSModel
@@ -81,6 +90,7 @@
         multiline?: boolean;
         help?: string;
         options?: readonly string[];
+        suggestions?: readonly string[];
         number?: {
             min?: number;
             max?: number;
@@ -107,6 +117,17 @@
             label: 'Reranker',
             description: 'Reorder retrieved results by relevance.'
         }
+    ];
+
+    const SERVICE_GROUPS: Array<{
+        id: ServiceGroup;
+        label: string;
+        features: readonly Feature[];
+        workflow?: WorkflowFeature;
+    }> = [
+        { id: 'image', label: 'Image', features: ['imagegen'], workflow: 'imagegen' },
+        { id: 'audio', label: 'Audio', features: ['tts', 'stt'], workflow: 'tts' },
+        { id: 'retrieval', label: 'Retrieval', features: ['embedding', 'reranker'] }
     ];
 
     const IMAGEGEN_PROVIDERS: ImageGenProvider[] = [
@@ -153,27 +174,19 @@
         'transformers',
         'plugin'
     ];
-    const MOCK_IMAGEGEN_MODELS = ['sample', 'diagnostic'] as const;
-    const MOCK_TTS_MODELS = ['sample', 'morse'] as const;
-    const MOCK_STT_MODELS = ['sample', 'diagnostic'] as const;
-
-    let activeFeature = $state<Feature>('imagegen');
+    let activeGroup = $state<ServiceGroup>('image');
     let showSecrets = $state(false);
     let saving = $state(false);
     let workflowEditorOpen = $state(false);
+    let workflowEditorFeature = $state<WorkflowFeature>('imagegen');
 
-    const feature = $derived(FEATURES.find((item) => item.id === activeFeature) ?? FEATURES[0]);
-    const activeProvider = $derived(getActiveProvider($appSettings, activeFeature));
-    const fields = $derived(getSettingsFields($appSettings, activeFeature));
-    const modelField = $derived(fields.find((f) => f.path[2] === 'modelId'));
-    const otherFields = $derived(fields.filter((f) => f.path[2] !== 'modelId'));
-    const hasModel = $derived(activeProvider === 'plugin' || modelField !== undefined);
-    const activeWorkflow = $derived(
-        activeFeature === 'imagegen'
+    const serviceGroup = $derived(
+        SERVICE_GROUPS.find((item) => item.id === activeGroup) ?? SERVICE_GROUPS[0]
+    );
+    const editedWorkflow = $derived(
+        workflowEditorFeature === 'imagegen'
             ? $appSettings?.imageGeneration.workflow
-            : activeFeature === 'tts'
-              ? $appSettings?.tts.workflow
-              : undefined
+            : $appSettings?.tts.workflow
     );
 
     function getActiveProvider(
@@ -275,6 +288,24 @@
         };
     }
 
+    function getRecommendedModelIds(
+        provider: ProviderSettingsKey,
+        feature: Feature
+    ): readonly string[] | undefined {
+        switch (feature) {
+            case 'imagegen':
+                return IMAGEGEN_MODEL_IDS[provider as keyof typeof IMAGEGEN_MODEL_IDS];
+            case 'tts':
+                return TTS_MODEL_IDS[provider as keyof typeof TTS_MODEL_IDS];
+            case 'stt':
+                return STT_MODEL_IDS[provider as keyof typeof STT_MODEL_IDS];
+            case 'embedding':
+                return EMBEDDING_MODEL_IDS[provider as keyof typeof EMBEDDING_MODEL_IDS];
+            case 'reranker':
+                return RERANKER_MODEL_IDS[provider as keyof typeof RERANKER_MODEL_IDS];
+        }
+    }
+
     function configField(
         provider: ProviderSettingsKey,
         section: string,
@@ -283,11 +314,14 @@
         value: string,
         placeholder: string
     ): SettingsField {
+        const suggestions =
+            key === 'modelId' ? getRecommendedModelIds(provider, section as Feature) : undefined;
         return {
             id: `${provider}-${section}-${key}`,
             label,
             value,
             placeholder,
+            suggestions,
             path: [provider, section, key]
         };
     }
@@ -496,7 +530,7 @@
                                     settings.mock.imagegen.modelId,
                                     'sample'
                                 ),
-                                options: MOCK_IMAGEGEN_MODELS
+                                options: IMAGEGEN_MODEL_IDS.mock
                             }
                         ];
                     case 'plugin':
@@ -622,7 +656,7 @@
                                     settings.mock.tts.modelId,
                                     'sample'
                                 ),
-                                options: MOCK_TTS_MODELS
+                                options: TTS_MODEL_IDS.mock
                             }
                         ];
                     case 'plugin':
@@ -698,7 +732,7 @@
                                     settings.mock.stt.modelId,
                                     'sample'
                                 ),
-                                options: MOCK_STT_MODELS
+                                options: STT_MODEL_IDS.mock
                             }
                         ];
                     case 'plugin':
@@ -882,18 +916,31 @@
         }
     }
 
-    function updateActiveProvider(provider: ServiceProvider): void {
-        const key = `${activeFeature}Provider` as
+    function updateActiveProvider(feature: Feature, provider: ServiceProvider): void {
+        const key = `${feature}Provider` as
             | 'imagegenProvider'
             | 'ttsProvider'
             | 'sttProvider'
             | 'embeddingProvider'
             | 'rerankerProvider';
-        void save({ [key]: provider } as DeepPartial<AppSettings>);
+        if (provider !== 'plugin') {
+            void save({ [key]: provider } as DeepPartial<AppSettings>);
+            return;
+        }
+
+        const models = getPluginModels(feature);
+        const currentModelId = $appSettings?.plugin[feature].modelId ?? '';
+        const modelId = models.some((model) => model.id === currentModelId)
+            ? currentModelId
+            : (models[0]?.id ?? '');
+        void save({
+            [key]: provider,
+            plugin: { [feature]: { modelId } }
+        } as DeepPartial<AppSettings>);
     }
 
-    function updatePluginModel(modelId: string): void {
-        void save({ plugin: { [activeFeature]: { modelId } } } as DeepPartial<AppSettings>);
+    function updatePluginModel(feature: Feature, modelId: string): void {
+        void save({ plugin: { [feature]: { modelId } } } as DeepPartial<AppSettings>);
     }
 
     function updateField(field: SettingsField, value: string): void {
@@ -905,23 +952,194 @@
         void save({ [provider]: providerPatch } as DeepPartial<AppSettings>);
     }
 
-    function updateWorkflow(patch: WorkflowPatch): Promise<void> {
-        return activeFeature === 'imagegen'
+    function updateWorkflow(feature: WorkflowFeature, patch: WorkflowPatch): Promise<void> {
+        return feature === 'imagegen'
             ? save({ imageGeneration: { workflow: patch } })
             : save({ tts: { workflow: patch } });
     }
+
+    function editWorkflow(feature: WorkflowFeature): void {
+        workflowEditorFeature = feature;
+        workflowEditorOpen = true;
+    }
 </script>
+
+{#snippet featureSettings(selectedFeature: Feature)}
+    {@const featureConfig = FEATURES.find((item) => item.id === selectedFeature) ?? FEATURES[0]}
+    {@const selectedProvider = getActiveProvider($appSettings, selectedFeature)}
+    {@const selectedFields = getSettingsFields($appSettings, selectedFeature)}
+    {@const selectedModelField = selectedFields.find((field) => field.path[2] === 'modelId')}
+    {@const selectedOtherFields = selectedFields.filter((field) => field.path[2] !== 'modelId')}
+    {@const hasSelectedModel = selectedProvider === 'plugin' || selectedModelField !== undefined}
+
+    <section class="space-y-4">
+        <div>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {featureConfig.label}
+            </h3>
+            <p class="text-sm text-muted-foreground">{featureConfig.description}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-busy={saving}>
+            <div class="flex flex-col gap-1.5 {hasSelectedModel ? '' : 'sm:col-span-2'}">
+                <Label for={`${selectedFeature}-service-provider`}>Provider</Label>
+                <OptionSelect
+                    id={`${selectedFeature}-service-provider`}
+                    value={selectedProvider}
+                    disabled={saving}
+                    options={getProviders(selectedFeature).map((provider) => ({
+                        value: provider,
+                        label: getProviderName(selectedFeature, provider)
+                    }))}
+                    onChange={(value) =>
+                        updateActiveProvider(selectedFeature, value as ServiceProvider)}
+                />
+            </div>
+
+            {#if selectedProvider === 'plugin'}
+                <div class="flex flex-col gap-1.5">
+                    <Label for={`${selectedFeature}-plugin-model`}>Model</Label>
+                    <OptionSelect
+                        id={`${selectedFeature}-plugin-model`}
+                        value={$appSettings?.plugin[selectedFeature].modelId ?? ''}
+                        disabled={saving}
+                        options={getPluginModels(selectedFeature).map((model) => ({
+                            value: model.id,
+                            label: model.name
+                        }))}
+                        onChange={(value) => updatePluginModel(selectedFeature, value)}
+                    />
+                </div>
+            {:else if selectedModelField}
+                {@const modelFieldId = `${selectedFeature}-${selectedModelField.id}`}
+                <div class="flex flex-col gap-1.5">
+                    <Label for={modelFieldId}>{selectedModelField.label}</Label>
+                    {#if selectedModelField.options}
+                        <OptionSelect
+                            id={modelFieldId}
+                            value={selectedModelField.value}
+                            disabled={saving}
+                            options={selectedModelField.options.map((option) => ({
+                                value: option,
+                                label: option
+                            }))}
+                            onChange={(value) => updateField(selectedModelField, value)}
+                        />
+                    {:else if selectedModelField.suggestions}
+                        <SuggestedInput
+                            id={modelFieldId}
+                            value={selectedModelField.value}
+                            suggestions={selectedModelField.suggestions}
+                            placeholder={selectedModelField.placeholder}
+                            disabled={saving}
+                            onCommit={(value) => updateField(selectedModelField, value)}
+                        />
+                    {:else}
+                        <Input
+                            id={modelFieldId}
+                            type="text"
+                            value={selectedModelField.value}
+                            placeholder={selectedModelField.placeholder}
+                            disabled={saving}
+                            onchange={(event) =>
+                                updateField(selectedModelField, event.currentTarget.value)}
+                        />
+                    {/if}
+                </div>
+            {/if}
+
+            {#each selectedOtherFields as field (field.id)}
+                {@const fieldId = `${selectedFeature}-${field.id}`}
+                <div
+                    class="flex flex-col gap-1.5 {field.id.endsWith('api-key') ||
+                    field.path[2] === 'baseUrl' ||
+                    field.multiline
+                        ? 'sm:col-span-2'
+                        : ''}"
+                >
+                    <Label for={fieldId}>
+                        {field.secret
+                            ? `${getProviderName(selectedFeature, selectedProvider)} API Key`
+                            : field.label}
+                    </Label>
+                    {#if field.secret}
+                        <form onsubmit={(event) => event.preventDefault()} class="flex gap-2">
+                            <Input
+                                id={fieldId}
+                                type={showSecrets ? 'text' : 'password'}
+                                value={field.value}
+                                placeholder="Enter API Key"
+                                disabled={saving}
+                                class="font-mono text-sm"
+                                autocomplete="off"
+                                onchange={(event) => updateField(field, event.currentTarget.value)}
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onclick={() => (showSecrets = !showSecrets)}
+                                aria-label={showSecrets ? 'Hide API key' : 'Show API key'}
+                            >
+                                {#if showSecrets}
+                                    <EyeOff class="size-4" />
+                                {:else}
+                                    <Eye class="size-4" />
+                                {/if}
+                            </Button>
+                        </form>
+                    {:else if field.options}
+                        <OptionSelect
+                            id={fieldId}
+                            value={field.value}
+                            disabled={saving}
+                            options={field.options.map((option) => ({
+                                value: option,
+                                label: option
+                            }))}
+                            onChange={(value) => updateField(field, value)}
+                        />
+                    {:else if field.multiline}
+                        <Textarea
+                            id={fieldId}
+                            value={field.value}
+                            placeholder={field.placeholder}
+                            disabled={saving}
+                            class="min-h-48 font-mono text-xs"
+                            onchange={(event) => updateField(field, event.currentTarget.value)}
+                        />
+                    {:else}
+                        <Input
+                            id={fieldId}
+                            type={field.number ? 'number' : 'text'}
+                            value={field.value}
+                            placeholder={field.placeholder}
+                            min={field.number?.min}
+                            max={field.number?.max}
+                            step={field.number?.step}
+                            disabled={saving}
+                            onchange={(event) => updateField(field, event.currentTarget.value)}
+                        />
+                    {/if}
+                    {#if field.help}
+                        <p class="text-xs text-muted-foreground">{field.help}</p>
+                    {/if}
+                </div>
+            {/each}
+        </div>
+    </section>
+{/snippet}
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <div class="mb-4 flex min-w-0 shrink-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
-        {#each FEATURES as item (item.id)}
+        {#each SERVICE_GROUPS as item (item.id)}
             <button
                 type="button"
-                class="min-w-max basis-24 grow shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeFeature ===
+                class="min-w-max basis-24 grow shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeGroup ===
                 item.id
                     ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                     : 'text-muted-foreground hover:text-foreground'}"
-                onclick={() => (activeFeature = item.id)}
+                onclick={() => (activeGroup = item.id)}
             >
                 {item.label}
             </button>
@@ -930,205 +1148,57 @@
 
     <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
         <div class="space-y-8 pb-8">
-            <section class="space-y-4">
-                <div>
-                    <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                        {feature.label}
-                    </h3>
-                    <p class="text-sm text-muted-foreground">{feature.description}</p>
-                </div>
+            {#each serviceGroup.features as selectedFeature, index (selectedFeature)}
+                {#if index > 0}
+                    <div class="border-t border-border"></div>
+                {/if}
+                {@render featureSettings(selectedFeature)}
+            {/each}
 
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-busy={saving}>
-                    <div class="flex flex-col gap-1.5 {hasModel ? '' : 'col-span-1 sm:col-span-2'}">
-                        <Label for="service-provider">Provider</Label>
-                        <select
-                            id="service-provider"
-                            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            value={activeProvider}
-                            disabled={saving}
-                            onchange={(event) =>
-                                updateActiveProvider(event.currentTarget.value as ServiceProvider)}
-                        >
-                            {#each getProviders(activeFeature) as provider (provider)}
-                                <option value={provider}
-                                    >{getProviderName(activeFeature, provider)}</option
-                                >
-                            {/each}
-                        </select>
-                    </div>
-
-                    {#if activeProvider === 'plugin'}
-                        <div class="flex flex-col gap-1.5">
-                            <Label for="plugin-model">Model</Label>
-                            <select
-                                id="plugin-model"
-                                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                value={$appSettings?.plugin[activeFeature].modelId ?? ''}
-                                disabled={saving}
-                                onchange={(event) => updatePluginModel(event.currentTarget.value)}
-                            >
-                                <option value="">Select a model...</option>
-                                {#each getPluginModels(activeFeature) as model (model.id)}
-                                    <option value={model.id}>{model.name}</option>
-                                {/each}
-                            </select>
+            {#if serviceGroup.workflow}
+                {@const workflowFeature = serviceGroup.workflow}
+                {@const workflow =
+                    workflowFeature === 'imagegen'
+                        ? $appSettings?.imageGeneration.workflow
+                        : $appSettings?.tts.workflow}
+                {#if workflow}
+                    <div class="border-t border-border"></div>
+                    <section class="space-y-4">
+                        <div>
+                            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                {workflowFeature === 'imagegen'
+                                    ? 'Image Generation Workflow'
+                                    : 'TTS Workflow'}
+                            </h3>
+                            <p class="text-sm text-muted-foreground">
+                                {workflowFeature === 'imagegen'
+                                    ? 'Customize the node pipeline used for generating images.'
+                                    : 'Customize the node pipeline used for speech synthesis.'}
+                            </p>
                         </div>
-                    {:else if modelField}
-                        <div class="flex flex-col gap-1.5">
-                            <Label for={modelField.id}>{modelField.label}</Label>
-                            {#if modelField.options}
-                                <select
-                                    id={modelField.id}
-                                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    value={modelField.value}
-                                    disabled={saving}
-                                    onchange={(event) =>
-                                        updateField(modelField, event.currentTarget.value)}
-                                >
-                                    {#each modelField.options as option (option)}
-                                        <option value={option}>{option}</option>
-                                    {/each}
-                                </select>
-                            {:else}
-                                <Input
-                                    id={modelField.id}
-                                    type="text"
-                                    value={modelField.value}
-                                    placeholder={modelField.placeholder}
-                                    disabled={saving}
-                                    onchange={(event) =>
-                                        updateField(modelField, event.currentTarget.value)}
-                                />
-                            {/if}
-                        </div>
-                    {/if}
 
-                    {#each otherFields as field (field.id)}
-                        <div
-                            class="flex flex-col gap-1.5 {field.id.endsWith('api-key') ||
-                            field.path[2] === 'baseUrl' ||
-                            field.multiline
-                                ? 'sm:col-span-2'
-                                : ''}"
-                        >
-                            <Label for={field.id}>
-                                {field.secret
-                                    ? `${getProviderName(activeFeature, activeProvider)} API Key`
-                                    : field.label}
-                            </Label>
-                            {#if field.secret}
-                                <form onsubmit={(e) => e.preventDefault()} class="flex gap-2">
-                                    <Input
-                                        id={field.id}
-                                        type={showSecrets ? 'text' : 'password'}
-                                        value={field.value}
-                                        placeholder="Enter API Key"
-                                        disabled={saving}
-                                        class="font-mono text-sm"
-                                        autocomplete="off"
-                                        onchange={(event) =>
-                                            updateField(field, event.currentTarget.value)}
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onclick={() => (showSecrets = !showSecrets)}
-                                        aria-label={showSecrets ? 'Hide API key' : 'Show API key'}
-                                    >
-                                        {#if showSecrets}
-                                            <EyeOff class="size-4" />
-                                        {:else}
-                                            <Eye class="size-4" />
-                                        {/if}
-                                    </Button>
-                                </form>
-                            {:else if field.options}
-                                <select
-                                    id={field.id}
-                                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    value={field.value}
-                                    disabled={saving}
-                                    onchange={(event) =>
-                                        updateField(field, event.currentTarget.value)}
-                                >
-                                    {#each field.options as option (option)}
-                                        <option value={option}>{option}</option>
-                                    {/each}
-                                </select>
-                            {:else if field.multiline}
-                                <Textarea
-                                    id={field.id}
-                                    value={field.value}
-                                    placeholder={field.placeholder}
-                                    disabled={saving}
-                                    class="min-h-48 font-mono text-xs"
-                                    onchange={(event) =>
-                                        updateField(field, event.currentTarget.value)}
-                                />
-                            {:else}
-                                <Input
-                                    id={field.id}
-                                    type={field.number ? 'number' : 'text'}
-                                    value={field.value}
-                                    placeholder={field.placeholder}
-                                    min={field.number?.min}
-                                    max={field.number?.max}
-                                    step={field.number?.step}
-                                    disabled={saving}
-                                    onchange={(event) =>
-                                        updateField(field, event.currentTarget.value)}
-                                />
-                            {/if}
-                            {#if field.help}
-                                <p class="text-xs text-muted-foreground">
-                                    {field.help}
-                                </p>
-                            {/if}
-                        </div>
-                    {/each}
-                </div>
-            </section>
-
-            {#if activeWorkflow}
-                <div class="border-t border-border"></div>
-
-                <!-- Workflow Section -->
-                <section class="space-y-4">
-                    <div>
-                        <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                            {activeFeature === 'imagegen'
-                                ? 'Image Generation Workflow'
-                                : 'TTS Workflow'}
-                        </h3>
-                        <p class="text-sm text-muted-foreground">
-                            {activeFeature === 'imagegen'
-                                ? 'Customize the node pipeline used for generating images.'
-                                : 'Customize the node pipeline used for speech synthesis.'}
-                        </p>
-                    </div>
-
-                    <WorkflowSummaryCard
-                        workflow={activeWorkflow}
-                        onEditWorkflow={() => (workflowEditorOpen = true)}
-                        workflowLabel={activeFeature === 'imagegen'
-                            ? 'Image generation workflow'
-                            : 'TTS workflow'}
-                        editWorkflowLabel={activeFeature === 'imagegen'
-                            ? 'Edit image generation workflow'
-                            : 'Edit TTS workflow'}
-                    />
-                </section>
+                        <WorkflowSummaryCard
+                            {workflow}
+                            onEditWorkflow={() => editWorkflow(workflowFeature)}
+                            workflowLabel={workflowFeature === 'imagegen'
+                                ? 'Image generation workflow'
+                                : 'TTS workflow'}
+                            editWorkflowLabel={workflowFeature === 'imagegen'
+                                ? 'Edit image generation workflow'
+                                : 'Edit TTS workflow'}
+                        />
+                    </section>
+                {/if}
             {/if}
         </div>
     </ScrollArea>
 </div>
 
-{#if activeWorkflow}
+{#if editedWorkflow}
     <WorkflowEditorModal
         bind:open={workflowEditorOpen}
-        workflow={activeWorkflow}
-        title={activeFeature === 'imagegen' ? 'Image Generation Workflow' : 'TTS Workflow'}
-        onPatch={updateWorkflow}
+        workflow={editedWorkflow}
+        title={workflowEditorFeature === 'imagegen' ? 'Image Generation Workflow' : 'TTS Workflow'}
+        onPatch={(patch) => updateWorkflow(workflowEditorFeature, patch)}
     />
 {/if}

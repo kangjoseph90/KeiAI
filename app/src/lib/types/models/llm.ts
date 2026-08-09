@@ -272,6 +272,33 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
     }
 ];
 
+const TRANSFORMERS_MODELS: BuiltInLLMModel[] = [
+    {
+        id: 'transformers::onnx-community/LFM2.5-350M-ONNX',
+        name: 'LFM2.5 350M',
+        modelId: 'onnx-community/LFM2.5-350M-ONNX',
+        provider: 'transformers',
+        tokenizer: 'o200k_base',
+        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/LFM2-8B-A1B-ONNX',
+        name: 'LFM2 8B A1B',
+        modelId: 'onnx-community/LFM2-8B-A1B-ONNX',
+        provider: 'transformers',
+        tokenizer: 'o200k_base',
+        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/LFM2-2.6B-ONNX',
+        name: 'LFM2 2.6B',
+        modelId: 'onnx-community/LFM2-2.6B-ONNX',
+        provider: 'transformers',
+        tokenizer: 'o200k_base',
+        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    }
+];
+
 const MOCK_MODELS: BuiltInLLMModel[] = [
     {
         id: 'mock::default',
@@ -302,5 +329,6 @@ export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
     ...DEEPSEEK_MODELS,
     ...GOOGLE_MODELS,
     ...MISTRAL_MODELS,
+    ...TRANSFORMERS_MODELS,
     ...MOCK_MODELS
 ];

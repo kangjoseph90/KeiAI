@@ -37,7 +37,7 @@
     onclick={(event) => event.stopPropagation()}
 >
     <div
-        class="pointer-events-auto absolute right-1 top-1 touch-visible opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100 {menuOpen
+        class="pointer-events-auto absolute right-1 top-1 touch-visible opacity-0 transition-opacity group-hover:opacity-100 has-focus-visible:opacity-100 {menuOpen
             ? 'opacity-100'
             : ''}"
     >

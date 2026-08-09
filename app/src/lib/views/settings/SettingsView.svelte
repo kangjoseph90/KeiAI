@@ -19,6 +19,7 @@
         Shapes
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import SettingRow from '$lib/components/SettingRow.svelte';
     import { WorkspaceShell } from '$lib/components/layout';
     import { Label } from '$lib/components/ui/label';
@@ -239,21 +240,20 @@
                                             Choose a theme for this device.
                                         </p>
                                     </div>
-                                    <select
+                                    <OptionSelect
                                         id="setting-color-theme"
-                                        class="h-9 min-w-28 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        class="w-auto min-w-28"
                                         value={$themePreference}
                                         disabled={themeBusy}
-                                        aria-busy={themeBusy}
-                                        onchange={(event) =>
-                                            handleThemeChange(
-                                                event.currentTarget.value as ThemePreference
-                                            )}
-                                    >
-                                        <option value="system">System</option>
-                                        <option value="light">Light</option>
-                                        <option value="dark">Dark</option>
-                                    </select>
+                                        ariaBusy={themeBusy}
+                                        options={[
+                                            { value: 'system', label: 'System' },
+                                            { value: 'light', label: 'Light' },
+                                            { value: 'dark', label: 'Dark' }
+                                        ]}
+                                        onChange={(value) =>
+                                            handleThemeChange(value as ThemePreference)}
+                                    />
                                 </div>
                             </div>
                         </section>

@@ -23,6 +23,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Textarea } from '$lib/components/ui/textarea';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
@@ -204,17 +205,17 @@
                             >
                                 <Bot class="size-4" />
                             </div>
-                            <select
+                            <OptionSelect
                                 id="workflow-agent"
-                                aria-label="Agent"
+                                ariaLabel="Agent"
                                 class="h-8 min-w-0 rounded-md border bg-background px-2.5 text-xs text-foreground shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                 value={agent.id}
-                                onchange={(event) => onSelectNode(event.currentTarget.value)}
-                            >
-                                {#each agents as item (item.id)}
-                                    <option value={item.id}>{item.name}</option>
-                                {/each}
-                            </select>
+                                options={agents.map((item) => ({
+                                    value: item.id,
+                                    label: item.name
+                                }))}
+                                onChange={onSelectNode}
+                            />
                         </div>
 
                         <div
@@ -520,19 +521,23 @@
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <div class="flex flex-col gap-1.5">
                                                     <Label class="text-xs">Role</Label>
-                                                    <select
+                                                    <OptionSelect
+                                                        id={`workflow-block-${block.id}-role`}
                                                         class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                                         value={block.role ?? 'system'}
-                                                        onchange={(e) =>
+                                                        options={[
+                                                            { value: 'system', label: 'System' },
+                                                            { value: 'user', label: 'User' },
+                                                            {
+                                                                value: 'assistant',
+                                                                label: 'Assistant'
+                                                            }
+                                                        ]}
+                                                        onChange={(value) =>
                                                             applyBlockEdit(block.id, {
-                                                                role: e.currentTarget
-                                                                    .value as LLMRole
+                                                                role: value as LLMRole
                                                             })}
-                                                    >
-                                                        <option value="system">System</option>
-                                                        <option value="user">User</option>
-                                                        <option value="assistant">Assistant</option>
-                                                    </select>
+                                                    />
                                                 </div>
                                             </div>
 
@@ -568,22 +573,29 @@
                                             </div>
                                             <div class="flex flex-col gap-1.5">
                                                 <Label class="text-xs">History Mode</Label>
-                                                <select
+                                                <OptionSelect
+                                                    id={`workflow-block-${block.id}-history-mode`}
                                                     class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                                     value={block.historyMode ?? 'visible'}
-                                                    onchange={(e) =>
+                                                    options={[
+                                                        {
+                                                            value: 'visible',
+                                                            label: 'Visible parts'
+                                                        },
+                                                        {
+                                                            value: 'last_text',
+                                                            label: 'Last text part'
+                                                        },
+                                                        { value: 'full_trace', label: 'Full trace' }
+                                                    ]}
+                                                    onChange={(value) =>
                                                         applyBlockEdit(block.id, {
-                                                            historyMode: e.currentTarget.value as
+                                                            historyMode: value as
                                                                 | 'visible'
                                                                 | 'last_text'
                                                                 | 'full_trace'
                                                         })}
-                                                >
-                                                    <option value="visible">Visible parts</option>
-                                                    <option value="last_text">Last text part</option
-                                                    >
-                                                    <option value="full_trace">Full trace</option>
-                                                </select>
+                                                />
                                             </div>
                                             <div class="flex flex-col gap-1.5">
                                                 <Label

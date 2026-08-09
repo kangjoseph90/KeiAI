@@ -1,8 +1,7 @@
 /**
  * Reranker Provider Types — KeiAI
  *
- * Provider enum for reranking. Model selection is stored directly
- * in provider config (no model registry needed for built-ins).
+ * Provider and recommended model ID definitions for reranking.
  */
 
 export type BuiltInRerankerProvider = 'cohere' | 'jina' | 'voyageai' | 'transformers';
@@ -14,6 +13,13 @@ export interface PluginRerankerModel {
     modelId: string;
     provider: 'plugin';
 }
+
+export const RERANKER_MODEL_IDS: Partial<Record<BuiltInRerankerProvider, readonly string[]>> = {
+    cohere: ['rerank-v3.5', 'rerank-multilingual-v3.0', 'rerank-english-v3.0'],
+    jina: ['jina-reranker-v3', 'jina-reranker-v2-base-multilingual'],
+    voyageai: ['rerank-2.5', 'rerank-2.5-lite'],
+    transformers: ['Xenova/bge-reranker-base', 'onnx-community/bge-reranker-base-ONNX']
+};
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 

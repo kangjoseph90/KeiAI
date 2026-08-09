@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Label } from '$lib/components/ui/label';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import { appSettings, updateSettings } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
@@ -38,46 +39,39 @@
                 <div class="flex flex-col sm:flex-row gap-4 sm:items-start">
                     <div class="flex flex-col gap-1.5 w-full sm:w-64 max-w-xs">
                         <Label for="translation-target-language">Target Language</Label>
-                        <select
+                        <OptionSelect
                             id="translation-target-language"
-                            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             value={$appSettings?.translation.targetLanguage ?? 'ko'}
-                            onchange={(event) =>
+                            options={LANGUAGES.map((lang) => ({
+                                value: lang.code,
+                                label: `${lang.name} (${getLanguageNativeName(lang.code)})`
+                            }))}
+                            onChange={(value) =>
                                 updateTranslationSettings({
                                     translation: {
-                                        targetLanguage: event.currentTarget.value as LanguageCode
+                                        targetLanguage: value as LanguageCode
                                     }
                                 })}
-                        >
-                            {#each LANGUAGES as lang (lang.code)}
-                                <option value={lang.code}
-                                    >{lang.name} ({getLanguageNativeName(lang.code)})</option
-                                >
-                            {/each}
-                        </select>
+                        />
                     </div>
 
                     {#if $appSettings?.translation?.bidirectional}
                         <div class="flex flex-col gap-1.5 w-full sm:w-64 max-w-xs">
                             <Label for="translation-secondary-language">Secondary Language</Label>
-                            <select
+                            <OptionSelect
                                 id="translation-secondary-language"
-                                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 value={$appSettings?.translation.secondaryLanguage ?? 'en'}
-                                onchange={(event) =>
+                                options={LANGUAGES.map((lang) => ({
+                                    value: lang.code,
+                                    label: `${lang.name} (${getLanguageNativeName(lang.code)})`
+                                }))}
+                                onChange={(value) =>
                                     updateTranslationSettings({
                                         translation: {
-                                            secondaryLanguage: event.currentTarget
-                                                .value as LanguageCode
+                                            secondaryLanguage: value as LanguageCode
                                         }
                                     })}
-                            >
-                                {#each LANGUAGES as lang (lang.code)}
-                                    <option value={lang.code}
-                                        >{lang.name} ({getLanguageNativeName(lang.code)})</option
-                                    >
-                                {/each}
-                            </select>
+                            />
                         </div>
                     {/if}
                 </div>
