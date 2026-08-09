@@ -179,6 +179,7 @@ describe('Proxy worker', () => {
 
 		it('proxies GET request', async () => {
 			const targetUrl = 'https://httpbin.org/get';
+			const outerBody = JSON.stringify({ ignored: true });
 
 			const request = new IncomingRequest('http://example.com/proxy', {
 				method: 'POST',
@@ -187,13 +188,15 @@ describe('Proxy worker', () => {
 					'x-target-method': 'GET',
 					'Content-Type': 'application/json',
 				},
+				body: outerBody,
 			});
 
 			const response = await SELF.fetch(request);
 
 			expect(response.ok).toBe(true);
-			const data = (await response.json()) as { url: string };
+			const data = (await response.json()) as { url: string; data: string };
 			expect(data.url).toBe(targetUrl);
+			expect(data.data).toBe('');
 		});
 	});
 
