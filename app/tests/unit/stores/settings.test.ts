@@ -33,9 +33,7 @@ vi.mock('$lib/utils/ordering', () => ({
 }));
 
 describe('Settings Store', () => {
-    const mockSettings: AppSettings = makeSettings({
-        theme: 'dark'
-    });
+    const mockSettings: AppSettings = makeSettings();
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -55,13 +53,17 @@ describe('Settings Store', () => {
 
     describe('updateSettings', () => {
         it('should update settings and store', async () => {
-            const updated = { ...mockSettings, theme: 'light' };
+            const updated = makeSettings({
+                chat: { autoGenerateResponse: false }
+            });
             vi.mocked(SettingsService.update).mockResolvedValue(updated as unknown as AppSettings);
 
-            await updateSettings({ theme: 'light' });
+            await updateSettings({ chat: { autoGenerateResponse: false } });
 
-            expect(get(appSettings)!.theme).toBe('light');
-            expect(SettingsService.update).toHaveBeenCalledWith({ theme: 'light' });
+            expect(get(appSettings)!.chat.autoGenerateResponse).toBe(false);
+            expect(SettingsService.update).toHaveBeenCalledWith({
+                chat: { autoGenerateResponse: false }
+            });
         });
     });
 

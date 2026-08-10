@@ -1,8 +1,7 @@
 /**
  * Embedding Provider Types — KeiAI
  *
- * Simple provider types for embedding. Model selection is handled in UI dropdowns
- * and stored directly in provider config (no model registry needed for built-ins).
+ * Provider and recommended model ID definitions for embeddings.
  */
 
 export type BuiltInEmbeddingProvider =
@@ -21,6 +20,37 @@ export interface PluginEmbeddingModel {
     modelId: string;
     provider: 'plugin';
 }
+
+export const EMBEDDING_MODEL_IDS: Partial<Record<BuiltInEmbeddingProvider, readonly string[]>> = {
+    openai: ['text-embedding-3-large', 'text-embedding-3-small', 'text-embedding-ada-002'],
+    google: ['gemini-embedding-2', 'gemini-embedding-001'],
+    voyageai: [
+        'voyage-4-large',
+        'voyage-4',
+        'voyage-4-lite',
+        'voyage-3-large',
+        'voyage-3.5',
+        'voyage-3.5-lite',
+        'voyage-code-3',
+        'voyage-finance-2',
+        'voyage-law-2'
+    ],
+    openrouter: [
+        'openai/text-embedding-3-large',
+        'openai/text-embedding-3-small',
+        'qwen/qwen3-embedding-8b',
+        'qwen/qwen3-embedding-0.6b',
+        'google/gemini-embedding-001',
+        'mistralai/mistral-embed-2312'
+    ],
+    minilm: ['onnx-community/all-MiniLM-L6-v2-ONNX', 'Xenova/all-MiniLM-L6-v2'],
+    transformers: [
+        'onnx-community/Qwen3-Embedding-0.6B-ONNX',
+        'onnx-community/all-MiniLM-L6-v2-ONNX',
+        'onnx-community/embeddinggemma-300m-ONNX',
+        'Xenova/all-MiniLM-L6-v2'
+    ]
+};
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 

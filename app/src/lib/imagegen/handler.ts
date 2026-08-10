@@ -9,6 +9,7 @@ import type { ImageGenHandler as ImageGenHandlerType } from './types';
 import type { AppSettings } from '$lib/services';
 import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import { OpenAIImageGenHandler } from './handlers/openai';
+import { OpenRouterImageGenHandler } from './handlers/openrouter';
 import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
 import { NovelAIImageGenHandler } from './handlers/novelai';
@@ -27,6 +28,14 @@ export function selectImageGenHandler(
                 apiKey: settings.openai.apiKey,
                 baseUrl: 'https://api.openai.com/v1',
                 modelId: settings.openai.imagegen.modelId
+            });
+        }
+
+        case 'openrouter': {
+            return new OpenRouterImageGenHandler({
+                apiKey: settings.openrouter.apiKey,
+                baseUrl: 'https://openrouter.ai/api/v1',
+                modelId: settings.openrouter.imagegen.modelId
             });
         }
 
@@ -55,7 +64,10 @@ export function selectImageGenHandler(
         }
 
         case 'comfyui': {
-            return new ComfyUIImageGenHandler(settings.comfyui.imagegen);
+            return new ComfyUIImageGenHandler({
+                ...settings.comfyui.imagegen,
+                useProxy: false
+            });
         }
 
         case 'mock': {

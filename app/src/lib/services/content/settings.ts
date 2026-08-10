@@ -40,7 +40,6 @@ import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource'
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
-    theme: 'light' | 'dark' | 'system';
     chat: {
         saveMessagesOnSwipe: boolean;
         expandStepsOnGeneration: boolean;
@@ -107,7 +106,6 @@ export interface AppSettingsRefs {
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettings = {
-    theme: 'system',
     chat: {
         saveMessagesOnSwipe: true,
         expandStepsOnGeneration: false,
@@ -134,17 +132,17 @@ export const defaultSettings: AppSettings = {
     },
     openai: {
         tts: {
-            modelId: 'tts-1',
+            modelId: 'gpt-4o-mini-tts',
             voiceId: 'alloy'
         },
         embedding: {
-            modelId: 'text-embedding-3-small'
+            modelId: 'text-embedding-3-large'
         },
         imagegen: {
             modelId: 'gpt-image-2'
         },
         stt: {
-            modelId: 'whisper-1'
+            modelId: 'gpt-transcribe'
         }
     },
     anthropic: {},
@@ -155,10 +153,10 @@ export const defaultSettings: AppSettings = {
             voiceId: 'Zephyr'
         },
         embedding: {
-            modelId: 'gemini-embedding-2-preview'
+            modelId: 'gemini-embedding-2'
         },
         imagegen: {
-            modelId: 'gemini-3.1-flash-image'
+            modelId: 'gemini-3-pro-image'
         },
         stt: {
             modelId: 'latest_long',
@@ -204,12 +202,26 @@ export const defaultSettings: AppSettings = {
             modelId: 'voyage-4-large'
         },
         reranker: {
-            modelId: 'rerank-2'
+            modelId: 'rerank-2.5'
         }
     },
     openrouter: {
+        apiKey: '',
+        imagegen: {
+            modelId: 'openai/gpt-image-2'
+        },
+        tts: {
+            modelId: 'google/gemini-3.1-flash-tts-preview',
+            voiceId: 'alloy'
+        },
+        stt: {
+            modelId: 'openai/gpt-4o-transcribe'
+        },
         embedding: {
-            modelId: 'openai/text-embedding-3-small'
+            modelId: 'qwen/qwen3-embedding-8b'
+        },
+        reranker: {
+            modelId: 'cohere/rerank-4-pro'
         }
     },
     transformers: {
@@ -229,7 +241,7 @@ export const defaultSettings: AppSettings = {
     elevenlabs: {
         apiKey: '',
         tts: {
-            modelId: 'eleven_multilingual_v2',
+            modelId: 'eleven_v3',
             voiceId: ''
         }
     },
@@ -257,7 +269,7 @@ export const defaultSettings: AppSettings = {
     stability: {
         apiKey: '',
         imagegen: {
-            modelId: 'stable-diffusion-3.5-large'
+            modelId: 'ultra'
         }
     },
     groq: {
@@ -269,13 +281,13 @@ export const defaultSettings: AppSettings = {
     cohere: {
         apiKey: '',
         reranker: {
-            modelId: 'rerank-v3.5'
+            modelId: 'rerank-v4.0-pro'
         }
     },
     jina: {
         apiKey: '',
         reranker: {
-            modelId: 'jina-reranker-v2-base-multilingual'
+            modelId: 'jina-reranker-v3'
         }
     },
     custom: {

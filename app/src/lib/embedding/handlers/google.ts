@@ -16,6 +16,7 @@ export interface GoogleEmbeddingConfig {
     apiKey?: string;
     modelId: string;
     baseUrl: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -53,7 +54,8 @@ export class GoogleEmbeddingHandler implements EmbeddingHandler {
                     }))
                 }),
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

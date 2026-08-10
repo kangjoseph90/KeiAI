@@ -2,6 +2,7 @@
     import { Download } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Label } from '$lib/components/ui/label';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import type { ExportCharacterFileRequest } from '$lib/managers';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
@@ -76,16 +77,13 @@
     <div class="flex flex-col gap-2">
         <div class="flex items-center gap-2">
             <div class="min-w-0 flex-1">
-                <select
+                <OptionSelect
                     id="export-character-format"
                     class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={selectedFormat}
-                    onchange={(e) => (selectedFormat = e.currentTarget.value as ExportButton)}
-                >
-                    {#each formatOptions as opt (opt.id)}
-                        <option value={opt.id}>{opt.label}</option>
-                    {/each}
-                </select>
+                    options={formatOptions.map((opt) => ({ value: opt.id, label: opt.label }))}
+                    onChange={(value) => (selectedFormat = value as ExportButton)}
+                />
             </div>
             <Button
                 variant="outline"

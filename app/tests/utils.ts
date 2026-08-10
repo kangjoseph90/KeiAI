@@ -12,10 +12,10 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 /**
  * Build a complete AppSettings object by merging overrides onto defaultSettings.
  * Use this in tests wherever you'd otherwise write `{} as AppSettings` or
- * call `appSettings.set({ theme: 'dark' })` directly (which fails the full type check).
+ * call `appSettings.set({ chat: { autoGenerateResponse: false } })` directly.
  *
  * @example
- *   appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
+ *   appSettings.set(makeSettings({ chat: { autoGenerateResponse: false } }));
  */
 export function makeSettings(overrides: DeepPartial<AppSettings> = {}): AppSettings {
     return deepMerge(

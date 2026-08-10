@@ -121,11 +121,11 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
             description: '',
             models: {
                 chat: {
-                    id: risu.aiModel ?? 'openai::gpt-5.4',
+                    id: risu.aiModel ?? 'openai::gpt-5.6',
                     provider: 'openai'
                 },
                 aux: {
-                    id: risu.subModel ?? risu.aiModel ?? 'openai::gpt-5.4',
+                    id: risu.subModel ?? risu.aiModel ?? 'openai::gpt-5.6',
                     provider: 'openai'
                 }
             },

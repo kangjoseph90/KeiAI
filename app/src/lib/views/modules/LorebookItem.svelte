@@ -3,6 +3,7 @@
     import type { Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
@@ -141,7 +142,7 @@
             disabled={busy}
             value={item.name}
             aria-label="Entry name"
-            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+            class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
@@ -183,18 +184,19 @@
     {#snippet details()}
         <div class="space-y-1.5">
             <Label class="text-xs" for={`activation-mode-${item.id}`}>Activation</Label>
-            <select
+            <OptionSelect
                 id={`activation-mode-${item.id}`}
                 disabled={busy}
                 class="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={getActivationMode()}
-                aria-label="Activation mode"
-                onchange={(e) => handleActivationChange(e.currentTarget.value as ActivationMode)}
-            >
-                <option value="keyword">Keyword</option>
-                <option value="disabled">Disabled</option>
-                <option value="always">Always active</option>
-            </select>
+                ariaLabel="Activation mode"
+                options={[
+                    { value: 'keyword', label: 'Keyword' },
+                    { value: 'disabled', label: 'Disabled' },
+                    { value: 'always', label: 'Always active' }
+                ]}
+                onChange={(value) => handleActivationChange(value as ActivationMode)}
+            />
         </div>
 
         {#if getActivationMode() !== 'always'}
@@ -279,19 +281,20 @@
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label class="text-xs">Insertion Role</Label>
-                                <select
+                                <OptionSelect
                                     disabled={busy}
                                     class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     value={item.role}
-                                    onchange={(e) =>
+                                    options={[
+                                        { value: 'system', label: 'System' },
+                                        { value: 'user', label: 'User' },
+                                        { value: 'assistant', label: 'Assistant' }
+                                    ]}
+                                    onChange={(value) =>
                                         handleUpdate({
-                                            role: e.currentTarget.value as LLMRole
+                                            role: value as LLMRole
                                         })}
-                                >
-                                    <option value="system">System</option>
-                                    <option value="user">User</option>
-                                    <option value="assistant">Assistant</option>
-                                </select>
+                                />
                             </div>
                             <div class="space-y-1.5">
                                 <Label class="text-xs">Probability (%)</Label>
@@ -314,7 +317,7 @@
                             <div class="flex items-center gap-2 select-none">
                                 <input
                                     type="checkbox"
-                                    class="size-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                                    class="size-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
                                     checked={item.scanDepth !== undefined}
                                     disabled={busy}
                                     id="scanDepthToggle"
@@ -347,7 +350,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.useRegex}
                                         disabled={busy}
                                         onchange={(e) => {
@@ -365,7 +368,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.useMultipleKeys}
                                         disabled={busy || item.useRegex}
                                         onchange={(e) =>
@@ -378,7 +381,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.recursive}
                                         disabled={busy}
                                         onchange={(e) =>
@@ -391,7 +394,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"
-                                        class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        class="size-4 rounded border-input text-primary focus:ring-primary"
                                         checked={item.noRecursiveSearch}
                                         disabled={busy}
                                         onchange={(e) =>

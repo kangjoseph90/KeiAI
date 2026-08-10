@@ -44,6 +44,14 @@ export function selectRerankerHandler(
             });
         }
 
+        case 'openrouter': {
+            return new CohereRerankerHandler({
+                apiKey: settings.openrouter.apiKey,
+                baseUrl: 'https://openrouter.ai/api',
+                modelId: settings.openrouter.reranker.modelId
+            });
+        }
+
         case 'transformers': {
             return new TransformersRerankerHandler({
                 modelId: settings.transformers.reranker.modelId

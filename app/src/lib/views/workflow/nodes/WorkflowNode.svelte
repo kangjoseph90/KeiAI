@@ -46,6 +46,7 @@
     import type { LLMType } from '$lib/types/models/llm';
     import type { WorkflowNodeCategory } from '$lib/workflow';
     import { listAgentTools } from '$lib/workflow/agent/tool';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import WorkflowInputRow from './WorkflowInputRow.svelte';
 
     type AgentNumberField =
@@ -396,57 +397,63 @@
             {:else if data.node.class === 'NumberMath'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                     Operator
-                    <select
+                    <OptionSelect
+                        id={`workflow-node-${data.node.id}-number-math-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
-                        onchange={(event) =>
+                        options={[
+                            { value: 'add', label: 'add' },
+                            { value: 'subtract', label: 'subtract' },
+                            { value: 'multiply', label: 'multiply' },
+                            { value: 'divide', label: 'divide' }
+                        ]}
+                        onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
-                                operator: event.currentTarget.value as typeof data.node.operator
+                                operator: value as typeof data.node.operator
                             })}
-                    >
-                        <option value="add">add</option>
-                        <option value="subtract">subtract</option>
-                        <option value="multiply">multiply</option>
-                        <option value="divide">divide</option>
-                    </select>
+                    />
                 </label>
             {:else if data.node.class === 'NumberCompare'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                     Operator
-                    <select
+                    <OptionSelect
+                        id={`workflow-node-${data.node.id}-number-compare-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
-                        onchange={(event) =>
+                        options={[
+                            { value: 'equal', label: 'equal' },
+                            { value: 'notEqual', label: 'not equal' },
+                            { value: 'greaterThan', label: 'greater than' },
+                            { value: 'greaterThanOrEqual', label: 'greater than or equal' },
+                            { value: 'lessThan', label: 'less than' },
+                            { value: 'lessThanOrEqual', label: 'less than or equal' }
+                        ]}
+                        onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
-                                operator: event.currentTarget.value as typeof data.node.operator
+                                operator: value as typeof data.node.operator
                             })}
-                    >
-                        <option value="equal">equal</option>
-                        <option value="notEqual">not equal</option>
-                        <option value="greaterThan">greater than</option>
-                        <option value="greaterThanOrEqual">greater than or equal</option>
-                        <option value="lessThan">less than</option>
-                        <option value="lessThanOrEqual">less than or equal</option>
-                    </select>
+                    />
                 </label>
             {:else if data.node.class === 'BooleanLogic'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                     Operator
-                    <select
+                    <OptionSelect
+                        id={`workflow-node-${data.node.id}-boolean-logic-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
-                        onchange={(event) =>
+                        options={[
+                            { value: 'and', label: 'and' },
+                            { value: 'or', label: 'or' },
+                            { value: 'xor', label: 'xor' },
+                            { value: 'nand', label: 'nand' },
+                            { value: 'nor', label: 'nor' },
+                            { value: 'xnor', label: 'xnor' }
+                        ]}
+                        onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
-                                operator: event.currentTarget.value as typeof data.node.operator
+                                operator: value as typeof data.node.operator
                             })}
-                    >
-                        <option value="and">and</option>
-                        <option value="or">or</option>
-                        <option value="xor">xor</option>
-                        <option value="nand">nand</option>
-                        <option value="nor">nor</option>
-                        <option value="xnor">xnor</option>
-                    </select>
+                    />
                 </label>
             {:else if data.node.class === 'StringIncludes'}
                 <label
@@ -517,18 +524,20 @@
             {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                     Namespace
-                    <select
+                    <OptionSelect
+                        id={`workflow-node-${data.node.id}-namespace`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.namespace}
-                        onchange={(event) =>
+                        options={[
+                            { value: 'global', label: 'global' },
+                            { value: 'room', label: 'room' },
+                            { value: 'chat', label: 'chat' }
+                        ]}
+                        onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
-                                namespace: event.currentTarget.value as 'global' | 'room' | 'chat'
+                                namespace: value as 'global' | 'room' | 'chat'
                             })}
-                    >
-                        <option value="global">global</option>
-                        <option value="room">room</option>
-                        <option value="chat">chat</option>
-                    </select>
+                    />
                 </label>
             {/if}
 

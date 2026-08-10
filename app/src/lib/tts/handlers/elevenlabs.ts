@@ -14,6 +14,7 @@ export interface ElevenLabsTTSConfig {
     baseUrl: string;
     modelId: string;
     voiceId: string;
+    useProxy?: boolean;
 }
 
 export class ElevenLabsTTSHandler implements TTSHandler {
@@ -46,7 +47,7 @@ export class ElevenLabsTTSHandler implements TTSHandler {
                     }
                 })
             },
-            { proxy: true, signal }
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

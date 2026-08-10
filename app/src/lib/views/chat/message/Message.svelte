@@ -647,17 +647,13 @@
         {:else}
             <!-- Bubble -->
             <div
-                class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
-                    ? 'bg-primary text-primary-foreground'
+                class="relative flex min-w-0 max-w-full flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
+                    ? 'bg-user-message text-foreground'
                     : 'bg-muted text-foreground'}"
                 use:hydrateAssets={messageStyleHtml}
             >
                 {#if message.displayStatus === 'generating' && parts.length === 0}
-                    <span
-                        class="flex items-center gap-1.5 {isUser
-                            ? 'text-primary-foreground/70'
-                            : 'text-muted-foreground'}"
-                    >
+                    <span class="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 class="size-3 animate-spin" />
                         {isUser ? 'Sending...' : 'Thinking...'}
                     </span>
@@ -986,14 +982,13 @@
 
     .trace-root-dot {
         display: block;
-        width: 1.25rem;
-        height: 1.25rem;
+        width: 0.75rem;
+        height: 0.75rem;
         border-radius: 9999px;
-        border: 2px solid var(--border);
-        background: var(--background);
-        box-shadow: inset 0 0 0 4px var(--muted);
+        border: 2px solid var(--muted-foreground);
+        background: transparent;
         flex: none;
-        margin-left: 0.25rem;
+        margin-left: 0.5rem;
         position: relative;
         z-index: 2;
     }
@@ -1025,13 +1020,12 @@
     .trace-dot {
         display: block;
         position: absolute;
-        left: 0.535rem;
-        top: 0.45rem;
-        width: 0.68rem;
-        height: 0.68rem;
+        left: 0.625rem;
+        top: 0.55rem;
+        width: 0.5rem;
+        height: 0.5rem;
         border-radius: 9999px;
-        border: 2px solid var(--border);
-        background: var(--background);
+        background: var(--muted-foreground);
         z-index: 1;
     }
 </style>

@@ -589,7 +589,7 @@
                     ontouchstart={releaseSelectionBottomPin}
                     onpointerdown={releaseSelectionBottomPin}
                     inert={roomOverlayOpen || (inspectorOpen && chatPanelOverlayMode)}
-                    class="relative z-10 flex flex-1 flex-col overflow-y-auto px-4 pt-8 pb-4"
+                    class="relative z-10 flex flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 pt-8 pb-4"
                     style="scrollbar-gutter: stable; padding-bottom: {messageBottomInset}px; overflow-anchor: {streamReserveHeight >
                         0 &&
                     (!generatingMessageId || generationScrollAnchoringSuppressed)

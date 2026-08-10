@@ -1,12 +1,12 @@
 /**
  * TTS Provider Types — KeiAI
  *
- * Simple provider enum for TTS. Model selection is handled in UI dropdowns
- * and stored directly in provider config (no model registry needed).
+ * Provider and recommended model ID definitions for text-to-speech.
  */
 
 export type BuiltInTTSProvider =
     | 'openai'
+    | 'openrouter'
     | 'elevenlabs'
     | 'google'
     | 'novelai'
@@ -21,6 +21,25 @@ export interface PluginTTSModel {
     modelId: string;
     provider: 'plugin';
 }
+
+export const TTS_MODEL_IDS: Partial<Record<BuiltInTTSProvider, readonly string[]>> = {
+    openai: ['gpt-4o-mini-tts', 'gpt-4o-mini-tts-2025-12-15', 'tts-1-hd', 'tts-1'],
+    openrouter: [],
+    google: [
+        'gemini-3.1-flash-tts-preview',
+        'gemini-2.5-flash-preview-tts',
+        'gemini-2.5-pro-preview-tts'
+    ],
+    elevenlabs: ['eleven_v3', 'eleven_flash_v2_5', 'eleven_multilingual_v2', 'eleven_flash_v2'],
+    transformers: [
+        'onnx-community/Kokoro-82M-v1.0-ONNX',
+        'Xenova/mms-tts-eng',
+        'Xenova/mms-tts-kor',
+        'Xenova/mms-tts-deu',
+        'Xenova/mms-tts-spa'
+    ],
+    mock: ['sample', 'morse']
+};
 
 export const KOKORO_VOICE_IDS = [
     'af_heart',
@@ -61,6 +80,7 @@ export function isKokoroVoiceId(value: string): value is KokoroVoiceId {
 
 const providerNames: Record<TTSProvider, string> = {
     openai: 'OpenAI',
+    openrouter: 'OpenRouter',
     elevenlabs: 'ElevenLabs',
     google: 'Google',
     novelai: 'NovelAI',

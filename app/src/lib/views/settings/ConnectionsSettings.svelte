@@ -97,7 +97,7 @@
                     type="button"
                     class="min-h-13 rounded-lg border border-border px-3 py-2 text-left transition-colors {serverMode ===
                     'default'
-                        ? 'border-primary bg-primary/5'
+                        ? 'border-foreground/25 bg-accent/50'
                         : 'hover:bg-muted/50'}"
                     onclick={() => (serverMode = 'default')}
                 >
@@ -111,7 +111,7 @@
                     type="button"
                     class="min-h-13 rounded-lg border border-border px-3 py-2 text-left transition-colors {serverMode ===
                     'custom'
-                        ? 'border-primary bg-primary/5'
+                        ? 'border-foreground/25 bg-accent/50'
                         : 'hover:bg-muted/50'}"
                     onclick={() => (serverMode = 'custom')}
                 >
@@ -190,7 +190,7 @@
                         type="button"
                         class="min-h-13 rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'default'
-                            ? 'border-primary bg-primary/5'
+                            ? 'border-foreground/25 bg-accent/50'
                             : 'hover:bg-muted/50'}"
                         onclick={() => (proxyMode = 'default')}
                     >
@@ -204,7 +204,7 @@
                         type="button"
                         class="min-h-13 rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'custom'
-                            ? 'border-primary bg-primary/5'
+                            ? 'border-foreground/25 bg-accent/50'
                             : 'hover:bg-muted/50'}"
                         onclick={() => (proxyMode = 'custom')}
                     >
@@ -219,7 +219,7 @@
                         type="button"
                         class="min-h-13 rounded-lg border border-border px-3 py-2 text-left transition-colors {proxyMode ===
                         'off'
-                            ? 'border-primary bg-primary/5'
+                            ? 'border-foreground/25 bg-accent/50'
                             : 'hover:bg-muted/50'}"
                         onclick={() => (proxyMode = 'off')}
                     >

@@ -18,6 +18,7 @@ export interface OpenAISTTConfig {
     baseUrl: string;
     /** Response format: "json" | "text" | "srt" | "verbose_json" | "vtt" */
     responseFormat?: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -47,7 +48,8 @@ export class OpenAISTTHandler implements STTHandler {
                 headers,
                 body: formData,
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

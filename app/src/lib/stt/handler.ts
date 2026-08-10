@@ -28,6 +28,15 @@ export function selectSTTHandler(
             });
         }
 
+        case 'openrouter': {
+            return new OpenAISTTHandler({
+                apiKey: settings.openrouter.apiKey,
+                baseUrl: 'https://openrouter.ai/api/v1',
+                modelId: settings.openrouter.stt.modelId,
+                responseFormat: 'json'
+            });
+        }
+
         case 'groq': {
             return new OpenAISTTHandler({
                 apiKey: settings.groq.apiKey,

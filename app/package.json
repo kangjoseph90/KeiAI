@@ -60,7 +60,7 @@
         "vitest": "^4.0.18"
     },
     "dependencies": {
-        "@huggingface/transformers": "^3.8.1",
+        "@huggingface/transformers": "^4.2.0",
         "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.32.0",
         "@mlc-ai/web-tokenizers": "^0.1.6",
         "@tailwindcss/typography": "^0.5.19",

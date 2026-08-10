@@ -5,21 +5,28 @@
  * Handles continuous text generation using WebGPU via transformers.js.
  */
 
-import { transformers } from '$lib/inference';
+import { gemma4, qwen35, transformers } from '$lib/inference';
 import { getTextContent } from '$lib/workflow/agent/llm';
+import type { GenerateOptions, MultimodalGenerateMessage } from '$lib/inference/types';
+import type { TransformersLLMRuntime } from '$lib/types/models/llm';
 import type {
     LLMStreamHandler,
     LLMStreamContent,
     LLMStreamOptions,
     LLMMessage,
-    LLMStreamHandlerConfig
+    LLMStreamHandlerConfig,
+    LLMContentPart
 } from '../types';
 import { debounceStream } from '$lib/utils/stream';
 
-export class TransformersLLMStreamHandler implements LLMStreamHandler {
-    private readonly config: LLMStreamHandlerConfig;
+interface TransformersLLMStreamHandlerConfig extends LLMStreamHandlerConfig {
+    runtime: TransformersLLMRuntime;
+}
 
-    constructor(config: LLMStreamHandlerConfig) {
+export class TransformersLLMStreamHandler implements LLMStreamHandler {
+    private readonly config: TransformersLLMStreamHandlerConfig;
+
+    constructor(config: TransformersLLMStreamHandlerConfig) {
         this.config = config;
     }
 
@@ -37,18 +44,15 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const parameters = options.parameters ?? {};
-        const textMessages = messages.map((message) => ({
-            role: message.role,
-            content: getTextContent(message.content)
-        }));
-        const stream = transformers.generate({ modelId: this.config.modelId }, textMessages, {
+        const generationOptions = {
             device: 'webgpu', // LLM generation strongly prefers WebGPU
             max_new_tokens: options.maxResponse ?? 512,
-            temperature: (parameters['temperature'] as number) ?? 0.7,
-            top_p: (parameters['top_p'] as number) ?? 0.9,
-            top_k: (parameters['top_k'] as number) ?? 50,
-            repetition_penalty: (parameters['frequency_penalty'] as number) ?? 1.1
-        });
+            temperature: parameters['temperature'] as number | undefined,
+            top_p: parameters['top_p'] as number | undefined,
+            top_k: parameters['top_k'] as number | undefined,
+            repetition_penalty: parameters['frequency_penalty'] as number | undefined
+        } as const;
+        const stream = this.generate(messages, generationOptions);
 
         let fullContent = '';
         const shouldStream = options.stream ?? true;
@@ -57,5 +61,50 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
             if (shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
         }
         if (!shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
+    }
+
+    private generate(messages: LLMMessage[], options: GenerateOptions): AsyncIterable<string> {
+        switch (this.config.runtime.kind) {
+            case 'pipeline':
+                return transformers.generate(
+                    { modelId: this.config.modelId },
+                    messages.map((message) => ({
+                        role: message.role,
+                        content: getTextContent(message.content)
+                    })),
+                    options
+                );
+            case 'gemma4':
+                return gemma4.generate(
+                    { modelId: this.config.modelId },
+                    toMultimodalMessages(messages),
+                    options
+                );
+            case 'qwen35':
+                return qwen35.generate(
+                    { modelId: this.config.modelId },
+                    toMultimodalMessages(messages),
+                    options
+                );
+        }
+    }
+}
+
+function toMultimodalMessages(messages: LLMMessage[]): MultimodalGenerateMessage[] {
+    return messages.map((message) => ({
+        role: message.role,
+        content: message.content.flatMap(toMultimodalPart)
+    }));
+}
+
+function toMultimodalPart(part: LLMContentPart): MultimodalGenerateMessage['content'] {
+    switch (part.type) {
+        case 'text':
+            return [{ type: 'text', text: part.text }];
+        case 'image':
+        case 'audio':
+            return [{ type: part.type, mimeType: part.mimeType, data: part.data }];
+        default:
+            return [];
     }
 }

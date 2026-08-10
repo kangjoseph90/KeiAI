@@ -21,7 +21,9 @@ import {
     type BuiltInLLMModel,
     type CustomLLMModel,
     type PluginLLMModel,
+    type TransformersLLMModel,
     BUILT_IN_LLM_MODELS,
+    TRANSFORMERS_LLM_MODELS,
     type LLMCapabilities
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
@@ -51,12 +53,21 @@ export function selectLLMHandler(
     } else if (model.provider === 'plugin') {
         // Plugin models: dispatch by plugin handler
         handler = selectPluginHandler(model);
+    } else if (model.provider === 'transformers') {
+        handler = selectTransformersHandler(model);
     } else {
         // Built-in models: dispatch by provider
         handler = selectBuiltInHandler(model, settings);
     }
 
     return handler ? { handler, unsupported: model.unsupported ?? [] } : null;
+}
+
+function selectTransformersHandler(model: TransformersLLMModel): LLMStreamHandler {
+    return new TransformersLLMStreamHandler({
+        modelId: model.modelId,
+        runtime: model.runtime
+    });
 }
 
 function selectPluginHandler(model: PluginLLMModel): LLMStreamHandler | null {
@@ -128,12 +139,6 @@ function selectBuiltInHandler(
             });
         }
 
-        case 'transformers': {
-            return new TransformersLLMStreamHandler({
-                modelId: model.modelId
-            });
-        }
-
         case 'mock':
             return new MockLLMStreamHandler({ behavior: model.modelId as MockBehavior });
 
@@ -189,18 +194,21 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
             .find((model) => model.id === config.id);
     }
 
+    if (config.provider === 'transformers') {
+        return TRANSFORMERS_LLM_MODELS.find((model) => model.id === config.id);
+    }
+
     // Dynamic models
-    if (config.provider === 'openrouter' || config.provider === 'transformers') {
+    if (config.provider === 'openrouter') {
+        const modelId = config.id.trim();
+        if (!modelId) return undefined;
         const model: BuiltInLLMModel = {
-            id: `${config.provider}::${config.id}`,
-            name: config.id,
-            modelId: config.id,
+            id: `${config.provider}::${modelId}`,
+            name: modelId,
+            modelId,
             provider: config.provider,
             tokenizer: config.tokenizer ?? 'o200k_base'
         };
-        if (config.provider === 'transformers') {
-            model.unsupported = ['image_input', 'audio_input', 'video_input', 'tool_call'];
-        }
         return model;
     }
 

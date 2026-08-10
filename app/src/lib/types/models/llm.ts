@@ -44,12 +44,21 @@ export type BuiltInLLMProvider =
     | 'google'
     | 'mistral'
     | 'openrouter'
-    | 'transformers'
     | 'mock';
 
+export type TransformersLLMProvider = 'transformers';
 export type CustomLLMProvider = 'custom';
 export type PluginLLMProvider = 'plugin';
-export type LLMProvider = BuiltInLLMProvider | CustomLLMProvider | PluginLLMProvider;
+export type LLMProvider =
+    | BuiltInLLMProvider
+    | TransformersLLMProvider
+    | CustomLLMProvider
+    | PluginLLMProvider;
+
+export type TransformersLLMRuntime =
+    | { kind: 'pipeline'; task: 'text-generation' }
+    | { kind: 'gemma4' }
+    | { kind: 'qwen35' };
 
 // Parameter
 
@@ -161,6 +170,11 @@ export interface BuiltInLLMModel extends LLMModelBase {
     provider: BuiltInLLMProvider;
 }
 
+export interface TransformersLLMModel extends LLMModelBase {
+    provider: 'transformers';
+    runtime: TransformersLLMRuntime;
+}
+
 export interface CustomLLMModel extends LLMModelBase {
     provider: CustomLLMProvider;
     handler: LLMHandler;
@@ -172,7 +186,7 @@ export interface PluginLLMModel extends LLMModelBase {
     provider: PluginLLMProvider;
 }
 
-export type LLMModel = BuiltInLLMModel | CustomLLMModel | PluginLLMModel;
+export type LLMModel = BuiltInLLMModel | TransformersLLMModel | CustomLLMModel | PluginLLMModel;
 
 export interface LLMModelConfig {
     id: string;
@@ -181,6 +195,38 @@ export interface LLMModelConfig {
 }
 
 const OPENAI_MODELS: BuiltInLLMModel[] = [
+    {
+        id: 'openai::gpt-5.6',
+        name: 'GPT 5.6',
+        modelId: 'gpt-5.6',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.6-sol',
+        name: 'GPT 5.6 Sol',
+        modelId: 'gpt-5.6-sol',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.6-terra',
+        name: 'GPT 5.6 Terra',
+        modelId: 'gpt-5.6-terra',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.6-luna',
+        name: 'GPT 5.6 Luna',
+        modelId: 'gpt-5.6-luna',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
     {
         id: 'openai::gpt-5.5',
         name: 'GPT 5.5',
@@ -196,22 +242,134 @@ const OPENAI_MODELS: BuiltInLLMModel[] = [
         provider: 'openai',
         tokenizer: 'o200k_base',
         unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.3',
+        name: 'GPT 5.3',
+        modelId: 'gpt-5.3',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.2',
+        name: 'GPT 5.2',
+        modelId: 'gpt-5.2',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5.1',
+        name: 'GPT 5.1',
+        modelId: 'gpt-5.1',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5',
+        name: 'GPT 5',
+        modelId: 'gpt-5',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5-mini',
+        name: 'GPT 5 mini',
+        modelId: 'gpt-5-mini',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
+    },
+    {
+        id: 'openai::gpt-5-nano',
+        name: 'GPT 5 nano',
+        modelId: 'gpt-5-nano',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
     }
 ];
 
 const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
     {
-        id: 'anthropic::claude-4.7-opus',
-        name: 'Claude 4.7 Opus',
-        modelId: 'claude-4.7-opus',
+        id: 'anthropic::claude-fable-5',
+        name: 'Claude Fable 5',
+        modelId: 'claude-fable-5',
         provider: 'anthropic',
         tokenizer: 'claude',
         unsupported: ['audio_input', 'video_input']
     },
     {
-        id: 'anthropic::claude-4-6-sonnet',
-        name: 'Claude 4.6 Sonnet',
-        modelId: 'claude-4-6-sonnet',
+        id: 'anthropic::claude-opus-5',
+        name: 'Claude Opus 5',
+        modelId: 'claude-opus-5',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-sonnet-5',
+        name: 'Claude Sonnet 5',
+        modelId: 'claude-sonnet-5',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-opus-4-8',
+        name: 'Claude Opus 4.8',
+        modelId: 'claude-opus-4-8',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-opus-4-7',
+        name: 'Claude Opus 4.7',
+        modelId: 'claude-opus-4-7',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-opus-4-6',
+        name: 'Claude Opus 4.6',
+        modelId: 'claude-opus-4-6',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-sonnet-4-6',
+        name: 'Claude Sonnet 4.6',
+        modelId: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-sonnet-4-5',
+        name: 'Claude Sonnet 4.5',
+        modelId: 'claude-sonnet-4-5-20250929',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-haiku-4-5',
+        name: 'Claude Haiku 4.5',
+        modelId: 'claude-haiku-4-5-20251001',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'anthropic::claude-opus-4-5',
+        name: 'Claude Opus 4.5',
+        modelId: 'claude-opus-4-5-20251101',
         provider: 'anthropic',
         tokenizer: 'claude',
         unsupported: ['audio_input', 'video_input']
@@ -239,6 +397,34 @@ const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
 
 const GOOGLE_MODELS: BuiltInLLMModel[] = [
     {
+        id: 'google::gemini-3.6-flash',
+        name: 'Gemini 3.6 Flash',
+        modelId: 'gemini-3.6-flash',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
+        id: 'google::gemini-3.5-flash',
+        name: 'Gemini 3.5 Flash',
+        modelId: 'gemini-3.5-flash',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
+        id: 'google::gemini-3.5-flash-lite',
+        name: 'Gemini 3.5 Flash-Lite',
+        modelId: 'gemini-3.5-flash-lite',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
+        id: 'google::gemini-3.1-flash-lite',
+        name: 'Gemini 3.1 Flash-Lite',
+        modelId: 'gemini-3.1-flash-lite',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
         id: 'google::gemini-3.1-pro-preview',
         name: 'Gemini 3.1 Pro (preview)',
         modelId: 'gemini-3.1-pro-preview',
@@ -253,9 +439,23 @@ const GOOGLE_MODELS: BuiltInLLMModel[] = [
         tokenizer: 'gemma'
     },
     {
-        id: 'google::gemini-3.1-flash-lite',
-        name: 'Gemini 3.1 Flash Lite',
-        modelId: 'gemini-3.1-flash-lite',
+        id: 'google::gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        modelId: 'gemini-2.5-pro',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
+        id: 'google::gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        modelId: 'gemini-2.5-flash',
+        provider: 'google',
+        tokenizer: 'gemma'
+    },
+    {
+        id: 'google::gemini-2.5-flash-lite',
+        name: 'Gemini 2.5 Flash-Lite',
+        modelId: 'gemini-2.5-flash-lite',
         provider: 'google',
         tokenizer: 'gemma'
     }
@@ -263,12 +463,85 @@ const GOOGLE_MODELS: BuiltInLLMModel[] = [
 
 const MISTRAL_MODELS: BuiltInLLMModel[] = [
     {
+        id: 'mistral::mistral-medium-3-5',
+        name: 'Mistral Medium 3.5',
+        modelId: 'mistral-medium-3-5',
+        provider: 'mistral',
+        tokenizer: 'mistral',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
+        id: 'mistral::mistral-small-2603',
+        name: 'Mistral Small 4',
+        modelId: 'mistral-small-2603',
+        provider: 'mistral',
+        tokenizer: 'mistral',
+        unsupported: ['audio_input', 'video_input']
+    },
+    {
         id: 'mistral::mistral-large-2512',
         name: 'Mistral Large 3',
         modelId: 'mistral-large-2512',
         provider: 'mistral',
         tokenizer: 'mistral',
         unsupported: ['audio_input', 'video_input']
+    }
+];
+
+export const TRANSFORMERS_LLM_MODELS: TransformersLLMModel[] = [
+    {
+        id: 'transformers::onnx-community/LFM2.5-350M-ONNX',
+        name: 'LFM2.5 350M',
+        modelId: 'onnx-community/LFM2.5-350M-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'pipeline', task: 'text-generation' },
+        tokenizer: 'o200k_base',
+        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/LFM2-2.6B-ONNX',
+        name: 'LFM2 2.6B',
+        modelId: 'onnx-community/LFM2-2.6B-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'pipeline', task: 'text-generation' },
+        tokenizer: 'o200k_base',
+        unsupported: ['image_input', 'audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/gemma-4-E2B-it-ONNX',
+        name: 'Gemma 4 E2B',
+        modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'gemma4' },
+        tokenizer: 'gemma',
+        unsupported: ['video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/gemma-4-E4B-it-ONNX',
+        name: 'Gemma 4 E4B',
+        modelId: 'onnx-community/gemma-4-E4B-it-ONNX',
+        provider: 'transformers',
+        runtime: { kind: 'gemma4' },
+        tokenizer: 'gemma',
+        unsupported: ['video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/Qwen3.5-0.8B-ONNX-OPT',
+        name: 'Qwen 3.5 0.8B',
+        modelId: 'onnx-community/Qwen3.5-0.8B-ONNX-OPT',
+        provider: 'transformers',
+        runtime: { kind: 'qwen35' },
+        tokenizer: 'o200k_base',
+        unsupported: ['audio_input', 'video_input', 'tool_call']
+    },
+    {
+        id: 'transformers::onnx-community/Qwen3.5-2B-ONNX-OPT',
+        name: 'Qwen 3.5 2B',
+        modelId: 'onnx-community/Qwen3.5-2B-ONNX-OPT',
+        provider: 'transformers',
+        runtime: { kind: 'qwen35' },
+        tokenizer: 'o200k_base',
+        unsupported: ['audio_input', 'video_input', 'tool_call']
     }
 ];
 
@@ -304,3 +577,7 @@ export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
     ...MISTRAL_MODELS,
     ...MOCK_MODELS
 ];
+
+export function getBuiltInLLMModels(provider: BuiltInLLMProvider): readonly BuiltInLLMModel[] {
+    return BUILT_IN_LLM_MODELS.filter((model) => model.provider === provider);
+}

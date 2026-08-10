@@ -1,6 +1,7 @@
 <script lang="ts">
     import { ChevronDown, ChevronRight } from 'lucide-svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import { getToggleValue, setToggleValue } from '$lib/managers/toggle';
     import { getErrorMessage } from '$lib/types/errors';
     import type { ToggleItem, ToggleOwner, TogglePanel } from '$lib/types/toggle';
@@ -87,16 +88,18 @@
                     class="flex min-h-7 items-center justify-between gap-2 rounded px-1.5 text-xs hover:bg-sidebar-accent"
                 >
                     <span class="min-w-0 flex-1 truncate">{entity.label}</span>
-                    <select
+                    <OptionSelect
+                        id={`toggle-${entity.id}`}
                         class="h-7 w-36 max-w-[60%] shrink-0 select-text rounded border bg-background px-1.5 text-xs"
                         value={String(value)}
                         disabled={busyItemId !== null}
-                        onchange={(event) => changeValue(entity.id, event.currentTarget.value)}
-                    >
-                        {#each entity.control.options as option (option.id)}
-                            <option value={option.id}>{option.label}</option>
-                        {/each}
-                    </select>
+                        ariaLabel={entity.label}
+                        options={entity.control.options.map((option) => ({
+                            value: option.id,
+                            label: option.label
+                        }))}
+                        onChange={(selectedValue) => changeValue(entity.id, selectedValue)}
+                    />
                 </label>
             {:else if entity.control.multiline}
                 <label class="flex flex-col gap-1 px-1 py-1 text-xs">

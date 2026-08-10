@@ -14,6 +14,7 @@ export interface NovelAITTSConfig {
     baseUrl: string;
     voiceId: string;
     version: string;
+    useProxy?: boolean;
 }
 
 export class NovelAITTSHandler implements TTSHandler {
@@ -42,7 +43,7 @@ export class NovelAITTSHandler implements TTSHandler {
                     opus: false
                 })
             },
-            { proxy: true, signal }
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

@@ -86,6 +86,13 @@ describe('style scoping', () => {
         expect(sanitized).toContain(`src="${uri}"`);
     });
 
+    it('preserves semantic quote markers from Markdown rendering', async () => {
+        const markdown = await parseMarkdownAsync('"Dialogue"');
+        const sanitized = sanitizeWithStyle(markdown);
+
+        expect(sanitized).toContain('<mark data-keiai-quote="double">');
+    });
+
     it('preserves a style block at the start of rendered message HTML', async () => {
         const input =
             '<style>.container { display: grid; place-items: center; width: 100%; }</style><div class="container">Content</div>';

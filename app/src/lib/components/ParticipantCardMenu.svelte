@@ -37,7 +37,7 @@
     onclick={(event) => event.stopPropagation()}
 >
     <div
-        class="pointer-events-auto absolute right-1 top-1 touch-visible opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100 {menuOpen
+        class="pointer-events-auto absolute right-1 top-1 touch-visible opacity-0 transition-opacity group-hover:opacity-100 has-focus-visible:opacity-100 {menuOpen
             ? 'opacity-100'
             : ''}"
     >
@@ -46,7 +46,7 @@
                 <Button
                     variant="ghost"
                     size="icon-sm"
-                    class="size-6 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground"
+                    class="size-6 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground dark:hover:bg-background/95"
                     aria-label={`Actions for ${name}`}
                     {disabled}
                 >

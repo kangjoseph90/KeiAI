@@ -196,18 +196,16 @@
 {#if renderedHtml}
     <div
         data-keiai-message-scope={renderContext.messageScope}
+        data-keiai-message-role={isUser ? 'user' : 'assistant'}
         use:morphHtml={renderedHtml}
         use:externalLinks={renderedHtml}
         use:eventButtons={renderContext.ctx}
-        class="prose prose-sm max-w-none {isUser
-            ? '**:text-primary-foreground prose-invert'
-            : 'dark:prose-invert'} leading-relaxed"
+        class="message-text prose prose-sm max-w-none leading-relaxed dark:prose-invert"
     ></div>
 {:else}
     <div
-        class="prose prose-sm max-w-none whitespace-pre-wrap {isUser
-            ? '**:text-primary-foreground prose-invert'
-            : 'dark:prose-invert'} leading-relaxed"
+        data-keiai-message-role={isUser ? 'user' : 'assistant'}
+        class="message-text prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed dark:prose-invert"
     >
         <p>{text}</p>
     </div>

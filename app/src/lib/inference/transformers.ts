@@ -25,22 +25,55 @@ const logger = createLogger('inference:transformers');
 
 // ─── Pipeline Cache ───────────────────────────────────────────────────────────
 
-type CachedPipeline = ((...args: unknown[]) => Promise<unknown>) & {
-    tokenizer?: unknown;
+export interface DisposableTransformersRuntime {
     dispose?: () => Promise<void> | void;
-};
+}
 
-const pipelineCache = new Map<string, CachedPipeline>();
+interface PipelineProcessor {
+    readonly tokenizer?: unknown;
+    components?: Record<string, unknown>;
+}
+
+type CachedPipeline = ((...args: unknown[]) => Promise<unknown>) &
+    DisposableTransformersRuntime & {
+        tokenizer?: unknown;
+        processor?: PipelineProcessor;
+    };
+
+const runtimeCache = new Map<string, DisposableTransformersRuntime>();
 
 function cacheKey(task: string, modelId: string, device: string): string {
     return `${task}::${modelId}::${device}`;
 }
 
+function attachMissingProcessorTokenizer(task: string, pipeline: CachedPipeline): void {
+    const processor = pipeline.processor;
+    if (
+        task !== 'automatic-speech-recognition' ||
+        processor === undefined ||
+        processor.tokenizer !== undefined ||
+        pipeline.tokenizer === undefined ||
+        processor.components === undefined
+    ) {
+        return;
+    }
+
+    // Some converted ASR repositories load the tokenizer separately without including
+    // it in the processor that owns output decoding.
+    processor.components.tokenizer = pipeline.tokenizer;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+export type TransformersProgressCallback = (event: {
+    status: string;
+    progress?: number;
+    file?: string;
+}) => void;
 
 function toProgressCallback(
     onProgress?: InferenceProgressCallback
-): ((event: { status: string; progress?: number; file?: string }) => void) | undefined {
+): TransformersProgressCallback | undefined {
     if (!onProgress) return undefined;
     return (event) => {
         if (event.status === 'downloading') {
@@ -53,38 +86,98 @@ function toProgressCallback(
     };
 }
 
+export async function getOrLoadTransformersRuntime<T extends DisposableTransformersRuntime>(
+    kind: string,
+    spec: ModelSpec,
+    device: string,
+    load: (progressCallback?: TransformersProgressCallback) => Promise<T>,
+    onProgress?: InferenceProgressCallback
+): Promise<T> {
+    const key = cacheKey(kind, spec.modelId, device);
+    const cached = runtimeCache.get(key);
+    if (cached) return cached as T;
+
+    logger.info(`Loading runtime: ${key}`);
+    const runtime = await load(toProgressCallback(onProgress));
+    runtimeCache.set(key, runtime);
+    onProgress?.({ status: 'ready' });
+    logger.info(`Runtime ready: ${key}`);
+    return runtime;
+}
+
 async function getOrLoadPipeline(
     task: string,
     spec: ModelSpec,
     device: string,
     onProgress?: InferenceProgressCallback
 ): Promise<CachedPipeline> {
-    const key = cacheKey(task, spec.modelId, device);
-    const cached = pipelineCache.get(key);
-    if (cached) return cached;
+    return getOrLoadTransformersRuntime(
+        task,
+        spec,
+        device,
+        async (progressCallback) => {
+            const { pipeline } = await import('@huggingface/transformers');
+            const loaded = await pipeline(task as Parameters<typeof pipeline>[0], spec.modelId, {
+                revision: spec.revision,
+                dtype: spec.quantization ?? 'q8',
+                device: device as 'wasm' | 'webgpu',
+                progress_callback: progressCallback
+            });
+            const cachedPipeline = loaded as unknown as CachedPipeline;
+            attachMissingProcessorTokenizer(task, cachedPipeline);
+            return cachedPipeline;
+        },
+        onProgress
+    );
+}
 
-    logger.info(`Loading pipeline: ${key}`);
-    const { pipeline } = await import('@huggingface/transformers');
-
-    const p = await pipeline(task as Parameters<typeof pipeline>[0], spec.modelId, {
-        revision: spec.revision,
-        dtype: (spec.quantization ?? 'q8') as
-            | 'q8'
-            | 'fp32'
-            | 'fp16'
-            | 'int8'
-            | 'uint8'
-            | 'q4'
-            | 'auto',
-        device: device as 'wasm' | 'webgpu',
-        progress_callback: toProgressCallback(onProgress)
+export async function* streamGeneratedText(
+    tokenizer: unknown,
+    startGeneration: (streamer: unknown) => Promise<unknown>
+): AsyncIterable<string> {
+    const { TextStreamer } = await import('@huggingface/transformers');
+    const streamer = new TextStreamer(tokenizer as ConstructorParameters<typeof TextStreamer>[0], {
+        skip_prompt: true,
+        callback_function: () => undefined
     });
+    const queue: Array<string | null | Error> = [];
+    let resolveNext: (() => void) | null = null;
+    let ended = false;
+    const wake = (): void => {
+        resolveNext?.();
+        resolveNext = null;
+    };
 
-    const cachedPipeline = p as unknown as CachedPipeline;
-    pipelineCache.set(key, cachedPipeline);
-    onProgress?.({ status: 'ready' });
-    logger.info(`Pipeline ready: ${key}`);
-    return cachedPipeline;
+    const originalOnFinalizedText = streamer.on_finalized_text.bind(streamer);
+    streamer.on_finalized_text = (text: string, streamEnd: boolean) => {
+        originalOnFinalizedText(text, streamEnd);
+        if (text) queue.push(text);
+        if (streamEnd) {
+            ended = true;
+            queue.push(null);
+        }
+        wake();
+    };
+
+    void startGeneration(streamer)
+        .then(() => {
+            if (!ended) queue.push(null);
+            wake();
+        })
+        .catch((error: unknown) => {
+            queue.push(error instanceof Error ? error : new Error(String(error)));
+            wake();
+        });
+
+    while (true) {
+        if (queue.length === 0) {
+            await new Promise<void>((resolve) => (resolveNext = resolve));
+        }
+        const item = queue.shift();
+        if (item === null) break;
+        if (item instanceof Error) throw item;
+        if (item !== undefined) yield item;
+    }
 }
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
@@ -161,51 +254,17 @@ export class TransformersInference {
             resolvedMessages = messages.slice(0, -1);
         }
 
-        // TextStreamer handles extracting just the newly generated tokens
-        const { TextStreamer } = await import('@huggingface/transformers');
-        const streamer = new TextStreamer(
-            generator.tokenizer as ConstructorParameters<typeof TextStreamer>[0],
-            { skip_prompt: true }
+        yield* streamGeneratedText(generator.tokenizer, (streamer) =>
+            generator(resolvedMessages, {
+                streamer,
+                max_new_tokens: options?.max_new_tokens ?? 512,
+                temperature: options?.temperature ?? 0.7,
+                top_p: options?.top_p ?? 0.9,
+                top_k: options?.top_k ?? 50,
+                repetition_penalty: options?.repetition_penalty ?? 1.1,
+                do_sample: true
+            })
         );
-
-        // We need a queue to bridge the callback-based streamer into an AsyncIterable
-        const queue: (string | null)[] = [];
-        let resolveNext: (() => void) | null = null;
-
-        const originalOnFinalizedText = streamer.on_finalized_text.bind(streamer);
-        streamer.on_finalized_text = (text: string, streamEnd?: boolean) => {
-            originalOnFinalizedText(text, streamEnd ?? false);
-            queue.push(text);
-            if (streamEnd) {
-                queue.push(null); // EOF indicator
-            }
-            resolveNext?.();
-        };
-
-        // Start generation asynchronously
-        generator(resolvedMessages, {
-            streamer,
-            max_new_tokens: options?.max_new_tokens ?? 512,
-            temperature: options?.temperature ?? 0.7,
-            top_p: options?.top_p ?? 0.9,
-            top_k: options?.top_k ?? 50,
-            repetition_penalty: options?.repetition_penalty ?? 1.1,
-            do_sample: true
-        }).catch((err: unknown) => {
-            logger.error('Generation failed:', err);
-            queue.push(null);
-            resolveNext?.();
-        });
-
-        // Yield from queue
-        while (true) {
-            if (queue.length === 0) {
-                await new Promise<void>((r) => (resolveNext = r));
-            }
-            const token = queue.shift();
-            if (token === null) break;
-            if (token !== undefined) yield token;
-        }
     }
 
     async transcribe(
@@ -281,21 +340,21 @@ export class TransformersInference {
     }
 
     async dispose(modelId: string): Promise<void> {
-        for (const [key, pipeline] of pipelineCache) {
+        for (const [key, runtime] of runtimeCache) {
             if (key.includes(`::${modelId}::`)) {
-                await pipeline.dispose?.();
-                pipelineCache.delete(key);
-                logger.info(`Disposed pipeline: ${key}`);
+                await runtime.dispose?.();
+                runtimeCache.delete(key);
+                logger.info(`Disposed runtime: ${key}`);
             }
         }
     }
 
     async disposeAll(): Promise<void> {
-        for (const [key, pipeline] of pipelineCache) {
-            await pipeline.dispose?.();
-            logger.info(`Disposed pipeline: ${key}`);
+        for (const [key, runtime] of runtimeCache) {
+            await runtime.dispose?.();
+            logger.info(`Disposed runtime: ${key}`);
         }
-        pipelineCache.clear();
+        runtimeCache.clear();
     }
 }
 

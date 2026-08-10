@@ -1,11 +1,16 @@
 /**
  * STT Provider Types — KeiAI
  *
- * Provider enum for speech-to-text. Model selection is stored directly
- * in provider config (no model registry needed for built-ins).
+ * Provider and recommended model ID definitions for speech-to-text.
  */
 
-export type BuiltInSTTProvider = 'openai' | 'google' | 'groq' | 'transformers' | 'mock';
+export type BuiltInSTTProvider =
+    | 'openai'
+    | 'openrouter'
+    | 'google'
+    | 'groq'
+    | 'transformers'
+    | 'mock';
 export type STTProvider = BuiltInSTTProvider | 'plugin';
 
 export interface PluginSTTModel {
@@ -15,10 +20,31 @@ export interface PluginSTTModel {
     provider: 'plugin';
 }
 
+export const STT_MODEL_IDS: Partial<Record<BuiltInSTTProvider, readonly string[]>> = {
+    openai: [
+        'gpt-transcribe',
+        'gpt-4o-transcribe',
+        'gpt-4o-transcribe-diarize',
+        'gpt-4o-mini-transcribe',
+        'whisper-1'
+    ],
+    openrouter: [],
+    google: ['latest_long', 'latest_short', 'telephony', 'telephony_short'],
+    groq: ['whisper-large-v3-turbo', 'whisper-large-v3'],
+    transformers: [
+        'onnx-community/whisper-tiny',
+        'onnx-community/whisper-small',
+        'onnx-community/moonshine-tiny-ONNX',
+        'onnx-community/moonshine-tiny-ko-ONNX'
+    ],
+    mock: ['sample', 'diagnostic']
+};
+
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
 const providerNames: Record<STTProvider, string> = {
     openai: 'OpenAI',
+    openrouter: 'OpenRouter',
     google: 'Google',
     groq: 'Groq',
     transformers: 'Transformers',

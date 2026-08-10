@@ -22,6 +22,7 @@ export interface NovelAIImageGenConfig {
     vibeStrength: number;
     referenceStrength: number;
     referenceFidelity: number;
+    useProxy?: boolean;
 }
 
 export class NovelAIImageGenHandler implements ImageGenHandler {
@@ -89,21 +90,25 @@ export class NovelAIImageGenHandler implements ImageGenHandler {
             )
         };
 
-        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/ai/generate-image'), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                ...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {})
+        const response = await appHttp.fetch(
+            buildUrl(this.config.baseUrl, '/ai/generate-image'),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    ...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {})
+                },
+                body: JSON.stringify({
+                    action: 'generate',
+                    input: request.prompt,
+                    model: this.config.modelId,
+                    parameters
+                }),
+                signal
             },
-            body: JSON.stringify({
-                action: 'generate',
-                input: request.prompt,
-                model: this.config.modelId,
-                parameters
-            }),
-            signal
-        });
+            { proxy: this.config.useProxy ?? true, signal }
+        );
 
         if (!response.ok) {
             const error = await response.text().catch(() => '');
@@ -135,20 +140,24 @@ export class NovelAIImageGenHandler implements ImageGenHandler {
         const cached = await vibeEncodingCache.get(cacheKey).catch(() => undefined);
         if (cached) return cached;
 
-        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/ai/encode-vibe'), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/octet-stream',
-                ...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {})
+        const response = await appHttp.fetch(
+            buildUrl(this.config.baseUrl, '/ai/encode-vibe'),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/octet-stream',
+                    ...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {})
+                },
+                body: JSON.stringify({
+                    image: toBase64(image.data),
+                    model: this.config.modelId,
+                    information_extracted: this.config.vibeInformationExtracted
+                }),
+                signal
             },
-            body: JSON.stringify({
-                image: toBase64(image.data),
-                model: this.config.modelId,
-                information_extracted: this.config.vibeInformationExtracted
-            }),
-            signal
-        });
+            { proxy: this.config.useProxy ?? true, signal }
+        );
 
         if (!response.ok) {
             const error = await response.text().catch(() => '');

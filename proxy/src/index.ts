@@ -164,16 +164,17 @@ export default {
 			}
 
 			// Get target method (default to POST)
-			const targetMethod = request.headers.get('x-target-method') || 'POST';
+			const targetMethod = (request.headers.get('x-target-method') || 'POST').toUpperCase();
+			const targetAcceptsBody = targetMethod !== 'GET' && targetMethod !== 'HEAD';
 
 			// Forward request to target
 			try {
 				const proxyResponse = await fetch(targetUrl, {
 					method: targetMethod,
 					headers: targetHeaders,
-					body: request.body,
+					body: targetAcceptsBody ? request.body : undefined,
 					// @ts-expect-error - duplex is not in standard typings but required for streaming body
-					duplex: 'half',
+					duplex: targetAcceptsBody ? 'half' : undefined,
 				});
 
 				return addCorsHeaders(proxyResponse, request, env);

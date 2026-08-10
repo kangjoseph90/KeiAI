@@ -38,6 +38,14 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     --accent-foreground: oklch(0.21 0.006 285.885);
     --destructive: oklch(0.577 0.245 27.325);
     --recording: oklch(0.577 0.245 27.325);
+    --message-bold: var(--foreground);
+    --message-italic: var(--muted-foreground);
+    --message-italic-bold: color-mix(in oklab, var(--foreground) 45%, var(--muted-foreground));
+    --message-quote-single: oklch(0.52 0.16 225);
+    --message-quote-double: oklch(0.58 0.18 55);
+    --user-message: oklch(0.93 0.002 286.375);
+    --code-block: oklch(0.91 0.002 286.375);
+    --code-foreground: var(--foreground);
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
     --ring: oklch(0.705 0.015 286.067);
@@ -57,11 +65,11 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
 }
 
 .dark {
-    --background: oklch(0.141 0.005 285.823);
+    --background: oklch(0.165 0.005 285.823);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.21 0.006 285.885);
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.21 0.006 285.885);
+    --popover: oklch(0.255 0.006 286.033);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.92 0.004 286.32);
     --primary-foreground: oklch(0.21 0.006 285.885);
@@ -73,6 +81,14 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --recording: oklch(0.704 0.191 22.216);
+    --message-bold: var(--foreground);
+    --message-italic: var(--muted-foreground);
+    --message-italic-bold: color-mix(in oklab, var(--foreground) 45%, var(--muted-foreground));
+    --message-quote-single: oklch(0.8 0.13 215);
+    --message-quote-double: oklch(0.8 0.14 65);
+    --user-message: oklch(0.31 0.006 286.033);
+    --code-block: oklch(0.22 0.006 285.885);
+    --code-foreground: var(--foreground);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
@@ -112,6 +128,7 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
     --color-recording: var(--recording);
+    --color-user-message: var(--user-message);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
@@ -149,6 +166,20 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
         margin: 0;
         overflow: hidden;
         overscroll-behavior: none;
+    }
+
+    select {
+        @apply text-foreground;
+    }
+
+    select option,
+    select optgroup {
+        color: var(--popover-foreground);
+        background-color: var(--popover);
+    }
+
+    select option:disabled {
+        color: var(--muted-foreground);
     }
 
     *::-webkit-scrollbar {
@@ -305,15 +336,23 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
 
 /* Markdown prose styles */
 .prose pre {
-    @apply overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-100;
+    @apply overflow-x-auto rounded-lg border border-border;
+    width: 100%;
+    min-width: 0;
+    background: var(--code-block);
+    color: var(--code-foreground);
     max-width: 100%;
 }
 .prose code:not(pre code) {
-    @apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground;
+    @apply rounded px-1.5 py-0.5 text-sm font-mono;
+    color: inherit;
+    background: color-mix(in oklab, currentColor 12%, transparent);
     overflow-wrap: anywhere;
 }
 .prose pre code.hljs {
     @apply p-0 text-sm;
+    background: transparent;
+    color: var(--code-foreground);
 }
 
 .prose {
@@ -331,4 +370,38 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     display: block;
     max-width: 100%;
     overflow-x: auto;
+}
+
+.message-text[data-keiai-message-role='user'] {
+    --code-block: oklch(0.87 0.003 286.32);
+}
+
+.dark .message-text[data-keiai-message-role='user'] {
+    --code-block: oklch(0.255 0.006 285.95);
+}
+
+.message-text strong {
+    color: var(--message-bold);
+}
+
+.message-text em {
+    color: var(--message-italic);
+}
+
+.message-text :is(strong em, em strong) {
+    color: var(--message-italic-bold);
+}
+
+.message-text mark[data-keiai-quote='single'],
+.message-text mark[data-keiai-quote='double'] {
+    padding: 0;
+    background: transparent;
+}
+
+.message-text mark[data-keiai-quote='single'] {
+    color: var(--message-quote-single);
+}
+
+.message-text mark[data-keiai-quote='double'] {
+    color: var(--message-quote-double);
 }

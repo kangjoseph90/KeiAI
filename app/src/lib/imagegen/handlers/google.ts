@@ -16,6 +16,7 @@ export interface GoogleImageGenConfig {
     apiKey?: string;
     modelId: string;
     baseUrl: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -74,7 +75,8 @@ export class GoogleImageGenHandler implements ImageGenHandler {
                     }
                 }),
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {

@@ -5,7 +5,6 @@
         Cpu,
         Sparkles,
         Settings,
-        RefreshCw,
         Puzzle,
         MessageSquare,
         Languages,
@@ -20,6 +19,7 @@
         Shapes
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import OptionSelect from '$lib/components/OptionSelect.svelte';
     import SettingRow from '$lib/components/SettingRow.svelte';
     import { WorkspaceShell } from '$lib/components/layout';
     import { Label } from '$lib/components/ui/label';
@@ -28,7 +28,9 @@
     import { Badge } from '$lib/components/ui/badge';
     import {
         appSettings,
+        themePreference,
         updateSettings,
+        updateThemePreference,
         activePreset,
         activeRoom,
         activeChat,
@@ -50,11 +52,13 @@
     import PluginsView from './PluginsView.svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import type { ThemePreference } from '$lib/stores';
 
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
     let localTab = $state<SettingsTab>('models');
     let activeTab = $derived(settingsTab ?? localTab);
     let settingsBusy = $state(false);
+    let themeBusy = $state(false);
     let maintenanceBusy = $state(false);
 
     const tabs = [
@@ -69,9 +73,16 @@
         { id: 'general', label: 'General', icon: Settings }
     ] as const;
 
-    async function handleToggleTheme() {
-        const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
-        await updateSettingsSafely({ theme: currentTheme });
+    async function handleThemeChange(preference: ThemePreference): Promise<void> {
+        if (themeBusy || preference === $themePreference) return;
+        themeBusy = true;
+        try {
+            await updateThemePreference(preference);
+        } catch (error) {
+            toast.error({ title: 'Theme update failed', description: getErrorMessage(error) });
+        } finally {
+            themeBusy = false;
+        }
     }
 
     async function updateSettingsSafely(
@@ -222,22 +233,27 @@
                             <div class="divide-y divide-border">
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5">
-                                        <Label class="text-sm font-medium">Color Theme</Label>
+                                        <Label for="setting-color-theme" class="text-sm font-medium"
+                                            >Color Theme</Label
+                                        >
                                         <p class="text-xs text-muted-foreground">
-                                            Switch between light and dark mode.
+                                            Choose a theme for this device.
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5 shrink-0"
-                                        disabled={settingsBusy}
-                                        aria-busy={settingsBusy}
-                                        onclick={handleToggleTheme}
-                                    >
-                                        <RefreshCw class="size-4" />
-                                        Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
-                                    </Button>
+                                    <OptionSelect
+                                        id="setting-color-theme"
+                                        class="w-auto min-w-28"
+                                        value={$themePreference}
+                                        disabled={themeBusy}
+                                        ariaBusy={themeBusy}
+                                        options={[
+                                            { value: 'system', label: 'System' },
+                                            { value: 'light', label: 'Light' },
+                                            { value: 'dark', label: 'Dark' }
+                                        ]}
+                                        onChange={(value) =>
+                                            handleThemeChange(value as ThemePreference)}
+                                    />
                                 </div>
                             </div>
                         </section>

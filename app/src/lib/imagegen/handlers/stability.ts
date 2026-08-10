@@ -7,6 +7,7 @@
 
 import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { toBase64 } from '$lib/crypto';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
@@ -19,6 +20,7 @@ export interface StabilityImageGenConfig {
     /** Output format: "png" | "jpeg" | "webp" */
     outputFormat?: string;
     aspectRatio?: string;
+    useProxy?: boolean;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -39,33 +41,49 @@ export class StabilityImageGenHandler implements ImageGenHandler {
         }
 
         const negativePrompt = request.negativePrompt?.trim();
+        const isStableDiffusionModel = this.config.modelId.startsWith('sd3.5-');
+        const body = new FormData();
+        body.append('prompt', request.prompt);
+        body.append('output_format', this.config.outputFormat ?? 'png');
+        body.append('aspect_ratio', this.config.aspectRatio ?? '1:1');
+        if (negativePrompt) {
+            body.append('negative_prompt', negativePrompt);
+        }
+        if (isStableDiffusionModel) {
+            body.append('model', this.config.modelId);
+        }
+
+        const endpoint = isStableDiffusionModel ? 'sd3' : this.config.modelId;
+        const headers: Record<string, string> = {
+            Accept: 'image/*'
+        };
+        if (this.config.apiKey) {
+            headers.Authorization = `Bearer ${this.config.apiKey}`;
+        }
+
         const response = await appHttp.fetch(
-            buildUrl(this.config.baseUrl, `/v2beta/stable-image/generate/${this.config.modelId}`),
+            buildUrl(this.config.baseUrl, `/v2beta/stable-image/generate/${endpoint}`),
             {
                 method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${this.config.apiKey}`,
-                    Accept: 'image/*'
-                },
-                body: JSON.stringify({
-                    prompt: request.prompt,
-                    ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
-                    output_format: this.config.outputFormat ?? 'png',
-                    aspect_ratio: this.config.aspectRatio ?? '1:1'
-                }),
+                headers,
+                body,
                 signal
-            }
+            },
+            { proxy: this.config.useProxy ?? true, signal }
         );
 
         if (!response.ok) {
-            throw new AppError('NETWORK_ERROR', `Stability ImageGen failed: ${response.status}`);
+            const error = await response.text().catch(() => '');
+            throw new AppError(
+                'NETWORK_ERROR',
+                `Stability ImageGen failed (${response.status})${error ? `: ${error}` : ''}`
+            );
         }
 
-        const buffer = await response.arrayBuffer();
-        const base64 = btoa(
-            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
-
-        return { base64 };
+        const format = this.config.outputFormat ?? 'png';
+        return {
+            base64: toBase64(new Uint8Array(await response.arrayBuffer())),
+            mimeType: `image/${format === 'jpg' ? 'jpeg' : format}`
+        };
     }
 }

@@ -31,6 +31,9 @@
         activeChat,
         activeChatId,
         activeRoom,
+        themePreference,
+        loadThemePreference,
+        applyTheme,
         initDefaultContents,
         selectModule
     } from '$lib/stores';
@@ -64,7 +67,10 @@
     let shellTransitionSuppressed = $state(false);
     // Match Tailwind's `max-lg` range, including fractional CSS viewport widths.
     const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
+    const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
     let compactShellMedia: MediaQueryList | undefined;
+    let systemThemeMedia: MediaQueryList | undefined;
+    let systemThemeDark = $state(false);
     let shellTransitionFrame: number | undefined;
     let shellTransitionRestoreFrame: number | undefined;
     const appSidebarVisible = $derived(
@@ -120,6 +126,14 @@
             sidebarCollapsed = false;
         }
     }
+
+    function handleSystemThemeChange(event: MediaQueryListEvent): void {
+        systemThemeDark = event.matches;
+    }
+
+    $effect(() => {
+        applyTheme(document.documentElement, $themePreference, systemThemeDark);
+    });
 
     function suppressShellTransitions(): void {
         if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);
@@ -255,6 +269,11 @@
     let _cleanupHash: (() => void) | undefined;
 
     onMount(async () => {
+        systemThemeMedia = window.matchMedia(SYSTEM_THEME_QUERY);
+        systemThemeDark = systemThemeMedia.matches;
+        systemThemeMedia.addEventListener('change', handleSystemThemeChange);
+        await loadThemePreference();
+
         try {
             if (environmentIssue) return;
 
@@ -298,6 +317,7 @@
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);
+        systemThemeMedia?.removeEventListener('change', handleSystemThemeChange);
         if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);
         if (shellTransitionRestoreFrame !== undefined) {
             cancelAnimationFrame(shellTransitionRestoreFrame);

@@ -30,6 +30,7 @@
     import { slide } from 'svelte/transition';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
+    import { themePreference } from '$lib/stores';
     import { appConfirm } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import {
@@ -460,6 +461,7 @@
     {/if}
 
     <SvelteFlow
+        colorMode={$themePreference}
         bind:nodes
         bind:edges
         {nodeTypes}

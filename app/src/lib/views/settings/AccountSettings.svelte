@@ -205,7 +205,7 @@
                             type="button"
                             class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {authView ===
                             'signup'
-                                ? 'bg-background text-foreground shadow-sm'
+                                ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (authView = 'signup')}
                         >
@@ -215,7 +215,7 @@
                             type="button"
                             class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {authView ===
                             'login'
-                                ? 'bg-background text-foreground shadow-sm'
+                                ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (authView = 'login')}
                         >
@@ -470,7 +470,7 @@
                             type="button"
                             class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {accountView ===
                             'security'
-                                ? 'bg-background text-foreground shadow-sm'
+                                ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (accountView = 'security')}
                         >
@@ -480,7 +480,7 @@
                             type="button"
                             class="min-w-fit flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors {accountView ===
                             'devices'
-                                ? 'bg-background text-foreground shadow-sm'
+                                ? 'bg-background text-foreground shadow-sm dark:bg-accent'
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => {
                                 accountView = 'devices';

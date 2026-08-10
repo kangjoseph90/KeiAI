@@ -48,10 +48,7 @@ describe('SettingsService', () => {
     const mockUserId = 'user-123';
     const mockNow = 1710000000000;
 
-    const mockSettings: AppSettings = makeSettings({
-        theme: 'dark',
-        openai: { apiKey: 'sk-test' }
-    });
+    const mockSettings: AppSettings = makeSettings({ openai: { apiKey: 'sk-test' } });
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -82,7 +79,6 @@ describe('SettingsService', () => {
 
             const result = await SettingsService.get();
 
-            expect(result.theme).toBe('dark');
             expect(result.openai?.apiKey).toBe('sk-test');
             expect(buffer.get).toHaveBeenCalledWith('settings', mockUserId);
         });
@@ -92,7 +88,7 @@ describe('SettingsService', () => {
 
             const result = await SettingsService.get();
 
-            expect(result.theme).toBe('system');
+            expect(result).toEqual(defaultSettings);
         });
 
         it('should return defaults when record is empty', async () => {
@@ -108,7 +104,6 @@ describe('SettingsService', () => {
 
             const result = await SettingsService.get();
 
-            expect(result.theme).toBe('system');
             expect(result.translation.workflow).toEqual({ nodes: {} });
             expect(result.chat.autoGenerateResponse).toBe(true);
         });
@@ -152,10 +147,10 @@ describe('SettingsService', () => {
             };
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
-            const result = await SettingsService.update({ theme: 'light' });
+            const result = await SettingsService.update({ openai: { apiKey: 'sk-updated' } });
 
-            expect(result.theme).toBe('light');
-            expect(result.openai?.apiKey).toBe('sk-test'); // Preserved
+            expect(result.openai?.apiKey).toBe('sk-updated');
+            expect(result.chat).toEqual(mockSettings.chat);
             expect(buffer.update).toHaveBeenCalled();
         });
 
@@ -194,7 +189,7 @@ describe('SettingsService', () => {
             };
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
-            await SettingsService.update({ theme: 'light' });
+            await SettingsService.update({ openai: { apiKey: 'sk-updated' } });
             await SettingsService.update({ chat: { saveMessagesOnSwipe: false } });
 
             expect(buffer.update).toHaveBeenLastCalledWith(
@@ -211,9 +206,11 @@ describe('SettingsService', () => {
         it('should handle updates when no record exists', async () => {
             vi.mocked(buffer.get).mockResolvedValue(null);
 
-            const result = await SettingsService.update({ theme: 'dark' });
+            const result = await SettingsService.update({
+                chat: { autoGenerateResponse: false }
+            });
 
-            expect(result.theme).toBe('dark');
+            expect(result.chat.autoGenerateResponse).toBe(false);
             expect(buffer.update).toHaveBeenCalled();
         });
     });

@@ -151,7 +151,7 @@
         </DialogHeader>
 
         <div
-            class="relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-muted/20 p-4"
+            class="relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-background p-4"
         >
             {#if currentItem}
                 {#if mediaType === 'other'}

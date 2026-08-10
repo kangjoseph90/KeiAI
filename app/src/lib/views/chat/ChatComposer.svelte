@@ -461,7 +461,7 @@
             <ChatSuggestions chatId={$activeChat.id} class="mb-2" />
         {/if}
         <div
-            class="relative rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20"
+            class="relative rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20 dark:bg-card"
         >
             {#if isDragging && !dictationBusy}
                 <div
