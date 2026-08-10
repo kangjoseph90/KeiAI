@@ -20,7 +20,7 @@
         Copy,
         Languages
     } from 'lucide-svelte';
-    import { onDestroy, tick } from 'svelte';
+    import { onDestroy, tick, untrack } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
@@ -503,8 +503,11 @@
     }
 
     /** Completed trace details state. Streaming renders raw parts without a trace wrapper. */
-    let detailsOpen = $state(true);
-    let lastDisplayStatus = $state<string | undefined>(undefined);
+    let detailsOpen = $state(
+        untrack(() => message.displayStatus === 'generating') &&
+            $appSettings?.chat?.expandStepsOnGeneration !== false
+    );
+    let lastDisplayStatus = $state<string | undefined>(untrack(() => message.displayStatus));
 
     $effect(() => {
         const status = message.displayStatus;
@@ -512,7 +515,7 @@
             if ($appSettings?.chat?.expandStepsOnGeneration !== false) {
                 detailsOpen = true;
             }
-        } else if (status === 'completed' && lastDisplayStatus !== 'completed') {
+        } else if (status === 'completed' && lastDisplayStatus === 'generating') {
             detailsOpen = false;
         }
         lastDisplayStatus = status;
@@ -666,7 +669,7 @@
                     {#if traceCount > 0}
                         <button
                             type="button"
-                            class="trace-summary-btn"
+                            class="trace-summary-btn {detailsOpen ? 'is-open' : ''}"
                             onclick={() => (detailsOpen = !detailsOpen)}
                             aria-label="Toggle trace timeline"
                         >
@@ -680,17 +683,17 @@
                     <div class="trace-flat-list">
                         {#each indexedParts as entry (entry.index)}
                             {@const isTrace = entry.index < traceCount}
-                            {@const isFirstTrace = entry.index === 0}
-                            {@const isLastTrace = entry.index === traceCount - 1}
-                            {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
+                            {@const isFirstTrace = isTrace && entry.index === 0}
+                            {@const isLastTrace = isTrace && entry.index === traceCount - 1}
 
                             <div
                                 class="trace-flat-item {isTrace
                                     ? 'is-trace'
                                     : 'is-answer'} {isFirstTrace
                                     ? 'is-first-trace'
-                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
-                                    ? 'hidden'
+                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {isTrace &&
+                                !detailsOpen
+                                    ? 'is-collapsed'
                                     : ''}"
                             >
                                 {#if isTrace}
@@ -953,12 +956,6 @@
         }
     }
 
-    .trace-flat-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.9rem;
-    }
-
     .trace-summary-btn {
         display: inline-flex;
         align-items: center;
@@ -993,10 +990,59 @@
         z-index: 2;
     }
 
+    .trace-root-dot::after {
+        content: '';
+        position: absolute;
+        left: calc(50% - 1px);
+        top: 0.75rem;
+        height: 1.2rem;
+        width: 2px;
+        background: var(--border);
+        opacity: 0;
+        transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: none;
+    }
+
+    .trace-summary-btn.is-open .trace-root-dot::after {
+        opacity: 1;
+    }
+
+    .trace-flat-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+    }
+
+    .trace-flat-item {
+        flex-shrink: 0;
+    }
+
     .trace-flat-item.is-trace {
         position: relative;
         padding-left: 2.35rem;
         min-height: 1.25rem;
+        display: grid;
+        grid-template-rows: 1fr;
+        opacity: 1;
+        margin-bottom: 0;
+        transition:
+            grid-template-rows 150ms cubic-bezier(0.4, 0, 0.2, 1),
+            opacity 150ms cubic-bezier(0.4, 0, 0.2, 1),
+            margin-bottom 150ms cubic-bezier(0.4, 0, 0.2, 1),
+            min-height 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .trace-flat-item.is-trace.is-collapsed {
+        grid-template-rows: 0fr;
+        min-height: 0;
+        opacity: 0;
+        margin-bottom: -0.9rem;
+        pointer-events: none;
+    }
+
+    .trace-flat-item.is-trace > .trace-flat-body {
+        overflow: hidden;
+        min-height: 0;
     }
 
     .trace-flat-item.is-trace::before {
@@ -1007,6 +1053,11 @@
         bottom: -0.9rem;
         width: 2px;
         background: var(--border);
+        transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .trace-flat-item.is-trace.is-collapsed::before {
+        opacity: 0;
     }
 
     .trace-flat-item.is-trace.is-first-trace::before {
@@ -1027,5 +1078,10 @@
         border-radius: 9999px;
         background: var(--muted-foreground);
         z-index: 1;
+        transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .trace-flat-item.is-trace.is-collapsed .trace-dot {
+        opacity: 0;
     }
 </style>
