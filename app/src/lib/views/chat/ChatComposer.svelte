@@ -2,6 +2,7 @@
     import {
         ArrowDown,
         AudioLines,
+        Camera,
         CornerUpLeft,
         Languages,
         MessageSquare,
@@ -26,6 +27,7 @@
         chatSelections,
         createChatInlay,
         createMessage,
+        deleteChatInlay,
         dictationTasks,
         hasActiveRecording,
         inputTranslationTasks,
@@ -72,6 +74,7 @@
     import { type AgentPart } from '$lib/workflow/agent/llm';
     import { untrack } from 'svelte';
     import RecordingControls from './RecordingControls.svelte';
+    import CameraCaptureDialog from './CameraCaptureDialog.svelte';
     import ChatSuggestions from './ChatSuggestions.svelte';
 
     let {
@@ -119,6 +122,8 @@
     });
     let galleryOpen = $state(false);
     let selectedGalleryId = $state<string | undefined>();
+    let cameraOpen = $state(false);
+    let cameraChatId = $state<string | undefined>();
     const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
         const chat = $activeChat;
         if (!chat) return [];
@@ -380,19 +385,23 @@
         if (chatId) stopChat(chatId);
     }
 
-    async function attachFiles(files: File[]): Promise<void> {
-        const chatId = $activeChat?.id;
-        if (!chatId) return;
+    async function attachFiles(files: File[], chatId = $activeChat?.id): Promise<number> {
+        if (!chatId) return 0;
 
-        const remaining = MAX_ATTACHMENTS - attachmentIds.length;
+        const draft = await loadChatDraft(chatId);
+        const remaining = MAX_ATTACHMENTS - draft.inlayIds.length;
         const candidates = files.slice(0, remaining);
-        if (candidates.length === 0) return;
+        if (candidates.length === 0) return 0;
 
         let firstError: unknown;
+        let attachedCount = 0;
         for (const file of candidates) {
             try {
+                if ($activeChat?.id !== chatId) break;
                 const ref = await createChatInlay(chatId, file);
-                if ($activeChat?.id === chatId) addChatDraftInlay(chatId, ref.id);
+                const attached = $activeChat?.id === chatId && addChatDraftInlay(chatId, ref.id);
+                if (attached) attachedCount += 1;
+                else await deleteChatInlay(chatId, ref.id);
             } catch (error) {
                 logger.error('Failed to attach media:', error);
                 firstError ??= error;
@@ -404,6 +413,7 @@
                 description: getErrorMessage(firstError)
             });
         }
+        return attachedCount;
     }
 
     async function handleAttachmentUpload(): Promise<void> {
@@ -413,6 +423,22 @@
             filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
         });
         if (files?.length) await attachFiles(files);
+    }
+
+    function handleOpenCamera(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId || attachmentIds.length >= MAX_ATTACHMENTS || $hasActiveRecording) return;
+        cameraChatId = chatId;
+        cameraOpen = true;
+    }
+
+    async function handleAttachCapturedMedia(file: File): Promise<void> {
+        const chatId = cameraChatId;
+        if (!chatId || $activeChat?.id !== chatId) {
+            throw new Error('The active chat changed before the media could be attached');
+        }
+        const attached = await attachFiles([file], chatId);
+        if (attached === 0) throw new Error('The media could not be added to this message');
     }
 
     function handleStartDictation(): void {
@@ -674,6 +700,15 @@
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"
                                     disabled={attachmentIds.length >= MAX_ATTACHMENTS ||
+                                        $hasActiveRecording}
+                                    onclick={handleOpenCamera}
+                                >
+                                    <Camera class="size-4" />
+                                    Open Camera
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={attachmentIds.length >= MAX_ATTACHMENTS ||
                                         $hasActiveRecording ||
                                         recordAudioTask !== null}
                                     onclick={handleStartRecordAudio}
@@ -797,3 +832,5 @@
     items={galleryItems}
     title="Attached media"
 />
+
+<CameraCaptureDialog bind:open={cameraOpen} onAttach={handleAttachCapturedMedia} />
