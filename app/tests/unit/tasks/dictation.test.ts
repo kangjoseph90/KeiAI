@@ -6,7 +6,7 @@ import {
     finishDictation,
     runDictation
 } from '$lib/tasks/dictation';
-import { dictationTasks } from '$lib/stores/state';
+import { dictationTasks, recordAudioTasks } from '$lib/stores/state';
 
 const mocks = vi.hoisted(() => ({
     start: vi.fn(),
@@ -45,6 +45,7 @@ function deferred<T>() {
 
 beforeEach(() => {
     dictationTasks.set(new Map());
+    recordAudioTasks.set(new Map());
     mocks.generateId.mockReturnValue('dictation-1');
     mocks.getChat.mockResolvedValue({ id: 'chat-1', roomId: 'room-1', title: 'Chat 1' });
     mocks.appendDraft.mockResolvedValue(undefined);
@@ -53,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
     for (const chatId of get(dictationTasks).keys()) cancelDictation(chatId);
     dictationTasks.set(new Map());
+    recordAudioTasks.set(new Map());
 });
 
 describe('dictation task', () => {
@@ -96,6 +98,32 @@ describe('dictation task', () => {
         cancelDictation('chat-1');
         started.reject(new DOMException('Aborted', 'AbortError'));
         await first;
+    });
+
+    it('prevents dictation while an audio attachment is recording', async () => {
+        recordAudioTasks.set(
+            new Map([
+                [
+                    'chat-2',
+                    {
+                        id: 'record-audio-1',
+                        roomId: 'room-1',
+                        chatId: 'chat-2',
+                        chatTitle: 'Chat 2',
+                        title: 'Record audio',
+                        status: 'generating',
+                        phase: 'recording',
+                        levels: [],
+                        startedAt: 1
+                    }
+                ]
+            ])
+        );
+
+        await expect(runDictation('chat-1')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+        expect(mocks.getChat).not.toHaveBeenCalled();
+        expect(mocks.start).not.toHaveBeenCalled();
     });
 
     it('cancels without transcribing or changing the draft', async () => {

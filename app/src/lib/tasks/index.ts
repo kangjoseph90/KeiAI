@@ -23,3 +23,9 @@ export {
 } from './suggestion';
 export { dismissTitle, runTitle, stopTitle, stopTitleForChat } from './title';
 export { cancelDictation, dismissDictation, finishDictation, runDictation } from './dictation';
+export {
+    cancelRecordAudio,
+    dismissRecordAudio,
+    finishRecordAudio,
+    runRecordAudio
+} from './record_audio';

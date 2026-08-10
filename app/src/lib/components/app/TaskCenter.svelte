@@ -17,13 +17,16 @@
     import TaskErrorInfo from './TaskErrorInfo.svelte';
     import {
         cancelDictation,
+        cancelRecordAudio,
         dismissChat,
         dismissDictation,
+        dismissRecordAudio,
         dismissImageGeneration,
         dismissTitle,
         dismissTranslation,
         dismissTTS,
         finishDictation,
+        finishRecordAudio,
         stopChat,
         stopImageGeneration,
         stopTitle,
@@ -57,7 +60,7 @@
         for (const task of visibleTasks) {
             if (task.status === 'error') errors += 1;
             else if (task.status === 'completed') completed += 1;
-            else if (task.kind === 'dictation' && task.phase === 'recording') recordings += 1;
+            else if (isRecordingTask(task)) recordings += 1;
             else running += 1;
         }
 
@@ -131,13 +134,20 @@
 
     function taskPriority(task: CollectedTask): number {
         if (task.status === 'error') return 0;
-        if (task.kind === 'dictation' && task.phase === 'recording') return 1;
+        if (isRecordingTask(task)) return 1;
         if (task.status === 'running') return 2;
         return 3;
     }
 
     function compareTasks(a: CollectedTask, b: CollectedTask): number {
         return taskPriority(a) - taskPriority(b) || b.startedAt - a.startedAt;
+    }
+
+    function isRecordingTask(task: CollectedTask): boolean {
+        return (
+            (task.kind === 'dictation' || task.kind === 'record_audio') &&
+            task.phase === 'recording'
+        );
     }
 
     function openTaskChat(task: CollectedTask): void {
@@ -151,6 +161,9 @@
                 break;
             case 'dictation':
                 cancelDictation(task.chatId);
+                break;
+            case 'record_audio':
+                cancelRecordAudio(task.chatId);
                 break;
             case 'translation':
                 stopTranslation(task.taskKey);
@@ -174,6 +187,9 @@
                 break;
             case 'dictation':
                 dismissDictation(task.chatId);
+                break;
+            case 'record_audio':
+                dismissRecordAudio(task.chatId);
                 break;
             case 'translation':
                 dismissTranslation(task.taskKey);
@@ -312,7 +328,7 @@
                                 >
                                     <X class="size-3.5" />
                                 </Button>
-                            {:else if task.kind === 'dictation' && task.phase === 'recording'}
+                            {:else if isRecordingTask(task)}
                                 <Mic class="size-4 shrink-0 text-recording" />
                                 <span class="min-w-0 flex-1 text-sm text-recording">
                                     Recording
@@ -320,9 +336,16 @@
                                 <Button
                                     variant="secondary"
                                     size="icon-sm"
-                                    onclick={() => finishDictation(task.chatId)}
-                                    aria-label="Stop and transcribe"
-                                    title="Stop and transcribe"
+                                    onclick={() =>
+                                        task.kind === 'dictation'
+                                            ? finishDictation(task.chatId)
+                                            : finishRecordAudio(task.chatId)}
+                                    aria-label={task.kind === 'dictation'
+                                        ? 'Stop and transcribe'
+                                        : 'Stop and attach'}
+                                    title={task.kind === 'dictation'
+                                        ? 'Stop and transcribe'
+                                        : 'Stop and attach'}
                                 >
                                     <Square class="size-3 fill-current" />
                                 </Button>
@@ -339,7 +362,9 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => cancelTask(task)}
-                                    aria-label="Cancel dictation"
+                                    aria-label={task.kind === 'dictation'
+                                        ? 'Cancel dictation'
+                                        : 'Cancel audio recording'}
                                     title="Cancel"
                                 >
                                     <X class="size-3.5" />
@@ -347,7 +372,11 @@
                             {:else}
                                 <Loader2 class="size-4 shrink-0 animate-spin text-primary" />
                                 <span class="min-w-0 flex-1 text-sm text-muted-foreground">
-                                    {task.kind === 'dictation' ? 'Transcribing' : 'Running'}
+                                    {task.kind === 'dictation'
+                                        ? 'Transcribing'
+                                        : task.kind === 'record_audio'
+                                          ? 'Saving recording'
+                                          : 'Running'}
                                 </span>
                                 <Button
                                     variant="ghost"

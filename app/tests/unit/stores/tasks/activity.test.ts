@@ -6,7 +6,8 @@ import {
     dictationTasks,
     imageGenerationTasks,
     translationTasks,
-    ttsTasks
+    ttsTasks,
+    recordAudioTasks
 } from '$lib/stores/state';
 import { consumeCompletedTasks, getChatTaskIndicator } from '$lib/stores/tasks/activity';
 
@@ -21,6 +22,7 @@ const metadata = {
 beforeEach(() => {
     chatTasks.set(new Map());
     dictationTasks.set(new Map());
+    recordAudioTasks.set(new Map());
     imageGenerationTasks.set(new Map());
     translationTasks.set(new Map());
     ttsTasks.set(new Map());
@@ -46,6 +48,21 @@ describe('task collector', () => {
                 ]
             ])
         );
+        recordAudioTasks.set(
+            new Map([
+                [
+                    'chat-3',
+                    {
+                        ...metadata,
+                        chatId: 'chat-3',
+                        id: 'record-audio-1',
+                        status: 'generating',
+                        phase: 'recording',
+                        levels: []
+                    }
+                ]
+            ])
+        );
 
         expect(get(collectedTasks)).toEqual(
             expect.arrayContaining([
@@ -54,6 +71,11 @@ describe('task collector', () => {
                     id: 'dictation:chat-2',
                     status: 'running',
                     phase: 'transcribing'
+                }),
+                expect.objectContaining({
+                    id: 'record_audio:chat-3',
+                    status: 'running',
+                    phase: 'recording'
                 })
             ])
         );
@@ -101,11 +123,26 @@ describe('task collector', () => {
                 ]
             ])
         );
+        recordAudioTasks.set(
+            new Map([
+                [
+                    'chat-1',
+                    {
+                        ...metadata,
+                        id: 'record-audio-1',
+                        status: 'completed',
+                        phase: 'saving',
+                        levels: []
+                    }
+                ]
+            ])
+        );
 
         consumeCompletedTasks('chat-1');
 
         expect(get(dictationTasks).has('chat-1')).toBe(false);
         expect(get(dictationTasks).has('chat-2')).toBe(true);
+        expect(get(recordAudioTasks).has('chat-1')).toBe(false);
         expect(get(chatTasks).has('chat-1')).toBe(true);
         expect(get(translationTasks).has('message-2')).toBe(true);
     });

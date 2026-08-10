@@ -36,7 +36,8 @@ import type {
     SuggestionTask,
     TaskMetadata,
     TitleTask,
-    TranslationTask
+    TranslationTask,
+    RecordAudioTask
 } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
@@ -193,12 +194,15 @@ export const inputTranslationTasks = writable<Map<string, InputTranslationTask>>
 export const suggestionTasks = writable<Map<string, SuggestionTask>>(new Map());
 export const titleTasks = writable<Map<string, TitleTask>>(new Map());
 export const dictationTasks = writable<Map<string, DictationTask>>(new Map());
+export const recordAudioTasks = writable<Map<string, RecordAudioTask>>(new Map());
 export const chatDrafts = writable<Map<string, ChatDraft>>(new Map());
 
-export const hasRecordingDictation = derived(dictationTasks, (tasks) =>
-    Array.from(tasks.values()).some(
-        (task) => task.status === 'generating' && task.phase === 'recording'
-    )
+export const hasActiveRecording = derived(
+    [dictationTasks, recordAudioTasks],
+    ([dictations, audio]) =>
+        [...dictations.values(), ...audio.values()].some(
+            (task) => task.status === 'generating' && task.phase === 'recording'
+        )
 );
 
 /** True when the currently active chat has an in-flight task. */
@@ -215,7 +219,8 @@ export const collectedTasks = derived(
         inputTranslationTasks,
         suggestionTasks,
         titleTasks,
-        dictationTasks
+        dictationTasks,
+        recordAudioTasks
     ],
     ([
         chats,
@@ -225,7 +230,8 @@ export const collectedTasks = derived(
         inputTranslations,
         suggestions,
         titles,
-        dictations
+        dictations,
+        audioRecordings
     ]): CollectedTask[] => [
         ...collectTasks('chat', chats),
         ...collectTasks('translation', translations),
@@ -234,7 +240,8 @@ export const collectedTasks = derived(
         ...collectTasks('input_translation', inputTranslations),
         ...collectTasks('suggestion', suggestions),
         ...collectTasks('title', titles),
-        ...collectTasks('dictation', dictations)
+        ...collectTasks('dictation', dictations),
+        ...collectTasks('record_audio', audioRecordings)
     ]
 );
 

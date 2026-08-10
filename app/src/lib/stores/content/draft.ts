@@ -76,12 +76,13 @@ export function setChatDraftInlayIds(chatId: string, inlayIds: string[]): void {
     saveDraft(chatId, { ...current, inlayIds });
 }
 
-export function addChatDraftInlay(chatId: string, inlayId: string): void {
+export function addChatDraftInlay(chatId: string, inlayId: string): boolean {
     const current = getChatDraft(chatId);
     if (current.inlayIds.includes(inlayId) || current.inlayIds.length >= MAX_CHAT_DRAFT_INLAYS) {
-        return;
+        return false;
     }
     setChatDraftInlayIds(chatId, [...current.inlayIds, inlayId]);
+    return true;
 }
 
 export async function appendChatDraftText(chatId: string, text: string): Promise<void> {

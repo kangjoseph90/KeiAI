@@ -99,9 +99,3 @@ export function clearDictationTask(chatId: string, taskId?: string): void {
 export function getDictationTask(chatId: string): DictationTask | null {
     return get(dictationTasks).get(chatId) ?? null;
 }
-
-export function hasRecordingTask(): boolean {
-    return Array.from(get(dictationTasks).values()).some(
-        (task) => task.status === 'generating' && task.phase === 'recording'
-    );
-}
