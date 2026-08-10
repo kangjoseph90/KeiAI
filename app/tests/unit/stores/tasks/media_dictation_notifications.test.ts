@@ -5,6 +5,10 @@ import {
 } from '$lib/stores/tasks/image';
 import { notifyTTSTaskComplete, notifyTTSTaskError } from '$lib/stores/tasks/tts';
 import { notifyDictationTaskComplete, notifyDictationTaskError } from '$lib/stores/tasks/dictation';
+import {
+    notifyRecordAudioTaskComplete,
+    notifyRecordAudioTaskError
+} from '$lib/stores/tasks/record_audio';
 import { NotificationService } from '$lib/services/notification';
 
 vi.mock('$lib/services/notification', () => ({
@@ -95,6 +99,23 @@ describe('media and dictation task system notifications', () => {
         expect(NotificationService.show).toHaveBeenNthCalledWith(2, {
             title: 'Dictation failed',
             body: 'provider failed'
+        });
+    });
+
+    it('notifies audio attachment completion and failure in the background', async () => {
+        setVisibleState(false);
+
+        notifyRecordAudioTaskComplete('chat-1');
+        notifyRecordAudioTaskError('chat-1', 'microphone failed');
+
+        await vi.waitFor(() => expect(NotificationService.show).toHaveBeenCalledTimes(2));
+        expect(NotificationService.show).toHaveBeenNthCalledWith(1, {
+            title: 'Audio attached',
+            body: 'Your recording was added to the chat draft.'
+        });
+        expect(NotificationService.show).toHaveBeenNthCalledWith(2, {
+            title: 'Audio recording failed',
+            body: 'microphone failed'
         });
     });
 });

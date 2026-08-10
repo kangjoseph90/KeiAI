@@ -68,6 +68,7 @@ export const inputTranslationTasks = readonly(StoreState.inputTranslationTasks);
 export const suggestionTasks = readonly(StoreState.suggestionTasks);
 export const titleTasks = readonly(StoreState.titleTasks);
 export const dictationTasks = readonly(StoreState.dictationTasks);
+export const recordAudioTasks = readonly(StoreState.recordAudioTasks);
 export const chatDrafts = readonly(StoreState.chatDrafts);
 export const collectedTasks = readonly(StoreState.collectedTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
@@ -80,7 +81,7 @@ export {
     hasActivePersona,
     hasActiveChat,
     isChatRunning,
-    hasRecordingDictation,
+    hasActiveRecording,
     displayMessages,
     isLoggedIn,
     userEmail,
@@ -99,7 +100,13 @@ export type {
     TitleTask,
     TranslationTask
 } from './types';
-export type { ChatDraft, DictationPhase, DictationTask } from './types';
+export type {
+    ChatDraft,
+    DictationPhase,
+    DictationTask,
+    RecordAudioPhase,
+    RecordAudioTask
+} from './types';
 export type {
     ChatTaskIndicator,
     CollectedTask,
@@ -129,6 +136,7 @@ export * from './tasks/input_translation';
 export * from './tasks/suggestion';
 export * from './tasks/title';
 export * from './tasks/dictation';
+export * from './tasks/record_audio';
 export * from './tasks/activity';
 export * from './auth';
 export * from './connection';

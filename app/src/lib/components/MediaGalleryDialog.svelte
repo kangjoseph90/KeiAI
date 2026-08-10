@@ -150,9 +150,7 @@
             </DialogDescription>
         </DialogHeader>
 
-        <div
-            class="relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-background p-4"
-        >
+        <div class="relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden p-4">
             {#if currentItem}
                 {#if mediaType === 'other'}
                     <div class="flex flex-col items-center gap-3 text-muted-foreground">
@@ -205,7 +203,9 @@
                 <Button
                     variant="secondary"
                     size="icon"
-                    class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md"
+                    tabindex={-1}
+                    onmousedown={(e) => e.preventDefault()}
+                    class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md focus:outline-none focus:ring-0 focus-visible:ring-0"
                     aria-label="Previous asset"
                     onclick={() => navigate(-1)}
                 >
@@ -214,7 +214,9 @@
                 <Button
                     variant="secondary"
                     size="icon"
-                    class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md"
+                    tabindex={-1}
+                    onmousedown={(e) => e.preventDefault()}
+                    class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md focus:outline-none focus:ring-0 focus-visible:ring-0"
                     aria-label="Next asset"
                     onclick={() => navigate(1)}
                 >
@@ -224,7 +226,7 @@
         </div>
 
         {#if showGalleryNavigation}
-            <div class="min-w-0 overflow-hidden bg-background">
+            <div class="min-w-0 overflow-hidden">
                 <div class="px-4 py-2 text-center text-xs text-muted-foreground">
                     {currentIndex >= 0 ? currentIndex + 1 : 0} / {items.length}
                 </div>
@@ -234,7 +236,9 @@
                             <button
                                 use:registerThumbnail={item.id}
                                 type="button"
-                                class="size-12 shrink-0 overflow-hidden rounded-md border bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {item.id ===
+                                tabindex={-1}
+                                onmousedown={(e) => e.preventDefault()}
+                                class="size-12 shrink-0 overflow-hidden rounded-md border bg-muted transition outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 {item.id ===
                                 currentItem?.id
                                     ? 'border-primary ring-2 ring-primary/20'
                                     : 'hover:border-foreground/30'}"

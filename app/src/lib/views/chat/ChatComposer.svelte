@@ -1,6 +1,8 @@
 <script lang="ts">
     import {
         ArrowDown,
+        AudioLines,
+        Camera,
         CornerUpLeft,
         Languages,
         MessageSquare,
@@ -15,6 +17,8 @@
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import {
         activeChat,
         appSettings,
@@ -23,11 +27,13 @@
         chatSelections,
         createChatInlay,
         createMessage,
+        deleteChatInlay,
         dictationTasks,
-        hasRecordingDictation,
+        hasActiveRecording,
         inputTranslationTasks,
         isChatRunning,
         roomCharacters,
+        recordAudioTasks,
         addChatDraftInlay,
         clearChatDraft,
         flushChatDrafts,
@@ -36,14 +42,19 @@
         setChatDraftInlayIds,
         setChatDraftText,
         suggestionTasks,
-        type DictationTask
+        type DictationTask,
+        type RecordAudioTask
     } from '$lib/stores';
     import {
         cancelDictation,
+        cancelRecordAudio,
         dismissDictation,
+        dismissRecordAudio,
         finishDictation,
+        finishRecordAudio,
         runChat,
         runDictation,
+        runRecordAudio,
         runInputTranslation,
         runSuggestion,
         stopChat,
@@ -62,7 +73,8 @@
     import type { RuntimeContext } from '$lib/types/context';
     import { type AgentPart } from '$lib/workflow/agent/llm';
     import { untrack } from 'svelte';
-    import DictationControls from './DictationControls.svelte';
+    import RecordingControls from './RecordingControls.svelte';
+    import CameraCaptureDialog from './CameraCaptureDialog.svelte';
     import ChatSuggestions from './ChatSuggestions.svelte';
 
     let {
@@ -95,12 +107,45 @@
     const dictationBusy = $derived(
         dictationTask?.phase === 'recording' || dictationTask?.phase === 'transcribing'
     );
+    const recordAudioTask = $derived<RecordAudioTask | null>(
+        $activeChat ? ($recordAudioTasks.get($activeChat.id) ?? null) : null
+    );
+    const recordAudioBusy = $derived(
+        recordAudioTask?.phase === 'recording' || recordAudioTask?.phase === 'saving'
+    );
+    const recordingBusy = $derived(dictationBusy || recordAudioBusy);
     const pendingInlays = $derived.by(() => {
         if (!$activeChat) return [];
         return attachmentIds
             .map((attachmentId) => $activeChat?.inlays.refs[attachmentId])
             .filter((ref) => ref !== undefined);
     });
+    let galleryOpen = $state(false);
+    let selectedGalleryId = $state<string | undefined>();
+    let cameraOpen = $state(false);
+    let cameraChatId = $state<string | undefined>();
+    const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+        const chat = $activeChat;
+        if (!chat) return [];
+        return pendingInlays.map((ref) => ({
+            id: ref.id,
+            name: ref.name,
+            asset: {
+                scopeType: chat.scopeType,
+                scopeId: chat.scopeId,
+                ownerTable: 'chats',
+                ownerId: chat.id,
+                hash: ref.hash,
+                encKey: ref.encKey,
+                mimeType: ref.mimeType
+            }
+        }));
+    });
+
+    function openGallery(id: string): void {
+        selectedGalleryId = id;
+        galleryOpen = true;
+    }
     const selectedPersona = $derived.by(() => {
         const personaId = $chatSelections?.personaId ?? $activeChat?.defaultPersonaId;
         if (!personaId) return null;
@@ -185,14 +230,14 @@
     }
 
     function handleDragEnter(event: DragEvent) {
-        if (dictationBusy) return;
+        if (recordingBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
         dragCounter += 1;
     }
 
     function handleDragOver(event: DragEvent) {
-        if (dictationBusy) return;
+        if (recordingBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
     }
@@ -203,7 +248,7 @@
     }
 
     function handleDrop(event: DragEvent) {
-        if (dictationBusy) return;
+        if (recordingBusy) return;
         if (!hasDraggedFiles(event)) return;
         event.preventDefault();
         dragCounter = 0;
@@ -340,19 +385,23 @@
         if (chatId) stopChat(chatId);
     }
 
-    async function attachFiles(files: File[]): Promise<void> {
-        const chatId = $activeChat?.id;
-        if (!chatId) return;
+    async function attachFiles(files: File[], chatId = $activeChat?.id): Promise<number> {
+        if (!chatId) return 0;
 
-        const remaining = MAX_ATTACHMENTS - attachmentIds.length;
+        const draft = await loadChatDraft(chatId);
+        const remaining = MAX_ATTACHMENTS - draft.inlayIds.length;
         const candidates = files.slice(0, remaining);
-        if (candidates.length === 0) return;
+        if (candidates.length === 0) return 0;
 
         let firstError: unknown;
+        let attachedCount = 0;
         for (const file of candidates) {
             try {
+                if ($activeChat?.id !== chatId) break;
                 const ref = await createChatInlay(chatId, file);
-                if ($activeChat?.id === chatId) addChatDraftInlay(chatId, ref.id);
+                const attached = $activeChat?.id === chatId && addChatDraftInlay(chatId, ref.id);
+                if (attached) attachedCount += 1;
+                else await deleteChatInlay(chatId, ref.id);
             } catch (error) {
                 logger.error('Failed to attach media:', error);
                 firstError ??= error;
@@ -364,6 +413,7 @@
                 description: getErrorMessage(firstError)
             });
         }
+        return attachedCount;
     }
 
     async function handleAttachmentUpload(): Promise<void> {
@@ -373,6 +423,22 @@
             filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
         });
         if (files?.length) await attachFiles(files);
+    }
+
+    function handleOpenCamera(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId || attachmentIds.length >= MAX_ATTACHMENTS || $hasActiveRecording) return;
+        cameraChatId = chatId;
+        cameraOpen = true;
+    }
+
+    async function handleAttachCapturedMedia(file: File): Promise<void> {
+        const chatId = cameraChatId;
+        if (!chatId || $activeChat?.id !== chatId) {
+            throw new Error('The active chat changed before the media could be attached');
+        }
+        const attached = await attachFiles([file], chatId);
+        if (attached === 0) throw new Error('The media could not be added to this message');
     }
 
     function handleStartDictation(): void {
@@ -400,6 +466,33 @@
     function handleDismissDictation(): void {
         const chatId = $activeChat?.id;
         if (chatId) dismissDictation(chatId);
+    }
+
+    function handleStartRecordAudio(): void {
+        const chatId = $activeChat?.id;
+        if (!chatId || attachmentIds.length >= MAX_ATTACHMENTS) return;
+        void runRecordAudio(chatId).catch((error) => {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Could not start audio recording',
+                description: getErrorMessage(error)
+            });
+        });
+    }
+
+    function handleCancelRecordAudio(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) cancelRecordAudio(chatId);
+    }
+
+    function handleFinishRecordAudio(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) finishRecordAudio(chatId);
+    }
+
+    function handleDismissRecordAudio(): void {
+        const chatId = $activeChat?.id;
+        if (chatId) dismissRecordAudio(chatId);
     }
 
     function handleInputTranslation(): void {
@@ -463,7 +556,7 @@
         <div
             class="relative rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20 dark:bg-card"
         >
-            {#if isDragging && !dictationBusy}
+            {#if isDragging && !recordingBusy}
                 <div
                     class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
                 >
@@ -471,11 +564,16 @@
                 </div>
             {/if}
 
-            {#if !dictationBusy && pendingInlays.length > 0 && $activeChat}
+            {#if !recordingBusy && pendingInlays.length > 0 && $activeChat}
                 <div class="flex gap-2 overflow-x-auto px-2 pb-2 pt-1">
                     {#each pendingInlays as ref (ref.id)}
                         <div class="relative size-18 shrink-0 overflow-visible rounded-lg">
-                            <div class="absolute inset-0 overflow-hidden rounded-lg border">
+                            <button
+                                type="button"
+                                class="absolute inset-0 cursor-zoom-in overflow-hidden rounded-lg border text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                aria-label={`Open ${ref.name}`}
+                                onclick={() => openGallery(ref.id)}
+                            >
                                 <AssetView
                                     asset={{
                                         scopeType: $activeChat.scopeType,
@@ -490,7 +588,7 @@
                                     class="size-full object-cover"
                                     fallback="none"
                                 />
-                            </div>
+                            </button>
                             <button
                                 type="button"
                                 class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
@@ -506,19 +604,59 @@
             {/if}
 
             {#if dictationBusy && dictationTask}
-                <DictationControls
-                    task={dictationTask}
+                <RecordingControls
+                    phase={dictationTask.phase}
+                    levels={dictationTask.levels}
+                    errorMessage={dictationTask.errorMessage}
+                    errorTitle="Dictation failed"
+                    processingLabel="Transcribing…"
+                    finishTitle="Stop and transcribe"
+                    cancelTitle="Cancel dictation"
                     onCancel={handleCancelDictation}
                     onFinish={handleFinishDictation}
                     onDismiss={handleDismissDictation}
                 />
+            {:else if recordAudioBusy && recordAudioTask}
+                <RecordingControls
+                    phase={recordAudioTask.phase}
+                    levels={recordAudioTask.levels}
+                    errorMessage={recordAudioTask.errorMessage}
+                    errorTitle="Audio recording failed"
+                    processingLabel="Saving recording…"
+                    finishTitle="Stop and attach"
+                    cancelTitle="Cancel audio recording"
+                    onCancel={handleCancelRecordAudio}
+                    onFinish={handleFinishRecordAudio}
+                    onDismiss={handleDismissRecordAudio}
+                />
             {:else}
                 {#if dictationTask?.phase === 'error'}
-                    <DictationControls
-                        task={dictationTask}
+                    <RecordingControls
+                        phase={dictationTask.phase}
+                        levels={dictationTask.levels}
+                        errorMessage={dictationTask.errorMessage}
+                        errorTitle="Dictation failed"
+                        processingLabel="Transcribing…"
+                        finishTitle="Stop and transcribe"
+                        cancelTitle="Cancel dictation"
                         onCancel={handleCancelDictation}
                         onFinish={handleFinishDictation}
                         onDismiss={handleDismissDictation}
+                        class="mb-2"
+                    />
+                {/if}
+                {#if recordAudioTask?.phase === 'error'}
+                    <RecordingControls
+                        phase={recordAudioTask.phase}
+                        levels={recordAudioTask.levels}
+                        errorMessage={recordAudioTask.errorMessage}
+                        errorTitle="Audio recording failed"
+                        processingLabel="Saving recording…"
+                        finishTitle="Stop and attach"
+                        cancelTitle="Cancel audio recording"
+                        onCancel={handleCancelRecordAudio}
+                        onFinish={handleFinishRecordAudio}
+                        onDismiss={handleDismissRecordAudio}
                         class="mb-2"
                     />
                 {/if}
@@ -559,6 +697,26 @@
                                     <Paperclip class="size-4" />
                                     Attach media
                                 </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={attachmentIds.length >= MAX_ATTACHMENTS ||
+                                        $hasActiveRecording}
+                                    onclick={handleOpenCamera}
+                                >
+                                    <Camera class="size-4" />
+                                    Open Camera
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="cursor-pointer whitespace-nowrap"
+                                    disabled={attachmentIds.length >= MAX_ATTACHMENTS ||
+                                        $hasActiveRecording ||
+                                        recordAudioTask !== null}
+                                    onclick={handleStartRecordAudio}
+                                >
+                                    <AudioLines class="size-4" />
+                                    Record audio
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Separator />
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"
                                     disabled={hasGeneratingSuggestion}
@@ -632,7 +790,7 @@
                                 size="icon"
                                 class="shrink-0 rounded-full text-muted-foreground"
                                 onclick={handleStartDictation}
-                                disabled={$hasRecordingDictation || dictationTask !== null}
+                                disabled={$hasActiveRecording || dictationTask !== null}
                                 title="Start dictation"
                                 aria-label="Start dictation"
                             >
@@ -667,3 +825,12 @@
         </div>
     </div>
 </div>
+
+<MediaGalleryDialog
+    bind:open={galleryOpen}
+    bind:selectedId={selectedGalleryId}
+    items={galleryItems}
+    title="Attached media"
+/>
+
+<CameraCaptureDialog bind:open={cameraOpen} onAttach={handleAttachCapturedMedia} />

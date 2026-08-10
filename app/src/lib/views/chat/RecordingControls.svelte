@@ -1,17 +1,28 @@
 <script lang="ts">
     import { Loader2, Square, X } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import type { DictationTask } from '$lib/stores';
     import TaskErrorNotice from './TaskErrorNotice.svelte';
 
     let {
-        task,
+        phase,
+        levels,
+        errorMessage,
+        errorTitle,
+        processingLabel,
+        finishTitle,
+        cancelTitle,
         onCancel,
         onFinish,
         onDismiss,
         class: className = ''
     }: {
-        task: DictationTask;
+        phase: 'recording' | 'transcribing' | 'saving' | 'error';
+        levels: number[];
+        errorMessage?: string;
+        errorTitle: string;
+        processingLabel: string;
+        finishTitle: string;
+        cancelTitle: string;
         onCancel: () => void;
         onFinish: () => void;
         onDismiss: () => void;
@@ -19,10 +30,10 @@
     } = $props();
 </script>
 
-{#if task.phase === 'error'}
+{#if phase === 'error'}
     <TaskErrorNotice
-        title="Dictation failed"
-        message={task.errorMessage ?? 'Unknown error'}
+        title={errorTitle}
+        message={errorMessage ?? 'Unknown error'}
         {onDismiss}
         class={className}
     />
@@ -33,18 +44,18 @@
             size="icon"
             class="shrink-0 rounded-full"
             onclick={onCancel}
-            title="Cancel dictation"
-            aria-label="Cancel dictation"
+            title={cancelTitle}
+            aria-label={cancelTitle}
         >
             <X class="size-4" />
         </Button>
 
-        {#if task.phase === 'recording'}
+        {#if phase === 'recording'}
             <div
                 class="flex h-9 min-w-0 flex-1 items-center justify-end gap-0.5 overflow-hidden"
                 aria-label="Recording audio"
             >
-                {#each task.levels as level, index (`${index}-${task.levels.length}`)}
+                {#each levels as level, index (`${index}-${levels.length}`)}
                     <span
                         class="w-0.75 shrink-0 rounded-full bg-muted-foreground/70 transition-[height] duration-75"
                         style:height={`${Math.max(3, Math.round(level * 28))}px`}
@@ -56,8 +67,8 @@
                 size="icon"
                 class="shrink-0 rounded-full"
                 onclick={onFinish}
-                title="Stop and transcribe"
-                aria-label="Stop and transcribe"
+                title={finishTitle}
+                aria-label={finishTitle}
             >
                 <Square class="size-3.5 fill-current" />
             </Button>
@@ -67,7 +78,7 @@
                 role="status"
             >
                 <Loader2 class="size-4 animate-spin" />
-                <span>Transcribing…</span>
+                <span>{processingLabel}</span>
             </div>
         {/if}
     </div>

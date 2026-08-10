@@ -82,9 +82,20 @@ export interface DictationTask extends TaskMetadata {
     errorMessage?: string;
 }
 
+export type RecordAudioPhase = 'recording' | 'saving' | 'error';
+
+export interface RecordAudioTask extends TaskMetadata {
+    id: string;
+    phase: RecordAudioPhase;
+    status: TaskStatus;
+    levels: number[];
+    errorMessage?: string;
+}
+
 export type CollectedTaskKind =
     | 'chat'
     | 'dictation'
+    | 'record_audio'
     | 'translation'
     | 'tts'
     | 'image'

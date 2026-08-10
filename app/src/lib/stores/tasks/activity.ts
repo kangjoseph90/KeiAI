@@ -6,6 +6,7 @@ import {
     suggestionTasks,
     titleTasks,
     translationTasks,
+    recordAudioTasks,
     ttsTasks
 } from '../state';
 import type { Writable } from 'svelte/store';
@@ -20,6 +21,7 @@ export function consumeCompletedTasks(chatId: string): void {
     consumeCompleted(suggestionTasks, chatId);
     consumeCompleted(titleTasks, chatId);
     consumeCompleted(dictationTasks, chatId);
+    consumeCompleted(recordAudioTasks, chatId);
 }
 
 function consumeCompleted<T extends TaskMetadata & { status: TaskStatus }>(

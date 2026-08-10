@@ -7,7 +7,6 @@ import {
     clearDictationTask,
     createDictationTask,
     getDictationTask,
-    hasRecordingTask,
     notifyDictationTaskComplete,
     notifyDictationTaskError,
     setDictationTaskComplete,
@@ -15,8 +14,10 @@ import {
     setDictationTaskLevels,
     setDictationTaskTranscribing
 } from '$lib/stores/tasks/dictation';
+import { hasActiveRecording } from '$lib/stores/state';
 import { AppError, getErrorMessage } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { get } from 'svelte/store';
 
 const MAX_RECORDING_MS = 10 * 60 * 1000;
 const MAX_LEVELS = 200;
@@ -32,22 +33,12 @@ interface DictationSession {
 const sessions = new Map<string, DictationSession>();
 
 export async function runDictation(chatId: string): Promise<void> {
-    if (getDictationTask(chatId)?.status === 'generating') {
-        throw new AppError('INVALID_INPUT', `Dictation is already active: ${chatId}`);
-    }
-    if (hasRecordingTask()) {
-        throw new AppError('INVALID_INPUT', 'Another recording is already active');
-    }
+    assertCanStartDictation(chatId);
     const chat = await getChat(chatId);
     if (!chat) {
         throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
     }
-    if (getDictationTask(chatId)?.status === 'generating') {
-        throw new AppError('INVALID_INPUT', `Dictation is already active: ${chatId}`);
-    }
-    if (hasRecordingTask()) {
-        throw new AppError('INVALID_INPUT', 'Another recording is already active');
-    }
+    assertCanStartDictation(chatId);
 
     const id = generateId();
     const controller = new AbortController();
@@ -134,6 +125,15 @@ export function dismissDictation(chatId: string): void {
     const task = getDictationTask(chatId);
     if (task?.phase !== 'error') return;
     clearDictationTask(chatId, task.id);
+}
+
+function assertCanStartDictation(chatId: string): void {
+    if (getDictationTask(chatId)?.status === 'generating') {
+        throw new AppError('INVALID_INPUT', `Dictation is already active: ${chatId}`);
+    }
+    if (get(hasActiveRecording)) {
+        throw new AppError('INVALID_INPUT', 'Another recording is already active');
+    }
 }
 
 function waitForFinish(finishRequested: Promise<void>, signal: AbortSignal): Promise<void> {
