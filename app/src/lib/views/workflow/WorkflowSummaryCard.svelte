@@ -1,11 +1,16 @@
 <script lang="ts">
-    import { Workflow } from 'lucide-svelte';
+    import { Download, MoreHorizontal, Upload, Workflow } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import type { WorkflowDefinition } from '$lib/workflow';
+    import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+    import { replaceWorkflow, type WorkflowDefinition, type WorkflowPatch } from '$lib/workflow';
+    import { exportWorkflowFile, importWorkflowFile } from '$lib/managers';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         workflow: WorkflowDefinition;
         onEditWorkflow: () => void;
+        onPatch: (patch: WorkflowPatch) => void | Promise<void>;
         workflowLabel?: string;
         fullWidth?: boolean;
         wide?: boolean;
@@ -14,10 +19,12 @@
     let {
         workflow,
         onEditWorkflow,
+        onPatch,
         workflowLabel = 'Workflow',
         fullWidth = false,
         wide = false
     }: Props = $props();
+    let fileBusy = $state(false);
 
     // Compute normalized minimap positions for SVG view
     const nodesList = $derived(Object.values(workflow.nodes ?? {}));
@@ -103,6 +110,46 @@
     // Node and Agent counts
     const agentCount = $derived(nodesList.filter((node) => node.class === 'Agent').length);
     const nodeCount = $derived(nodesList.length);
+
+    async function importWorkflow() {
+        if (fileBusy) return;
+        fileBusy = true;
+        try {
+            const imported = await importWorkflowFile();
+            if (!imported) return;
+            const confirmed = await appConfirm({
+                title: 'Replace workflow?',
+                description: 'Importing this file will replace every node and connection.',
+                confirmText: 'Import'
+            });
+            if (!confirmed) return;
+            await onPatch(replaceWorkflow(workflow, imported).patch);
+            toast.success({ title: 'Workflow imported' });
+        } catch (error) {
+            toast.error({
+                title: 'Workflow import failed',
+                description: getErrorMessage(error, 'The workflow file could not be imported')
+            });
+        } finally {
+            fileBusy = false;
+        }
+    }
+
+    async function exportWorkflow() {
+        if (fileBusy) return;
+        fileBusy = true;
+        try {
+            const saved = await exportWorkflowFile(workflow, workflowLabel);
+            if (saved) toast.success({ title: 'Workflow exported' });
+        } catch (error) {
+            toast.error({
+                title: 'Workflow export failed',
+                description: getErrorMessage(error, 'The workflow file could not be exported')
+            });
+        } finally {
+            fileBusy = false;
+        }
+    }
 </script>
 
 <div
@@ -111,7 +158,36 @@
         : 'w-80'} flex-col justify-between overflow-hidden rounded-2xl border bg-card p-5 shadow-xs transition-all hover:border-primary/40 hover:shadow-md {wide
         ? 'sm:flex-row sm:items-center sm:gap-6'
         : ''}"
+    aria-busy={fileBusy}
 >
+    <!-- Top-Right Kebab Menu (Always in Grid mode, and on mobile in Wide mode) -->
+    <div class="absolute right-3.5 top-3.5 z-20 {wide ? 'sm:hidden' : ''}">
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="size-8 text-muted-foreground hover:text-foreground"
+                    aria-label="Workflow file actions"
+                    title="Workflow file actions"
+                    disabled={fileBusy}
+                >
+                    <MoreHorizontal class="size-4" />
+                </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end">
+                <DropdownMenu.Item onclick={importWorkflow}>
+                    <Upload class="size-4" />
+                    Import workflow
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onclick={exportWorkflow}>
+                    <Download class="size-4" />
+                    Export workflow
+                </DropdownMenu.Item>
+            </DropdownMenu.Content>
+        </DropdownMenu.Root>
+    </div>
+
     <!-- Background xyflow style minimap silhouette container (full fill, blurred, soft opacity) -->
     <div
         class="pointer-events-none absolute inset-0 overflow-hidden opacity-25 blur-[1.5px] transition-all duration-300 group-hover:opacity-40 group-hover:blur-[0.8px]"
@@ -165,7 +241,7 @@
     </div>
 
     <!-- Header / Title area -->
-    <div class="relative z-10 flex min-w-0 flex-col gap-1.5 {wide ? 'sm:flex-1' : ''}">
+    <div class="relative z-10 flex min-w-0 flex-col gap-1.5 pr-8 {wide ? 'sm:flex-1 sm:pr-0' : ''}">
         <div class="flex items-center gap-2.5">
             <div
                 class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
@@ -182,7 +258,7 @@
     </div>
 
     <!-- Edit Action Button Overlay -->
-    <div class="relative z-10 pt-6 {wide ? 'sm:shrink-0 sm:pt-0' : ''}">
+    <div class="relative z-10 flex items-center gap-2 pt-6 {wide ? 'sm:shrink-0 sm:pt-0' : ''}">
         <Button
             size="sm"
             class="w-full gap-2 whitespace-nowrap font-medium shadow-xs {wide
@@ -193,5 +269,34 @@
             <Workflow class="size-4" />
             Edit workflow
         </Button>
+
+        {#if wide}
+            <div class="hidden sm:block">
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                        <Button
+                            variant="outline"
+                            size="icon-sm"
+                            class="size-8 shrink-0 shadow-2xs"
+                            aria-label="Workflow file actions"
+                            title="Workflow file actions"
+                            disabled={fileBusy}
+                        >
+                            <MoreHorizontal class="size-4" />
+                        </Button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="end">
+                        <DropdownMenu.Item onclick={importWorkflow}>
+                            <Upload class="size-4" />
+                            Import workflow
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item onclick={exportWorkflow}>
+                            <Download class="size-4" />
+                            Export workflow
+                        </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+            </div>
+        {/if}
     </div>
 </div>

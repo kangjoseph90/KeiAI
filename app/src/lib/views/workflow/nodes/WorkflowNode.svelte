@@ -9,7 +9,7 @@
         onRenameSlot: (nodeId: string, inputId: string, name: string) => void;
         onDeleteSlot: (nodeId: string, inputId: string) => void;
         onUpdateNode: (nodeId: string, changes: WorkflowNodeChanges) => void;
-        onEditPrompt?: (nodeId: string) => void;
+        onEditAgent?: (nodeId: string) => void;
     }
 
     export type WorkflowCanvasNode = Node<WorkflowNodeData, 'workflow'>;
@@ -225,13 +225,13 @@
             onchange={(event) =>
                 data.onUpdateNode(data.node.id, { name: event.currentTarget.value })}
         />
-        {#if data.node.class === 'Agent' && data.onEditPrompt}
+        {#if data.node.class === 'Agent' && data.onEditAgent}
             <button
                 type="button"
                 class="nodrag flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-background/70"
-                title="Edit prompt"
-                aria-label="Edit prompt"
-                onclick={() => data.onEditPrompt?.(data.node.id)}
+                title="Edit agent"
+                aria-label="Edit agent"
+                onclick={() => data.onEditAgent?.(data.node.id)}
             >
                 <FileText class="size-4" />
             </button>

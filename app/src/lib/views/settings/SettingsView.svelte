@@ -379,13 +379,19 @@
                                         fullWidth
                                         workflow={$appSettings.suggestion.workflow}
                                         onEditWorkflow={() => (suggestionWorkflowEditorOpen = true)}
-                                        workflowLabel="Suggestion workflow"
+                                        onPatch={(patch) =>
+                                            updateSettings({ suggestion: { workflow: patch } })}
+                                        workflowLabel="Suggestion Workflow"
                                     />
                                     <WorkflowSummaryCard
                                         fullWidth
                                         workflow={$appSettings.titleGeneration.workflow}
                                         onEditWorkflow={() => (titleWorkflowEditorOpen = true)}
-                                        workflowLabel="Title generation workflow"
+                                        onPatch={(patch) =>
+                                            updateSettings({
+                                                titleGeneration: { workflow: patch }
+                                            })}
+                                        workflowLabel="Title Generation Workflow"
                                     />
                                 </div>
                             {/if}
@@ -486,7 +492,7 @@
     <WorkflowEditorModal
         bind:open={titleWorkflowEditorOpen}
         workflow={$appSettings.titleGeneration.workflow}
-        title="Title Workflow"
+        title="Title Generation Workflow"
         onPatch={(patch) => updateSettings({ titleGeneration: { workflow: patch } })}
     />
 {/if}

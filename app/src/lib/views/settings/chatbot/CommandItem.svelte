@@ -65,6 +65,15 @@
             busy = false;
         }
     }
+    const commandWorkflowTitle = $derived.by(() => {
+        const clean = item.name.replace(/^\//, '').trim();
+        if (!clean) return 'Command Workflow';
+        const titleCased = clean
+            .split(/[\s_-]+/)
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        return `${titleCased} Workflow`;
+    });
 </script>
 
 <EditableListItem {expanded} {busy}>
@@ -120,8 +129,9 @@
         <WorkflowSummaryCard
             wide
             workflow={item.workflow}
-            workflowLabel={`/${item.name} Workflow`}
+            workflowLabel={commandWorkflowTitle}
             onEditWorkflow={() => (workflowOpen = true)}
+            onPatch={(patch) => update({ workflow: patch })}
         />
     {/snippet}
 </EditableListItem>
@@ -129,6 +139,6 @@
 <WorkflowEditorModal
     bind:open={workflowOpen}
     workflow={item.workflow}
-    title={`/${item.name} Workflow`}
+    title={commandWorkflowTitle}
     onPatch={(patch) => update({ workflow: patch })}
 />

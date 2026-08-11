@@ -11,6 +11,8 @@ import {
     deleteNode,
     disconnectNodeInput,
     renameAgentInput,
+    replaceAgentConfiguration,
+    replaceWorkflow,
     updateBlock,
     updateNode,
     type WorkflowDefinition,
@@ -18,6 +20,53 @@ import {
 } from '$lib/workflow';
 
 describe('workflow edits', () => {
+    it('replaces the full workflow and removes nodes absent from the import', () => {
+        const workflow = createDefaultChatWorkflow();
+        const replacement: WorkflowDefinition = { nodes: {} };
+        const result = replaceWorkflow(workflow, replacement);
+
+        expect(result.workflow).toEqual(replacement);
+        expectPatchApplies(workflow, result);
+    });
+
+    it('replaces Agent configuration while preserving graph identity', () => {
+        const created = createAgentInput(createDefaultChatWorkflow(), 'chat_agent', 'old');
+        const current = created.workflow.nodes.chat_agent;
+        expect(current.class).toBe('Agent');
+        if (current.class !== 'Agent') throw new Error('Expected Agent node');
+        current.inputs.stream = { sourceNode: 'stream_source', sourcePort: 0 };
+
+        const result = replaceAgentConfiguration(created.workflow, 'chat_agent', {
+            name: 'Imported Agent',
+            llmType: 'chat',
+            toolIds: [],
+            promptBlocks: {},
+            maxContext: 12000,
+            maxResponse: 2000,
+            lorebookRatio: 0.3,
+            memoryRatio: 0.1,
+            lorebookScanDepth: 3,
+            slotNames: { imported: 'context' },
+            inputValues: { stream: false, imported: 'fallback' }
+        });
+        const agent = result.workflow.nodes.chat_agent;
+
+        expect(agent).toMatchObject({
+            id: 'chat_agent',
+            class: 'Agent',
+            name: 'Imported Agent',
+            position: current.position,
+            inputs: {
+                stream: { sourceNode: 'stream_source', sourcePort: 0 },
+                imported: null
+            },
+            slotNames: { imported: 'context' },
+            inputValues: { stream: false, imported: 'fallback' }
+        });
+        expect(agent.inputs).not.toHaveProperty(created.inputId);
+        expectPatchApplies(created.workflow, result);
+    });
+
     it('creates a default node at the requested position', () => {
         const workflow = createDefaultChatWorkflow();
         const result = createNode(workflow, 'String', { x: 120, y: 240 });

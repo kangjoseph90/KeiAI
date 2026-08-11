@@ -359,6 +359,21 @@ export interface AgentNode extends BaseNode {
     slotNames: Record<string, string>;
 }
 
+export type AgentConfiguration = Pick<
+    AgentNode,
+    | 'name'
+    | 'llmType'
+    | 'toolIds'
+    | 'promptBlocks'
+    | 'maxContext'
+    | 'maxResponse'
+    | 'lorebookRatio'
+    | 'memoryRatio'
+    | 'lorebookScanDepth'
+    | 'slotNames'
+    | 'inputValues'
+>;
+
 export type InputPort = {
     sourceNode: string;
     sourcePort: number;

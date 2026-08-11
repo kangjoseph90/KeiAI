@@ -5,6 +5,7 @@ import { generateId } from '$lib/utils/id';
 import { createDefaultWorkflowNode } from './registry';
 import { validateWorkflowConnection } from './validation';
 import type {
+    AgentConfiguration,
     AgentNode,
     PromptBlock,
     PromptBlockFields,
@@ -41,6 +42,48 @@ export interface CreatePromptBlockResult extends WorkflowEditResult {
 
 export interface CreateAgentInputResult extends WorkflowEditResult {
     inputId: string;
+}
+
+export function replaceWorkflow(
+    workflow: WorkflowDefinition,
+    replacement: WorkflowDefinition
+): WorkflowEditResult {
+    return createEditResult(workflow, structuredClone(replacement));
+}
+
+export function replaceAgentConfiguration(
+    workflow: WorkflowDefinition,
+    nodeId: string,
+    configuration: AgentConfiguration
+): WorkflowEditResult {
+    const next = structuredClone(workflow);
+    const current = requireAgentNode(next, nodeId);
+    const slotInputs = Object.fromEntries(
+        Object.keys(configuration.slotNames).map((inputId) => [inputId, null])
+    );
+
+    next.nodes[nodeId] = {
+        ...configuration,
+        id: current.id,
+        class: 'Agent',
+        position: current.position,
+        collapsed: current.collapsed,
+        inputs: {
+            stream: current.inputs.stream ?? null,
+            ...slotInputs
+        },
+        inputValues: {
+            stream: configuration.inputValues.stream ?? true,
+            ...Object.fromEntries(
+                Object.keys(configuration.slotNames).map((inputId) => [
+                    inputId,
+                    configuration.inputValues[inputId] ?? ''
+                ])
+            )
+        }
+    };
+
+    return createEditResult(workflow, next);
 }
 
 export function createNode(

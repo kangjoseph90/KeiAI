@@ -62,11 +62,20 @@
         selectedNodeId: string | null;
         onSelectNode: (nodeId: string | null) => void;
         onEdit: (result: WorkflowEditResult) => void | Promise<void>;
-        onEditPrompt?: (nodeId: string) => void;
+        onEditAgent?: (nodeId: string) => void;
         title?: string;
+        active?: boolean;
     }
 
-    let { workflow, selectedNodeId, onSelectNode, onEdit, onEditPrompt, title }: Props = $props();
+    let {
+        workflow,
+        selectedNodeId,
+        onSelectNode,
+        onEdit,
+        onEditAgent,
+        title,
+        active = true
+    }: Props = $props();
     let nodes = $state.raw<WorkflowCanvasNode[]>([]);
     let edges = $state.raw<Edge[]>([]);
 
@@ -142,7 +151,7 @@
                 onRenameSlot: renameAgentSlot,
                 onDeleteSlot: deleteAgentSlot,
                 onUpdateNode: editNode,
-                onEditPrompt
+                onEditAgent
             } satisfies WorkflowNodeData
         }));
         edges = createEdges(workflow);
@@ -182,6 +191,7 @@
 
     $effect(() => {
         const handleKeydown = (event: KeyboardEvent) => {
+            if (!active) return;
             if (event.key !== 'Delete') return;
             if (shouldIgnoreDeleteKey(event.target)) return;
             if (!selectedNode) return;
@@ -429,7 +439,7 @@
     {/if}
 
     {#if Object.keys(workflow.nodes).length === 0}
-        <div class="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
+        <div class="pointer-events-none absolute inset-0 z-1 flex items-center justify-center">
             <div
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-xl border bg-background/90 p-6 text-center shadow-sm"
             >

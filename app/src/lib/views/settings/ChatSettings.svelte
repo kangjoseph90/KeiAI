@@ -76,7 +76,9 @@
                         wide
                         workflow={$activePreset!.chatWorkflow}
                         onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
-                        workflowLabel="Chat workflow"
+                        onPatch={(patch) =>
+                            updatePreset($activePreset!.id, { chatWorkflow: patch })}
+                        workflowLabel="Chat Workflow"
                     />
                 </section>
                 <div class="border-t border-border"></div>

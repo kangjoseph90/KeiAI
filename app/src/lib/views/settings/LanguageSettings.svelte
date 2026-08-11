@@ -155,7 +155,8 @@
                 wide
                 workflow={$appSettings.translation.workflow}
                 onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
-                workflowLabel="Translation workflow"
+                onPatch={(patch) => updateSettings({ translation: { workflow: patch } })}
+                workflowLabel="Translation Workflow"
             />
         </section>
     {/if}

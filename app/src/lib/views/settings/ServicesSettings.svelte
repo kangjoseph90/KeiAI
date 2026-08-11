@@ -1284,9 +1284,10 @@
                             wide
                             {workflow}
                             onEditWorkflow={() => editWorkflow(workflowFeature)}
+                            onPatch={(patch) => updateWorkflow(workflowFeature, patch)}
                             workflowLabel={workflowFeature === 'imagegen'
-                                ? 'Image generation workflow'
-                                : 'TTS workflow'}
+                                ? 'Image Generation Workflow'
+                                : 'TTS Workflow'}
                         />
                     </section>
                 {/if}

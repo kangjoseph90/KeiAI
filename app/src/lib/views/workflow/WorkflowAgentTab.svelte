@@ -7,14 +7,17 @@
         ChevronRight,
         ChevronUp,
         Copy,
+        Download,
         Eye,
         EyeOff,
         GripVertical,
         MessageSquareText,
         MessagesSquare,
+        MoreHorizontal,
         Plus,
         SlidersHorizontal,
         Trash2,
+        Upload,
         X
     } from 'lucide-svelte';
     import { slide } from 'svelte/transition';
@@ -33,7 +36,9 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import { generateSortOrder } from '$lib/utils/ordering';
     import type { LLMRole, LLMType } from '$lib/types/models/llm';
-    import { appConfirm } from '$lib/ui';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
+    import { exportAgentFile, importAgentFile } from '$lib/managers';
     import {
         createAgentInput,
         createBlock,
@@ -41,6 +46,7 @@
         deleteBlock,
         deleteNode,
         renameAgentInput,
+        replaceAgentConfiguration,
         updateBlock,
         updateNode,
         type AgentNode,
@@ -63,6 +69,7 @@
     let agentSettingsExpanded = $state(false);
     let deletingBlockId = $state<string | null>(null);
     let copiedSlotId = $state<string | null>(null);
+    let transferringAgent = $state(false);
 
     const agents = $derived(
         Object.values(workflow.nodes).filter((node): node is AgentNode => node.class === 'Agent')
@@ -190,6 +197,47 @@
             deletingBlockId = null;
         }
     }
+
+    async function importAgent() {
+        if (!agent || transferringAgent) return;
+        const agentId = agent.id;
+        transferringAgent = true;
+        try {
+            const configuration = await importAgentFile();
+            if (!configuration || agent?.id !== agentId) return;
+            const confirmed = await appConfirm({
+                title: 'Replace agent configuration?',
+                description:
+                    "Importing this file will replace this Agent's settings, prompt, and input slots. Input-slot connections will be disconnected.",
+                confirmText: 'Import'
+            });
+            if (!confirmed || agent?.id !== agentId) return;
+            await onEdit(replaceAgentConfiguration(workflow, agentId, configuration));
+        } catch (error) {
+            toast.error({
+                title: 'Agent import failed',
+                description: getErrorMessage(error, 'The agent file could not be imported')
+            });
+        } finally {
+            transferringAgent = false;
+        }
+    }
+
+    async function exportAgent() {
+        if (!agent || transferringAgent) return;
+        transferringAgent = true;
+        try {
+            const saved = await exportAgentFile(agent);
+            if (saved) toast.success({ title: 'Agent exported' });
+        } catch (error) {
+            toast.error({
+                title: 'Agent export failed',
+                description: getErrorMessage(error, 'The agent file could not be exported')
+            });
+        } finally {
+            transferringAgent = false;
+        }
+    }
 </script>
 
 <div class="min-h-full w-full bg-muted/15 p-4 sm:p-6">
@@ -227,16 +275,43 @@
                         </div>
                     </div>
 
-                    <Button
-                        variant={agentSettingsExpanded ? 'secondary' : 'ghost'}
-                        size="icon-sm"
-                        class="size-8 shrink-0"
-                        onclick={() => (agentSettingsExpanded = !agentSettingsExpanded)}
-                        title={agentSettingsExpanded ? 'Collapse config' : 'Expand config'}
-                        aria-label="Toggle agent settings"
-                    >
-                        <SlidersHorizontal class="size-4" />
-                    </Button>
+                    <div class="flex shrink-0 items-center gap-1">
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger>
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    class="size-8"
+                                    title="Agent file actions"
+                                    aria-label="Agent file actions"
+                                    disabled={transferringAgent}
+                                >
+                                    <MoreHorizontal class="size-4" />
+                                </Button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Content align="end">
+                                <DropdownMenu.Item onclick={importAgent}>
+                                    <Upload class="size-4" />
+                                    Import into this agent
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item onclick={exportAgent}>
+                                    <Download class="size-4" />
+                                    Export this agent
+                                </DropdownMenu.Item>
+                            </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+
+                        <Button
+                            variant={agentSettingsExpanded ? 'secondary' : 'ghost'}
+                            size="icon-sm"
+                            class="size-8"
+                            onclick={() => (agentSettingsExpanded = !agentSettingsExpanded)}
+                            title={agentSettingsExpanded ? 'Collapse config' : 'Expand config'}
+                            aria-label="Toggle agent settings"
+                        >
+                            <SlidersHorizontal class="size-4" />
+                        </Button>
+                    </div>
                 </div>
 
                 {#if agentSettingsExpanded}
