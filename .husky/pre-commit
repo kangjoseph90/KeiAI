@@ -1,1 +1,2 @@
+pnpm -C app i18n:audit:strict
 pnpm lint:check
