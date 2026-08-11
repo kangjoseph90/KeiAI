@@ -28,6 +28,7 @@
     import { Badge } from '$lib/components/ui/badge';
     import {
         appSettings,
+        t,
         themePreference,
         updateSettings,
         updateThemePreference,
@@ -65,17 +66,17 @@
     let suggestionWorkflowEditorOpen = $state(false);
     let titleWorkflowEditorOpen = $state(false);
 
-    const tabs = [
-        { id: 'models', label: 'Models', icon: Layers },
-        { id: 'chat', label: 'Chat', icon: MessageSquare },
-        { id: 'services', label: 'Services', icon: LayoutGrid },
-        { id: 'plugins', label: 'Plugins', icon: Puzzle },
-        { id: 'language', label: 'Language', icon: Languages },
-        { id: 'profile', label: 'Profile', icon: User },
-        { id: 'account', label: 'Account', icon: Shield },
-        { id: 'connections', label: 'Connections', icon: Network },
-        { id: 'general', label: 'General', icon: Settings }
-    ] as const;
+    const tabs = $derived([
+        { id: 'models', label: $t('settings.tabs.models'), icon: Layers },
+        { id: 'chat', label: $t('settings.tabs.chat'), icon: MessageSquare },
+        { id: 'services', label: $t('settings.tabs.services'), icon: LayoutGrid },
+        { id: 'plugins', label: $t('settings.tabs.plugins'), icon: Puzzle },
+        { id: 'language', label: $t('settings.tabs.language'), icon: Languages },
+        { id: 'profile', label: $t('settings.tabs.profile'), icon: User },
+        { id: 'account', label: $t('settings.tabs.account'), icon: Shield },
+        { id: 'connections', label: $t('settings.tabs.connections'), icon: Network },
+        { id: 'general', label: $t('settings.tabs.general'), icon: Settings }
+    ] as const);
 
     async function handleThemeChange(preference: ThemePreference): Promise<void> {
         if (themeBusy || preference === $themePreference) return;
@@ -83,7 +84,10 @@
         try {
             await updateThemePreference(preference);
         } catch (error) {
-            toast.error({ title: 'Theme update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.theme.updateFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             themeBusy = false;
         }
@@ -97,7 +101,10 @@
         try {
             await updateSettings(changes);
         } catch (error) {
-            toast.error({ title: 'Setting update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.updateFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             settingsBusy = false;
         }
@@ -134,7 +141,10 @@
             await action();
             if (successTitle) toast.success({ title: successTitle });
         } catch (error) {
-            toast.error({ title: 'Maintenance failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.general.maintenance.maintenanceFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             maintenanceBusy = false;
         }
@@ -144,12 +154,11 @@
         void runMaintenance(
             performResetSyncCursors,
             {
-                title: 'Reset sync cursors?',
-                description:
-                    'The current user will fetch all data again from this sync server. Local data is not deleted.',
-                confirmText: 'Reset'
+                title: $t('settings.general.maintenance.resetTitle'),
+                description: $t('settings.general.maintenance.resetBody'),
+                confirmText: $t('common.confirm.reset')
             },
-            'Sync cursors reset. A full sync has completed.'
+            $t('settings.general.maintenance.resetSuccess')
         );
     }
 
@@ -157,22 +166,20 @@
         void runMaintenance(
             performPurgeOrphans,
             {
-                title: 'Purge orphaned data?',
-                description:
-                    'This permanently removes local records and assets that no longer belong to an existing user or accessible multi-room.',
-                confirmText: 'Purge',
+                title: $t('settings.general.maintenance.purgeTitle'),
+                description: $t('settings.general.maintenance.purgeBody'),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             },
-            'Orphaned local data was purged.'
+            $t('settings.general.maintenance.purgeSuccess')
         );
     }
 
     function handleDeleteLocalUser(): void {
         void runMaintenance(deleteActiveLocalUser, {
-            title: 'Delete local user?',
-            description:
-                'This permanently deletes this user and all of their local data from this device. The remote account is not deleted.',
-            confirmText: 'Delete user',
+            title: $t('settings.general.maintenance.deleteUserTitle'),
+            description: $t('settings.general.maintenance.deleteUserBody'),
+            confirmText: $t('settings.general.maintenance.deleteUser'),
             variant: 'destructive'
         });
     }
@@ -187,14 +194,14 @@
 {/snippet}
 
 <WorkspaceShell
-    workspaceName="Settings"
+    workspaceName={$t('settings.title')}
     sections={tabs}
     activeSection={activeTab}
     showDetail={settingsTab !== undefined}
     onSelect={openTab}
     onBack={returnToTabs}
     onClose={backToChat}
-    closeLabel="Close settings"
+    closeLabel={$t('settings.close')}
     {titleExtra}
 >
     {#if activeTab === 'models'}
@@ -228,20 +235,20 @@
                         <section class="space-y-3">
                             <div>
                                 <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                                    Appearance
+                                    {$t('settings.general.appearance.title')}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
-                                    Customize how KeiAI looks on your screen.
+                                    {$t('settings.general.appearance.description')}
                                 </p>
                             </div>
                             <div class="divide-y divide-border">
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5">
                                         <Label for="setting-color-theme" class="text-sm font-medium"
-                                            >Color Theme</Label
+                                            >{$t('settings.general.theme.label')}</Label
                                         >
                                         <p class="text-xs text-muted-foreground">
-                                            Choose a theme for this device.
+                                            {$t('settings.general.theme.description')}
                                         </p>
                                     </div>
                                     <OptionSelect
@@ -251,9 +258,18 @@
                                         disabled={themeBusy}
                                         ariaBusy={themeBusy}
                                         options={[
-                                            { value: 'system', label: 'System' },
-                                            { value: 'light', label: 'Light' },
-                                            { value: 'dark', label: 'Dark' }
+                                            {
+                                                value: 'system',
+                                                label: $t('settings.general.theme.system')
+                                            },
+                                            {
+                                                value: 'light',
+                                                label: $t('settings.general.theme.light')
+                                            },
+                                            {
+                                                value: 'dark',
+                                                label: $t('settings.general.theme.dark')
+                                            }
                                         ]}
                                         onChange={(value) =>
                                             handleThemeChange(value as ThemePreference)}
@@ -268,10 +284,10 @@
                         <section class="space-y-3">
                             <div>
                                 <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                                    Chat Interface
+                                    {$t('settings.general.chatInterface.title')}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
-                                    Configure chat interface behaviors.
+                                    {$t('settings.general.chatInterface.description')}
                                 </p>
                             </div>
                             <div class="divide-y divide-border">
@@ -281,11 +297,10 @@
                                             for="setting-auto-generate-response"
                                             class="text-sm font-medium cursor-pointer"
                                         >
-                                            Generate response after sending
+                                            {$t('settings.general.chatInterface.autoGenerate')}
                                         </Label>
                                         <p class="text-xs text-muted-foreground">
-                                            Automatically start generating a response after you send
-                                            a message.
+                                            {$t('settings.general.chatInterface.autoGenerateHelp')}
                                         </p>
                                     </div>
                                     <input
@@ -309,11 +324,10 @@
                                             for="setting-save-messages-on-swipe"
                                             class="text-sm font-medium cursor-pointer"
                                         >
-                                            Save messages on swipe
+                                            {$t('settings.general.chatInterface.saveOnSwipe')}
                                         </Label>
                                         <p class="text-xs text-muted-foreground">
-                                            Save message history when swiping between alternative
-                                            responses.
+                                            {$t('settings.general.chatInterface.saveOnSwipeHelp')}
                                         </p>
                                     </div>
                                     <input
@@ -337,11 +351,10 @@
                                             for="setting-expand-steps"
                                             class="text-sm font-medium cursor-pointer"
                                         >
-                                            Expand trace steps during generation
+                                            {$t('settings.general.chatInterface.expandSteps')}
                                         </Label>
                                         <p class="text-xs text-muted-foreground">
-                                            Automatically expand reasoning steps when AI is
-                                            generating responses.
+                                            {$t('settings.general.chatInterface.expandStepsHelp')}
                                         </p>
                                     </div>
                                     <input
@@ -367,10 +380,10 @@
                         <section class="space-y-3">
                             <div>
                                 <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                                    Chat Inference
+                                    {$t('settings.general.inference.title')}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
-                                    Configure global workflows used for auxiliary chat inference.
+                                    {$t('settings.general.inference.description')}
                                 </p>
                             </div>
                             {#if $appSettings}
@@ -381,7 +394,9 @@
                                         onEditWorkflow={() => (suggestionWorkflowEditorOpen = true)}
                                         onPatch={(patch) =>
                                             updateSettings({ suggestion: { workflow: patch } })}
-                                        workflowLabel="Suggestion Workflow"
+                                        workflowLabel={$t(
+                                            'settings.general.inference.suggestionWorkflow'
+                                        )}
                                     />
                                     <WorkflowSummaryCard
                                         fullWidth
@@ -391,7 +406,9 @@
                                             updateSettings({
                                                 titleGeneration: { workflow: patch }
                                             })}
-                                        workflowLabel="Title Generation Workflow"
+                                        workflowLabel={$t(
+                                            'settings.general.inference.titleWorkflow'
+                                        )}
                                     />
                                 </div>
                             {/if}
@@ -403,20 +420,20 @@
                         <section class="space-y-3">
                             <div>
                                 <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                                    Local Data Maintenance
+                                    {$t('settings.general.maintenance.title')}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
-                                    Repair local sync state or permanently remove local data.
+                                    {$t('settings.general.maintenance.description')}
                                 </p>
                             </div>
                             <div class="divide-y divide-border" aria-busy={maintenanceBusy}>
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5 pr-4">
-                                        <Label class="text-sm font-medium">Reset Sync Cursors</Label
+                                        <Label class="text-sm font-medium"
+                                            >{$t('settings.general.maintenance.resetSync')}</Label
                                         >
                                         <p class="text-xs text-muted-foreground">
-                                            Fetch all data again from the sync server without
-                                            deleting local data.
+                                            {$t('settings.general.maintenance.resetSyncHelp')}
                                         </p>
                                     </div>
                                     <Button
@@ -428,18 +445,20 @@
                                             $serverTransitionLocked}
                                         onclick={handleResetSyncCursors}
                                     >
-                                        <DatabaseZap class="size-4" /> Reset Sync Cursors
+                                        <DatabaseZap class="size-4" />
+                                        {$t('settings.general.maintenance.resetButton')}
                                     </Button>
                                 </div>
 
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5 pr-4">
                                         <Label class="text-sm font-medium"
-                                            >Purge Orphaned Data</Label
+                                            >{$t(
+                                                'settings.general.maintenance.purgeOrphans'
+                                            )}</Label
                                         >
                                         <p class="text-xs text-muted-foreground">
-                                            Permanently remove local records and assets that no
-                                            longer belong to an active user.
+                                            {$t('settings.general.maintenance.purgeOrphansHelp')}
                                         </p>
                                     </div>
                                     <Button
@@ -449,18 +468,18 @@
                                         disabled={maintenanceBusy || $serverTransitionLocked}
                                         onclick={handlePurgeOrphans}
                                     >
-                                        <Trash2 class="size-4" /> Purge Orphaned Data
+                                        <Trash2 class="size-4" />
+                                        {$t('settings.general.maintenance.purgeButton')}
                                     </Button>
                                 </div>
 
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5 pr-4">
                                         <Label class="text-sm font-medium text-destructive"
-                                            >Delete Local User</Label
+                                            >{$t('settings.general.maintenance.deleteUser')}</Label
                                         >
                                         <p class="text-xs text-muted-foreground">
-                                            Permanently remove this user and all local data from
-                                            this device.
+                                            {$t('settings.general.maintenance.deleteUserHelp')}
                                         </p>
                                     </div>
                                     <Button
@@ -470,7 +489,8 @@
                                         disabled={maintenanceBusy || $serverTransitionLocked}
                                         onclick={handleDeleteLocalUser}
                                     >
-                                        <Trash2 class="size-4" /> Delete Local User
+                                        <Trash2 class="size-4" />
+                                        {$t('settings.general.maintenance.deleteButton')}
                                     </Button>
                                 </div>
                             </div>
@@ -486,13 +506,13 @@
     <WorkflowEditorModal
         bind:open={suggestionWorkflowEditorOpen}
         workflow={$appSettings.suggestion.workflow}
-        title="Suggestion Workflow"
+        title={$t('settings.general.inference.suggestionWorkflow')}
         onPatch={(patch) => updateSettings({ suggestion: { workflow: patch } })}
     />
     <WorkflowEditorModal
         bind:open={titleWorkflowEditorOpen}
         workflow={$appSettings.titleGeneration.workflow}
-        title="Title Generation Workflow"
+        title={$t('settings.general.inference.titleWorkflow')}
         onPatch={(patch) => updateSettings({ titleGeneration: { workflow: patch } })}
     />
 {/if}

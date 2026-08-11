@@ -13,6 +13,7 @@
     import { IMAGE_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { appDialog } from '$lib/adapters/dialog';
     import { appConfirm, toast } from '$lib/ui';
+    import { t } from '$lib/stores';
 
     interface Props {
         character: Character;
@@ -50,13 +51,21 @@
         avatarAction = 'upload';
         try {
             const file = await appDialog.openFile({
-                title: 'Upload Character Avatar',
-                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
+                title: $t('character.profile.uploadAvatarTitle'),
+                filters: [
+                    {
+                        name: $t('common.fileFilters.images'),
+                        extensions: [...IMAGE_ASSET_EXTENSIONS]
+                    }
+                ]
             });
             if (!file || character.id !== characterId) return;
             await onUpdateAvatar(characterId, file);
         } catch (error) {
-            toast.error({ title: 'Could not update avatar', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.updateAvatar'),
+                description: getErrorMessage(error)
+            });
         } finally {
             avatarAction = null;
         }
@@ -68,15 +77,18 @@
         avatarAction = 'remove';
         try {
             const confirmed = await appConfirm({
-                title: 'Remove character avatar?',
-                description: `Remove the avatar for "${character.name}"?`,
-                confirmText: 'Remove',
+                title: $t('character.profile.removeAvatarTitle'),
+                description: $t('character.profile.removeAvatarBody', { name: character.name }),
+                confirmText: $t('common.actions.remove'),
                 variant: 'destructive'
             });
             if (!confirmed || character.id !== characterId) return;
             await onRemoveAvatar(characterId);
         } catch (error) {
-            toast.error({ title: 'Could not remove avatar', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.removeAvatar'),
+                description: getErrorMessage(error)
+            });
         } finally {
             avatarAction = null;
         }
@@ -90,8 +102,8 @@
                 <button
                     type="button"
                     class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label={`View ${character.name} avatar`}
-                    title="View avatar"
+                    aria-label={$t('character.profile.viewNamedAvatar', { name: character.name })}
+                    title={$t('character.profile.viewAvatar')}
                     onclick={() => (avatarGalleryOpen = true)}
                 >
                     <AssetView
@@ -122,12 +134,12 @@
         </div>
         <div class="min-w-0 flex-1 space-y-3">
             <div class="grid gap-1.5">
-                <Label for="character-name">Character Name</Label>
+                <Label for="character-name">{$t('character.profile.nameLabel')}</Label>
                 <Input
                     id="character-name"
                     value={character.name}
                     oninput={(e) => onUpdate({ name: e.currentTarget.value })}
-                    placeholder="Enter character name..."
+                    placeholder={$t('character.profile.namePlaceholder')}
                 />
             </div>
             <div class="flex flex-wrap items-center gap-1">
@@ -139,7 +151,8 @@
                     aria-busy={avatarAction === 'upload'}
                     onclick={handleAvatarUpload}
                 >
-                    <Upload class="size-4" /> Upload avatar
+                    <Upload class="size-4" />
+                    {$t('character.profile.uploadAvatarButton')}
                 </Button>
                 <Button
                     variant="ghost"
@@ -149,31 +162,31 @@
                     aria-busy={avatarAction === 'remove'}
                     onclick={handleAvatarRemove}
                 >
-                    Remove avatar
+                    {$t('character.profile.removeAvatarButton')}
                 </Button>
             </div>
         </div>
     </div>
 
     <div class="grid gap-1.5">
-        <Label for="character-description">Description</Label>
+        <Label for="character-description">{$t('character.profile.descriptionLabel')}</Label>
         <Textarea
             id="character-description"
             rows={3}
             value={character.description}
             oninput={(e) => onUpdate({ description: e.currentTarget.value })}
-            placeholder="A short description of who this character is..."
+            placeholder={$t('character.profile.descriptionPlaceholder')}
         />
     </div>
 
     <div class="grid gap-1.5">
-        <Label for="character-note">Character Note</Label>
+        <Label for="character-note">{$t('character.profile.noteLabel')}</Label>
         <Textarea
             id="character-note"
             rows={15}
             value={character.characterNote}
             oninput={(e) => onUpdate({ characterNote: e.currentTarget.value })}
-            placeholder="Define the character's personality, speech patterns, and background..."
+            placeholder={$t('character.profile.notePlaceholder')}
             class="font-mono text-sm"
         />
     </div>
@@ -182,5 +195,5 @@
 <MediaGalleryDialog
     bind:open={avatarGalleryOpen}
     items={avatarGalleryItems}
-    title="Character avatar"
+    title={$t('character.profile.avatar')}
 />

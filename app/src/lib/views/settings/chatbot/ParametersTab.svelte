@@ -3,7 +3,7 @@
     import { slide } from 'svelte/transition';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { appSettings, modules, selectActiveModules, updatePreset } from '$lib/stores';
+    import { appSettings, modules, selectActiveModules, updatePreset, t } from '$lib/stores';
     import {
         type LLMParameter,
         type LLMParameters,
@@ -55,8 +55,13 @@
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
         for (const d of allTypes) {
+            const existingNames = definitions[d.type]?.agentNames ?? [];
+            const newNames = d.agentNames ?? [];
+            const mergedNames = Array.from(new Set([...existingNames, ...newNames]));
+
             definitions[d.type] = {
                 type: d.type,
+                agentNames: mergedNames.length > 0 ? mergedNames : undefined,
                 description: definitions[d.type]?.description ?? d.description
             };
         }
@@ -68,7 +73,7 @@
             await updatePreset(preset.id, changes);
         } catch (error) {
             toast.error({
-                title: 'Could not update parameters',
+                title: $t('settings.parameters.toast.update'),
                 description: getErrorMessage(error)
             });
         }
@@ -104,9 +109,11 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-4">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">Chat Parameters</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('settings.parameters.chatParameters')}
+            </h3>
             <p class="text-sm text-muted-foreground">
-                Fine-tune generation parameters for chat completions.
+                {$t('settings.parameters.description')}
             </p>
         </div>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -116,7 +123,7 @@
                     <Input
                         type="number"
                         step="0.01"
-                        placeholder="Default"
+                        placeholder={$t('settings.parameters.defaultPlaceholder')}
                         value={preset.parameters.chat?.[param] ?? ''}
                         oninput={(e) => updateParameter('chat', param, e.currentTarget.value)}
                         class="h-8 text-sm"
@@ -134,7 +141,9 @@
                 type="button"
                 class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onclick={() => (advancedOpen = !advancedOpen)}
-                aria-label={advancedOpen ? 'Collapse' : 'Expand'}
+                aria-label={advancedOpen
+                    ? $t('settings.parameters.collapse')
+                    : $t('settings.parameters.expand')}
             >
                 {#if advancedOpen}
                     <ChevronDown class="size-4" />
@@ -148,10 +157,10 @@
                     class="text-base font-medium text-foreground hover:opacity-80 transition-opacity"
                     onclick={() => (advancedOpen = !advancedOpen)}
                 >
-                    Model Type Overrides
+                    {$t('settings.parameters.overridesButton')}
                 </button>
                 <p class="text-xs text-muted-foreground">
-                    Override parameters for specific agent or workflow roles.
+                    {$t('settings.parameters.overridesDescription')}
                 </p>
             </div>
         </div>
@@ -164,7 +173,13 @@
                         <div class="flex items-center justify-between">
                             <div>
                                 <h4 class="text-base font-medium text-foreground">{role.type}</h4>
-                                {#if role.description}
+                                {#if role.agentNames && role.agentNames.length > 0}
+                                    <p class="text-xs text-muted-foreground">
+                                        {$t('settings.modelTab.modelUsedBy', {
+                                            names: role.agentNames.join(', ')
+                                        })}
+                                    </p>
+                                {:else if role.description}
                                     <p class="text-xs text-muted-foreground">
                                         {role.description}
                                     </p>
@@ -173,7 +188,7 @@
                             <label
                                 class="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer"
                             >
-                                <span>Override</span>
+                                <span>{$t('settings.parameters.override')}</span>
                                 <input
                                     type="checkbox"
                                     class="size-5 shrink-0 rounded border-primary cursor-pointer"
@@ -196,7 +211,9 @@
                                             <Input
                                                 type="number"
                                                 step="0.01"
-                                                placeholder="Default"
+                                                placeholder={$t(
+                                                    'settings.parameters.defaultPlaceholder'
+                                                )}
                                                 value={params[param] ?? ''}
                                                 oninput={(e) =>
                                                     updateParameter(

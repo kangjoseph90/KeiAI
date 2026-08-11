@@ -22,7 +22,8 @@
         loadNewerMessages,
         dropOlderMessages,
         dropNewerMessages,
-        consumeCompletedTasks
+        consumeCompletedTasks,
+        t
     } from '$lib/stores';
     import { createLogger } from '$lib/adapters/logger';
     import { onDestroy, tick } from 'svelte';
@@ -544,9 +545,9 @@
                     <MessageSquare class="size-7 text-muted-foreground" />
                 </div>
                 <div>
-                    <p class="text-sm font-medium">Select or create a chat</p>
+                    <p class="text-sm font-medium">{$t('chat.empty.noChatTitle')}</p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                        This room is open, but no chat is selected.
+                        {$t('chat.empty.noChatBody')}
                     </p>
                 </div>
             </div>
@@ -562,8 +563,8 @@
                         variant="outline"
                         size="icon-lg"
                         class="absolute right-0 top-1.5 z-50 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
-                        title="Show chat context"
-                        aria-label="Show chat context"
+                        title={$t('chat.context.show')}
+                        aria-label={$t('chat.context.show')}
                         onclick={openInspector}
                     >
                         <ChevronLeft class="size-4" />
@@ -575,7 +576,7 @@
                         class="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-background/85 backdrop-blur-md border px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs text-muted-foreground transition-all duration-200"
                     >
                         <Loader2 class="size-3.5 animate-spin text-primary" />
-                        <span>Loading older messages...</span>
+                        <span>{$t('chat.loading.older')}</span>
                     </div>
                 {/if}
 
@@ -583,7 +584,7 @@
                 <div
                     bind:this={scrollContainerEl}
                     role="log"
-                    aria-label="Chat messages"
+                    aria-label={$t('chat.messages.region')}
                     onscroll={handleScroll}
                     onwheel={releaseSelectionBottomPin}
                     ontouchstart={releaseSelectionBottomPin}
@@ -614,9 +615,9 @@
                                     <MessageSquare class="size-7 text-muted-foreground" />
                                 </div>
                                 <div>
-                                    <p class="text-sm font-medium">Start a conversation</p>
+                                    <p class="text-sm font-medium">{$t('chat.empty.title')}</p>
                                     <p class="mt-1 text-xs text-muted-foreground">
-                                        Type a message below to begin chatting.
+                                        {$t('chat.empty.body')}
                                     </p>
                                 </div>
                             </div>
@@ -651,7 +652,7 @@
                 class="app-chat-panel-backdrop absolute inset-0 z-30 hidden bg-black/35"
                 data-open={inspectorOpen}
                 aria-hidden={!inspectorOpen}
-                aria-label="Close chat context"
+                aria-label={$t('chat.context.close')}
                 tabindex={inspectorOpen ? 0 : -1}
                 onclick={handleCloseInspectorBackdropClick}
             ></button>
@@ -676,8 +677,8 @@
                     size="icon-lg"
                     class="rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                     tabindex={inspectorOpen ? 0 : -1}
-                    title="Hide chat context"
-                    aria-label="Hide chat context"
+                    title={$t('chat.context.hide')}
+                    aria-label={$t('chat.context.hide')}
                     onclick={closeInspector}
                 >
                     <ChevronRight class="size-4" />

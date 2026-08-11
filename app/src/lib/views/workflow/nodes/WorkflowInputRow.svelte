@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Handle, Position } from '@xyflow/svelte';
     import { X } from 'lucide-svelte';
+    import { t } from '$lib/stores';
     import type {
         InputPort,
         WorkflowNode,
@@ -76,7 +77,7 @@
         <input
             class="nodrag w-20 shrink-0 bg-transparent text-xs text-muted-foreground outline-none"
             value={agentSlotName()}
-            aria-label="Input name"
+            aria-label={$t('workflow.input.nameAria')}
             onchange={(event) => renameAgentSlot(event.currentTarget.value)}
         />
     {:else}
@@ -99,7 +100,7 @@
                 <input
                     type="checkbox"
                     class="size-3.5 disabled:cursor-not-allowed"
-                    aria-label={`${port.name} value`}
+                    aria-label={`${port.name} ${$t('workflow.node.value')}`}
                     checked={inputValueAsBoolean()}
                     disabled={connection !== null}
                     onchange={(event) => onUpdateInputValue(inputId, event.currentTarget.checked)}
@@ -111,7 +112,9 @@
                 class="nodrag h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
                 value={inputValueAsNumber()}
                 disabled={connection !== null}
-                placeholder={connection ? 'Connected' : 'Number'}
+                placeholder={connection
+                    ? $t('workflow.input.connected')
+                    : $t('workflow.input.numberPlaceholder')}
                 onchange={(event) => onUpdateInputValue(inputId, Number(event.currentTarget.value))}
             />
         {:else}
@@ -119,7 +122,9 @@
                 class="nodrag h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
                 value={inputValueAsString()}
                 disabled={connection !== null}
-                placeholder={connection ? 'Connected' : 'String'}
+                placeholder={connection
+                    ? $t('workflow.input.connected')
+                    : $t('workflow.input.stringPlaceholder')}
                 onchange={(event) => onUpdateInputValue(inputId, event.currentTarget.value)}
             />
         {/if}
@@ -132,7 +137,7 @@
     {#if isAgentSlot()}
         <button
             class="nodrag -mr-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-            title="Delete input"
+            title={$t('workflow.input.delete')}
             onclick={deleteAgentSlot}><X class="size-3" /></button
         >
     {/if}

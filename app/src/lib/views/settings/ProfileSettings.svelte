@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { activeUser, updateUser } from '$lib/stores';
+    import { activeUser, updateUser, t } from '$lib/stores';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
 
@@ -38,7 +38,9 @@
             ? [
                   {
                       id: 'profile-avatar',
-                      name: `${userName || 'Profile'} avatar`,
+                      name: $t('settings.profile.avatarAlt', {
+                          name: userName || $t('settings.profile.profileFallback')
+                      }),
                       src: displayedAvatar,
                       mimeType: getDataUrlMimeType(displayedAvatar) ?? 'image/*'
                   }
@@ -88,14 +90,19 @@
 
         try {
             const file = await appDialog.openFile({
-                title: 'Upload Profile Avatar',
-                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
+                title: $t('settings.profile.uploadTitle'),
+                filters: [
+                    {
+                        name: $t('common.fileFilters.images'),
+                        extensions: [...IMAGE_ASSET_EXTENSIONS]
+                    }
+                ]
             });
             if (!file || $activeUser?.id !== userId || version !== actionVersion) return;
             if (file.size > AVATAR_MAX_SIZE) {
                 toast.error({
-                    title: 'Could not use avatar',
-                    description: 'Avatar image must be under 5MB'
+                    title: $t('settings.profile.toast.avatarOversize'),
+                    description: $t('settings.profile.toast.avatarOversizeBody')
                 });
                 return;
             }
@@ -110,7 +117,10 @@
             avatarDraft = avatar;
         } catch (e) {
             if ($activeUser?.id !== userId || version !== actionVersion) return;
-            toast.error({ title: 'Could not prepare avatar', description: getErrorMessage(e) });
+            toast.error({
+                title: $t('settings.profile.toast.prepareAvatar'),
+                description: getErrorMessage(e)
+            });
         } finally {
             if ($activeUser?.id === userId && version === actionVersion) avatarPicking = false;
         }
@@ -135,10 +145,13 @@
             });
             if ($activeUser?.id !== userId || version !== actionVersion) return;
             avatarDraft = null;
-            toast.success({ title: 'Profile saved' });
+            toast.success({ title: $t('settings.profile.toast.saved') });
         } catch (e) {
             if ($activeUser?.id !== userId || version !== actionVersion) return;
-            toast.error({ title: 'Could not save profile', description: getErrorMessage(e) });
+            toast.error({
+                title: $t('settings.profile.toast.saveFailed'),
+                description: getErrorMessage(e)
+            });
         } finally {
             if ($activeUser?.id === userId && version === actionVersion) loading = false;
         }
@@ -148,9 +161,11 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-6">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">User Profile</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('settings.profile.title')}
+            </h3>
             <p class="text-sm text-muted-foreground">
-                Your profile is stored locally and syncs to your devices securely via PocketBase.
+                {$t('settings.profile.description')}
             </p>
         </div>
 
@@ -164,9 +179,11 @@
                             : 'cursor-default'}"
                         disabled={!canPreviewAvatar}
                         aria-label={canPreviewAvatar
-                            ? `View ${userName || 'profile'} avatar`
-                            : 'Default profile avatar'}
-                        title={canPreviewAvatar ? 'View avatar' : undefined}
+                            ? $t('settings.profile.avatarAlt', {
+                                  name: userName || $t('settings.profile.profileFallback')
+                              })
+                            : $t('settings.profile.defaultAvatarAlt')}
+                        title={canPreviewAvatar ? $t('settings.profile.viewAvatar') : undefined}
                         onclick={() => (avatarPreviewOpen = true)}
                     >
                         <Avatar.Root
@@ -185,11 +202,11 @@
                 </div>
 
                 <div class="min-w-0 flex-1 space-y-2">
-                    <Label for="profile-display-name">Display Name</Label>
+                    <Label for="profile-display-name">{$t('settings.profile.displayName')}</Label>
                     <Input
                         id="profile-display-name"
                         bind:value={userName}
-                        placeholder="Your display name"
+                        placeholder={$t('settings.profile.displayNamePlaceholder')}
                         disabled={loading || avatarPicking}
                     />
                     <div class="flex flex-wrap gap-1.5 pt-1">
@@ -202,7 +219,8 @@
                             aria-busy={avatarPicking}
                             onclick={handleAvatarUpload}
                         >
-                            <Upload class="size-4" /> Upload avatar
+                            <Upload class="size-4" />
+                            {$t('settings.profile.uploadAvatar')}
                         </Button>
                         <Button
                             type="button"
@@ -212,7 +230,8 @@
                             disabled={loading || avatarPicking || !displayedAvatar}
                             onclick={handleAvatarRemove}
                         >
-                            <Trash2 class="size-4" /> Remove avatar
+                            <Trash2 class="size-4" />
+                            {$t('settings.profile.removeAvatar')}
                         </Button>
                     </div>
                 </div>
@@ -220,7 +239,7 @@
 
             {#if identityFingerprint}
                 <div class="space-y-1.5">
-                    <Label>Identity Fingerprint</Label>
+                    <Label>{$t('settings.profile.fingerprint')}</Label>
                     <div
                         class="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-sm"
                     >
@@ -235,7 +254,8 @@
                     aria-busy={loading}
                     onclick={handleUpdateUser}
                 >
-                    <UserRoundPen class="mr-2 size-4" /> Save Profile
+                    <UserRoundPen class="mr-2 size-4" />
+                    {$t('settings.profile.save')}
                 </Button>
             </div>
         </div>
@@ -245,5 +265,5 @@
 <MediaGalleryDialog
     bind:open={avatarPreviewOpen}
     items={avatarPreviewItems}
-    title="Profile avatar"
+    title={$t('settings.profile.galleryTitle')}
 />

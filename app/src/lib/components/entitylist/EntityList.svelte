@@ -19,6 +19,7 @@
     import { appPrompt, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import { cn } from '$lib/utils';
+    import { t } from '$lib/stores';
     import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';
 
     interface FolderSnippetPayload {
@@ -348,9 +349,9 @@
                 }
             } else {
                 const newFolderName = await appPrompt({
-                    title: 'Create folder',
-                    description: 'Enter a name for the new grouped folder.',
-                    defaultValue: 'Grouped Folder'
+                    title: $t('components.entityList.createFolderTitle'),
+                    description: $t('components.entityList.createFolderBody'),
+                    defaultValue: $t('components.entityList.createFolderDefault')
                 });
                 if (!newFolderName) return;
                 if (!targetNode.sortOrder) return;
@@ -465,7 +466,7 @@
             await tick();
         } catch (error) {
             toast.error({
-                title: 'Could not move item',
+                title: $t('components.entityList.moveFailed'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -606,7 +607,7 @@
                         variant="ghost"
                         size="icon-sm"
                         class="size-7 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground dark:hover:bg-background/95"
-                        aria-label={`Actions for ${f.name}`}
+                        aria-label={$t('components.entityList.actionsFor', { name: f.name })}
                     >
                         <MoreVertical class="size-3.5" />
                     </Button>
@@ -620,7 +621,7 @@
                         class="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground cursor-pointer"
                     >
                         <Edit2 class="size-3.5" />
-                        <span>Rename</span>
+                        <span>{$t('components.entityList.rename')}</span>
                     </DropdownMenu.Item>
 
                     <div class="border-t border-border my-1"></div>
@@ -628,7 +629,7 @@
                         class="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1"
                     >
                         <Palette class="size-3" />
-                        <span>Folder Color</span>
+                        <span>{$t('components.entityList.folderColor')}</span>
                     </div>
                     <div class="grid grid-cols-4 gap-1 px-2 py-1.5">
                         {#each COLOR_PRESETS as colorName (colorName)}
@@ -639,7 +640,9 @@
                                     ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
                                     : ''}"
                                 title={colorName}
-                                aria-label={`Set folder color to ${colorName}`}
+                                aria-label={$t('components.entityList.setColorAria', {
+                                    color: colorName
+                                })}
                                 onclick={() => onUpdateFolder(f.id, { color: colorName })}
                             >
                             </button>
@@ -648,7 +651,7 @@
                             class="col-span-4 mt-1 text-[10px] text-center text-muted-foreground py-0.5 rounded hover:bg-muted"
                             onclick={() => onUpdateFolder(f.id, { color: '' })}
                         >
-                            Reset Color
+                            {$t('components.entityList.resetColor')}
                         </button>
                     </div>
 
@@ -658,7 +661,7 @@
                         class="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive rounded hover:bg-destructive/10 hover:text-destructive cursor-pointer"
                     >
                         <Trash2 class="size-3.5" />
-                        <span>Unwrap Folder</span>
+                        <span>{$t('components.entityList.unwrap')}</span>
                     </DropdownMenu.Item>
                 </DropdownMenu.Content>
             </DropdownMenu.Root>
@@ -695,17 +698,17 @@
                         </div>
                     </div>
                     <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                        {childCount} item{childCount === 1 ? '' : 's'} inside
+                        {$t('components.entityList.itemsInside', { count: childCount })}
                     </p>
                 </div>
             </div>
             <div class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground">
                 {#if collapsed}
                     <FolderOpen strokeWidth={2.5} class="size-3.5" />
-                    Open folder
+                    {$t('components.entityList.openFolder')}
                 {:else}
                     <Folder strokeWidth={2.5} class="size-3.5" />
-                    Close folder
+                    {$t('components.entityList.closeFolder')}
                 {/if}
             </div>
         </div>

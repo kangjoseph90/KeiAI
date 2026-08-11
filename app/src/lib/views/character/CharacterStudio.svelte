@@ -15,6 +15,7 @@
         activeCharacter,
         activeChat,
         activeRoom,
+        t,
         updateCharacterContent,
         updateCharacterAvatar,
         removeCharacterAvatar,
@@ -86,15 +87,15 @@
     }
 
     // Tabs navigation helper
-    const tabs = [
-        { id: 'profile', label: 'Profile', icon: UserRound },
-        { id: 'greetings', label: 'Greetings', icon: MessageSquare },
-        { id: 'lorebooks', label: 'Lorebooks', icon: Book },
-        { id: 'scripts', label: 'Scripts', icon: Code },
-        { id: 'display', label: 'Display', icon: Monitor },
-        { id: 'assets', label: 'Assets', icon: ImageIcon },
-        { id: 'advanced', label: 'Advanced', icon: Settings2 }
-    ] as const;
+    const tabs = $derived([
+        { id: 'profile', label: $t('character.studio.tabs.profile'), icon: UserRound },
+        { id: 'greetings', label: $t('character.studio.tabs.greetings'), icon: MessageSquare },
+        { id: 'lorebooks', label: $t('character.studio.tabs.lorebooks'), icon: Book },
+        { id: 'scripts', label: $t('character.studio.tabs.scripts'), icon: Code },
+        { id: 'display', label: $t('character.studio.tabs.display'), icon: Monitor },
+        { id: 'assets', label: $t('character.studio.tabs.assets'), icon: ImageIcon },
+        { id: 'advanced', label: $t('character.studio.tabs.advanced'), icon: Settings2 }
+    ] as const);
 
     $effect(() => {
         if (characterTab) activeTab = characterTab;
@@ -133,7 +134,7 @@
             await exportCharacterFile($activeCharacter.id, request);
         } catch (error) {
             toast.error({
-                title: 'Could not export character',
+                title: $t('character.toast.export'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -147,9 +148,9 @@
         deleting = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete character?',
-                description: `Delete "${target.name}" and its owned resources? This cannot be undone.`,
-                confirmText: 'Delete',
+                title: $t('character.deleteTitle'),
+                description: $t('character.deleteBody', { name: target.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activeCharacter?.id !== target.id) return;
@@ -157,7 +158,7 @@
             backToChat();
         } catch (error) {
             toast.error({
-                title: 'Could not delete character',
+                title: $t('character.toast.delete'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -182,7 +183,7 @@
                       mimeType: $activeCharacter.avatar.mimeType
                   }
                 : null}
-            alt={$activeCharacter?.name ?? 'Character'}
+            alt={$activeCharacter?.name ?? $t('character.studio.avatarFallback')}
             class="size-full object-cover"
             fallback="none"
             focus="top"
@@ -195,7 +196,7 @@
 {/snippet}
 
 <WorkspaceShell
-    workspaceName="Character Studio"
+    workspaceName={$t('character.studio.title')}
     entityName={$activeCharacter?.name}
     sections={tabs}
     activeSection={activeTab}
@@ -203,12 +204,12 @@
     onSelect={openTab}
     onBack={returnToTabs}
     onClose={backToChat}
-    closeLabel="Close studio"
+    closeLabel={$t('character.studio.close')}
     identity={identityAvatar}
 >
     {#if !$activeCharacter}
         <div class="flex flex-1 items-center justify-center">
-            <p class="text-muted-foreground">Loading character data...</p>
+            <p class="text-muted-foreground">{$t('character.studio.loading')}</p>
         </div>
     {:else}
         <ScrollArea class="min-h-0 flex-1">

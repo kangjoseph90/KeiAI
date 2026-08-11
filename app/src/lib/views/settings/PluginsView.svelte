@@ -8,7 +8,8 @@
         createGlobalFolder,
         updateGlobalFolder,
         deleteGlobalFolder,
-        moveGlobalItem
+        moveGlobalItem,
+        t
     } from '$lib/stores';
     import type { Plugin } from '$lib/services';
     import { Button } from '$lib/components/ui/button';
@@ -77,7 +78,10 @@
         try {
             await pluginManager.loadPlugin(id);
         } catch (error) {
-            toast.error({ title: 'Plugin load failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.plugins.toast.loadFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             refreshLoadedPlugins();
             busyAction = null;
@@ -90,7 +94,10 @@
         try {
             await pluginManager.unloadPlugin(id);
         } catch (error) {
-            toast.error({ title: 'Plugin unload failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.plugins.toast.unloadFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             refreshLoadedPlugins();
             busyAction = null;
@@ -104,7 +111,10 @@
             const plugin = await createPlugin();
             expandedPluginIds[plugin.id] = true;
         } catch (error) {
-            toast.error({ title: 'Could not add plugin', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.plugins.toast.addFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -116,9 +126,9 @@
         const wasLoaded = isPluginLoaded(plugin.id);
         try {
             const confirmed = await appConfirm({
-                title: 'Delete plugin?',
-                description: `Delete "${plugin.name}" and its local configuration?`,
-                confirmText: 'Delete',
+                title: $t('settings.plugins.deleteTitle'),
+                description: $t('settings.plugins.deleteBody', { name: plugin.name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed) return;
@@ -130,13 +140,16 @@
                     await restorePluginRuntime(
                         plugin.id,
                         error,
-                        'Plugin deletion failed and the previous runtime could not be restored'
+                        $t('settings.plugins.error.deletionRestore')
                     );
                 }
                 throw error;
             }
         } catch (error) {
-            toast.error({ title: 'Could not delete plugin', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.plugins.toast.deleteFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             refreshLoadedPlugins();
             busyAction = null;
@@ -156,14 +169,14 @@
                     await restorePluginRuntime(
                         plugin.id,
                         error,
-                        'Plugin update failed and the previous runtime could not be restored'
+                        $t('settings.plugins.error.updateRestore')
                     );
                 }
                 throw error;
             }
         } catch (error) {
             toast.error({
-                title: 'Plugin state change failed',
+                title: $t('settings.plugins.toast.stateFailed'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -179,7 +192,10 @@
         try {
             await updatePlugin(pluginId, changes);
         } catch (error) {
-            toast.error({ title: 'Plugin update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.plugins.toast.updateFailed'),
+                description: getErrorMessage(error)
+            });
         }
     }
 
@@ -204,7 +220,7 @@
 
 {#if $appSettings}
     <div class="flex flex-col gap-4 px-2">
-        <ListActionBar description="Extend KeiAI with custom behavior.">
+        <ListActionBar description={$t('settings.plugins.extend')}>
             <Button
                 size="sm"
                 class="gap-1.5"
@@ -212,7 +228,8 @@
                 aria-busy={busyAction === 'create'}
                 onclick={handleCreate}
             >
-                <Plus class="size-4" /> Add Plugin
+                <Plus class="size-4" />
+                {$t('settings.plugins.add')}
             </Button>
         </ListActionBar>
 
@@ -228,7 +245,7 @@
                 moveGlobalItem('plugins', itemId, newFolderId, newSortOrder)}
         >
             {#snippet empty()}
-                <EmptyListPlaceholder message="No plugins defined." />
+                <EmptyListPlaceholder message={$t('settings.plugins.empty')} />
             {/snippet}
             {#snippet item({ entity: plugin })}
                 <EditableListItem
@@ -249,8 +266,8 @@
                             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             onclick={() => toggleExpanded(plugin.id)}
                             aria-label={expandedPluginIds[plugin.id]
-                                ? 'Collapse plugin'
-                                : 'Expand plugin'}
+                                ? $t('settings.plugins.collapse')
+                                : $t('settings.plugins.expand')}
                         >
                             {#if expandedPluginIds[plugin.id]}
                                 <ChevronDown class="size-3.5" />
@@ -262,24 +279,23 @@
                         <Input
                             value={plugin.name}
                             disabled={busyAction !== null}
-                            aria-label="Plugin name"
+                            aria-label={$t('settings.plugins.nameAria')}
                             class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
                             onchange={(e) =>
                                 updatePluginSafely(plugin.id, { name: e.currentTarget.value })}
                         />
                         <!-- Version Badge -->
                         {#if plugin.version && plugin.version.trim() !== ''}
-                            <Badge
-                                variant="secondary"
-                                class="text-[10px] h-5 px-1.5 font-mono shrink-0"
-                                >v{plugin.version}</Badge
+                            <Badge variant="secondary">
+                                <!-- i18n-ignore: version prefix -->
+                                v{plugin.version}</Badge
                             >
                         {/if}
                         <!-- Status Badge -->
                         {#if loadedPluginIds.includes(plugin.id)}
                             <Badge
                                 class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
-                                >Running</Badge
+                                >{$t('settings.plugins.running')}</Badge
                             >
                         {/if}
 
@@ -287,8 +303,12 @@
                             size="icon-sm"
                             variant="ghost"
                             class="shrink-0 text-muted-foreground"
-                            title={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
-                            aria-label={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
+                            title={plugin.enabled
+                                ? $t('settings.plugins.disable')
+                                : $t('settings.plugins.enable')}
+                            aria-label={plugin.enabled
+                                ? $t('settings.plugins.disable')
+                                : $t('settings.plugins.enable')}
                             disabled={busyAction !== null}
                             aria-busy={busyAction === `toggle:${plugin.id}`}
                             onclick={() => handleToggleEnabled(plugin)}
@@ -306,8 +326,8 @@
                                     size="icon-sm"
                                     variant="ghost"
                                     class="shrink-0 text-muted-foreground hover:text-destructive"
-                                    title="Unload plug-in"
-                                    aria-label="Unload plug-in"
+                                    title={$t('settings.plugins.unload')}
+                                    aria-label={$t('settings.plugins.unload')}
                                     disabled={busyAction !== null}
                                     aria-busy={busyAction === `unload:${plugin.id}`}
                                     onclick={() => handleUnload(plugin.id)}
@@ -319,8 +339,8 @@
                                     size="icon-sm"
                                     variant="ghost"
                                     class="shrink-0 text-muted-foreground hover:text-foreground"
-                                    title="Load plug-in"
-                                    aria-label="Load plug-in"
+                                    title={$t('settings.plugins.load')}
+                                    aria-label={$t('settings.plugins.load')}
                                     disabled={busyAction !== null}
                                     aria-busy={busyAction === `load:${plugin.id}`}
                                     onclick={() => handleLoad(plugin.id)}
@@ -334,7 +354,7 @@
                             size="icon-sm"
                             variant="ghost"
                             class="shrink-0 text-muted-foreground hover:text-destructive"
-                            aria-label="Delete plugin"
+                            aria-label={$t('settings.plugins.delete')}
                             disabled={busyAction !== null}
                             aria-busy={busyAction === `delete:${plugin.id}`}
                             onclick={() => handleDelete(plugin)}
@@ -350,10 +370,12 @@
                             <!-- 1. Description & Version -->
                             <div class="grid gap-3 sm:grid-cols-3">
                                 <div class="space-y-1.5 sm:col-span-2">
-                                    <Label class="text-xs">Description</Label>
+                                    <Label class="text-xs"
+                                        >{$t('settings.plugins.description')}</Label
+                                    >
                                     <Input
                                         class="h-8 text-xs bg-background"
-                                        placeholder="No description"
+                                        placeholder={$t('common.noDescription')}
                                         value={plugin.description}
                                         disabled={busyAction !== null}
                                         onchange={(e) =>
@@ -363,7 +385,7 @@
                                     />
                                 </div>
                                 <div class="space-y-1.5">
-                                    <Label class="text-xs">Version</Label>
+                                    <Label class="text-xs">{$t('settings.plugins.version')}</Label>
                                     <Input
                                         class="h-8 text-xs bg-background"
                                         placeholder="1.0.0"
@@ -379,10 +401,10 @@
 
                             <!-- 2. Code -->
                             <div class="space-y-1.5">
-                                <Label class="text-xs">CharJS Source Code</Label>
+                                <Label class="text-xs">{$t('settings.plugins.source')}</Label>
                                 <Textarea
                                     class="min-h-32 text-xs font-mono bg-background"
-                                    placeholder="Code"
+                                    placeholder={$t('common.label.code')}
                                     value={plugin.code}
                                     disabled={busyAction !== null}
                                     onchange={(e) =>
@@ -393,9 +415,9 @@
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label class="text-xs">Plugin Arguments</Label>
+                                <Label class="text-xs">{$t('settings.plugins.arguments')}</Label>
                                 <KeyValueEditor
-                                    emptyMessage="No arguments defined."
+                                    emptyMessage={$t('settings.plugins.noArguments')}
                                     data={plugin.args as Record<string, string>}
                                     onUpdateValue={(key, val) =>
                                         handleUpdateArgValue(plugin, key, val)}

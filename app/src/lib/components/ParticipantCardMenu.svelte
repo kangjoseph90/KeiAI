@@ -2,6 +2,7 @@
     import { MoreVertical, Pin, Settings, X } from 'lucide-svelte';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import { Button } from '$lib/components/ui/button';
+    import { t } from '$lib/stores';
 
     let {
         kind,
@@ -27,7 +28,11 @@
         onRemove: () => void;
     } = $props();
 
-    const removeLabel = $derived(kind === 'character' ? 'Remove from room' : 'Remove from chat');
+    const removeLabel = $derived(
+        kind === 'character'
+            ? $t('components.participantMenu.removeFromRoom')
+            : $t('components.participantMenu.removeFromChat')
+    );
     let menuOpen = $state(false);
 </script>
 
@@ -47,7 +52,7 @@
                     variant="ghost"
                     size="icon-sm"
                     class="size-6 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground dark:hover:bg-background/95"
-                    aria-label={`Actions for ${name}`}
+                    aria-label={$t('components.participantMenu.actionsFor', { name })}
                     {disabled}
                 >
                     <MoreVertical class="size-3.5" />
@@ -56,7 +61,7 @@
             <DropdownMenu.Content align="end" sideOffset={4} class="w-44">
                 <DropdownMenu.Item class="cursor-pointer" onclick={onOpen}>
                     <Settings class="size-4" />
-                    Open studio
+                    {$t('components.participantMenu.openStudio')}
                 </DropdownMenu.Item>
                 {#if !isDefault}
                     <DropdownMenu.Item
@@ -66,7 +71,7 @@
                         onclick={onSetDefault}
                     >
                         <Pin class="size-4" />
-                        Set default
+                        {$t('components.participantMenu.setDefault')}
                     </DropdownMenu.Item>
                 {/if}
                 <DropdownMenu.Separator />

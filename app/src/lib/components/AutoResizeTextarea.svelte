@@ -5,6 +5,7 @@
      */
     import { onMount } from 'svelte';
     import { cn } from '$lib/utils';
+    import { t } from '$lib/stores';
 
     let {
         value = $bindable(''),
@@ -68,7 +69,7 @@
     bind:this={textareaEl}
     bind:value
     {placeholder}
-    aria-label="Message"
+    aria-label={$t('components.textarea.message')}
     {disabled}
     rows={minRows}
     oninput={handleInput}

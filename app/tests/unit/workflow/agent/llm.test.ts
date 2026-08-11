@@ -169,6 +169,7 @@ describe('getWorkflowLLMTypes', () => {
         expect(definitions).toEqual([
             {
                 type: 'translation',
+                agentNames: ['Translator'],
                 description: 'Model used by Translator'
             }
         ]);
@@ -180,6 +181,7 @@ describe('getWorkflowLLMTypes', () => {
         expect(definitions).toEqual([
             {
                 type: 'chat',
+                agentNames: ['Chat Agent'],
                 description: 'Model used by Chat Agent'
             }
         ]);
@@ -191,6 +193,7 @@ describe('getWorkflowLLMTypes', () => {
         expect(definitions).toEqual([
             {
                 type: 'chat',
+                agentNames: ['Suggester'],
                 description: 'Model used by Suggester'
             }
         ]);

@@ -3,6 +3,7 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import { t } from '$lib/stores';
 
     let {
         character,
@@ -15,30 +16,30 @@
 
 <div class="space-y-4">
     <div class="grid gap-1.5">
-        <Label for="character-background-html">Background HTML</Label>
+        <Label for="character-background-html">{$t('character.display.backgroundLabel')}</Label>
         <Textarea
             id="character-background-html"
             rows={12}
             value={character.backgroundHTML}
             oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
-            placeholder="&lt;style&gt;...&lt;/style&gt;"
+            placeholder={$t('character.display.backgroundPlaceholder')}
             class="font-mono text-sm"
         />
-        <p class="text-xs text-muted-foreground">HTML rendered in the chat background.</p>
+        <p class="text-xs text-muted-foreground">{$t('character.display.backgroundHelp')}</p>
     </div>
 
     <div class="grid gap-1.5">
-        <Label for="character-message-css">Message CSS</Label>
+        <Label for="character-message-css">{$t('character.display.cssLabel')}</Label>
         <Textarea
             id="character-message-css"
             rows={12}
             value={character.messageCSS}
             oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}
-            placeholder=".status-panel &#123; ... &#125;"
+            placeholder={$t('character.display.cssPlaceholder')}
             class="font-mono text-sm"
         />
         <p class="text-xs text-muted-foreground">
-            CSS styles applied to messages for this character.
+            {$t('character.display.cssHelp')}
         </p>
     </div>
 </div>

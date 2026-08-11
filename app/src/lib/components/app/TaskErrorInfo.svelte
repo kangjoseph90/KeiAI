@@ -2,6 +2,7 @@
     import { Info } from 'lucide-svelte';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import { Button } from '$lib/components/ui/button';
+    import { t } from '$lib/stores';
 
     let { errorMessage }: { errorMessage?: string } = $props();
 
@@ -36,8 +37,8 @@
             variant="ghost"
             size="icon-sm"
             class="size-6 shrink-0 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-            aria-label="Show error details"
-            title="Error details"
+            aria-label={$t('tasks.errorInfo.showDetails')}
+            title={$t('tasks.errorInfo.title')}
         >
             <Info class="size-3.5" />
         </Button>
@@ -51,9 +52,9 @@
         }}
         onpointerleave={scheduleClose}
     >
-        <p class="mb-1 text-xs font-medium text-destructive">Error details</p>
+        <p class="mb-1 text-xs font-medium text-destructive">{$t('tasks.errorInfo.heading')}</p>
         <p class="whitespace-pre-wrap wrap-break-word text-xs text-popover-foreground">
-            {errorMessage || 'No additional error information is available.'}
+            {errorMessage || $t('tasks.errorInfo.fallback')}
         </p>
     </DropdownMenu.Content>
 </DropdownMenu.Root>

@@ -30,12 +30,11 @@
     import { slide } from 'svelte/transition';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
-    import { themePreference } from '$lib/stores';
+    import { themePreference, t } from '$lib/stores';
     import { appConfirm } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import {
         WORKFLOW_NODE_DEFINITIONS,
-        WORKFLOW_NODE_CATEGORY_LABELS,
         WORKFLOW_NODE_CATEGORY_ORDER,
         connectNodes,
         createAgentInput,
@@ -49,6 +48,7 @@
         validateWorkflow,
         type WorkflowDefinition,
         type WorkflowEditResult,
+        type WorkflowNodeCategory,
         type WorkflowNodeChanges,
         type WorkflowNodeClass
     } from '$lib/workflow';
@@ -83,51 +83,114 @@
     const nodeDefinitionEntries = Object.entries(WORKFLOW_NODE_DEFINITIONS) as Array<
         [WorkflowNodeClass, (typeof WORKFLOW_NODE_DEFINITIONS)[WorkflowNodeClass]]
     >;
-    const nodeGroups = WORKFLOW_NODE_CATEGORY_ORDER.map((category) => ({
-        label: WORKFLOW_NODE_CATEGORY_LABELS[category],
-        classes: nodeDefinitionEntries
-            .filter(([, definition]) => definition.category === category)
-            .map(([nodeClass]) => nodeClass)
-    })).filter((group) => group.classes.length > 0);
+    const categoryLabelKeys = {
+        agent: 'workflow.graph.category.agent',
+        history: 'workflow.graph.category.history',
+        string: 'workflow.graph.category.string',
+        number: 'workflow.graph.category.number',
+        boolean: 'workflow.graph.category.boolean',
+        variable: 'workflow.graph.category.variable',
+        flow: 'workflow.graph.category.flow',
+        file: 'workflow.graph.category.file',
+        result: 'workflow.graph.category.result'
+    } as const satisfies Record<WorkflowNodeCategory, string>;
+    const nodeLabelKeys = {
+        String: 'workflow.graph.node.String',
+        Number: 'workflow.graph.node.Number',
+        Boolean: 'workflow.graph.node.Boolean',
+        Template: 'workflow.graph.node.Template',
+        GetToggle: 'workflow.graph.node.GetToggle',
+        GetChatVar: 'workflow.graph.node.GetChatVar',
+        SetChatVar: 'workflow.graph.node.SetChatVar',
+        ToBoolean: 'workflow.graph.node.ToBoolean',
+        ToNumber: 'workflow.graph.node.ToNumber',
+        Catch: 'workflow.graph.node.Catch',
+        ThrowIf: 'workflow.graph.node.ThrowIf',
+        Concat: 'workflow.graph.node.Concat',
+        StringLength: 'workflow.graph.node.StringLength',
+        StringIncludes: 'workflow.graph.node.StringIncludes',
+        StringReplace: 'workflow.graph.node.StringReplace',
+        StringRegexReplace: 'workflow.graph.node.StringRegexReplace',
+        FilterAgentParts: 'workflow.graph.node.FilterAgentParts',
+        SelectVisibleParts: 'workflow.graph.node.SelectVisibleParts',
+        SelectLastTextPart: 'workflow.graph.node.SelectLastTextPart',
+        ImageGeneration: 'workflow.graph.node.ImageGeneration',
+        TTS: 'workflow.graph.node.TTS',
+        STT: 'workflow.graph.node.STT',
+        GetHistory: 'workflow.graph.node.GetHistory',
+        SetHistory: 'workflow.graph.node.SetHistory',
+        GetImageAttachments: 'workflow.graph.node.GetImageAttachments',
+        SetImageAttachments: 'workflow.graph.node.SetImageAttachments',
+        GetAudioAttachments: 'workflow.graph.node.GetAudioAttachments',
+        SetAudioAttachments: 'workflow.graph.node.SetAudioAttachments',
+        GetTranslation: 'workflow.graph.node.GetTranslation',
+        SetTranslation: 'workflow.graph.node.SetTranslation',
+        NumberMath: 'workflow.graph.node.NumberMath',
+        NumberCompare: 'workflow.graph.node.NumberCompare',
+        BooleanLogic: 'workflow.graph.node.BooleanLogic',
+        BooleanNot: 'workflow.graph.node.BooleanNot',
+        Gate: 'workflow.graph.node.Gate',
+        Ungate: 'workflow.graph.node.Ungate',
+        Output: 'workflow.graph.node.Output',
+        Log: 'workflow.graph.node.Log',
+        Sink: 'workflow.graph.node.Sink',
+        FileRead: 'workflow.graph.node.FileRead',
+        FileWrite: 'workflow.graph.node.FileWrite',
+        Agent: 'workflow.graph.node.Agent'
+    } as const satisfies Record<WorkflowNodeClass, string>;
+    const nodeGroups = $derived(
+        WORKFLOW_NODE_CATEGORY_ORDER.map((category) => ({
+            category,
+            label: $t(categoryLabelKeys[category]),
+            classes: nodeDefinitionEntries
+                .filter(([, definition]) => definition.category === category)
+                .map(([nodeClass]) => nodeClass)
+        })).filter((group) => group.classes.length > 0)
+    );
+    const translatedNodeLabels = $derived(
+        Object.fromEntries(
+            nodeDefinitionEntries.map(([nodeClass]) => [nodeClass, $t(nodeLabelKeys[nodeClass])])
+        ) as Record<WorkflowNodeClass, string>
+    );
 
     const categoryMeta: Record<string, { icon: typeof Bot; color: string; bg: string }> = {
-        Agent: { icon: Bot, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-500/15' },
-        History: { icon: History, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/15' },
-        String: {
+        agent: { icon: Bot, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-500/15' },
+        history: { icon: History, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/15' },
+        string: {
             icon: Type,
             color: 'text-emerald-600 dark:text-emerald-400',
             bg: 'bg-emerald-500/15'
         },
-        Number: { icon: Hash, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/15' },
-        Boolean: {
+        number: { icon: Hash, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/15' },
+        boolean: {
             icon: ToggleLeft,
             color: 'text-rose-600 dark:text-rose-400',
             bg: 'bg-rose-500/15'
         },
-        Variable: {
+        variable: {
             icon: VariableIcon,
             color: 'text-indigo-600 dark:text-indigo-400',
             bg: 'bg-indigo-500/15'
         },
-        Flow: { icon: GitFork, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-500/15' },
-        File: {
+        flow: { icon: GitFork, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-500/15' },
+        file: {
             icon: FileCode,
             color: 'text-slate-600 dark:text-slate-400',
             bg: 'bg-slate-500/15'
         },
-        Result: {
+        result: {
             icon: CheckCircle2,
             color: 'text-green-600 dark:text-green-400',
             bg: 'bg-green-500/15'
         }
     };
 
-    const expandedGroups = new SvelteSet<string>(['Agent']);
+    const expandedGroups = new SvelteSet<WorkflowNodeCategory>(['agent']);
     let mobileNodePanelOpen = $state(false);
 
-    function toggleGroup(label: string) {
-        if (expandedGroups.has(label)) expandedGroups.delete(label);
-        else expandedGroups.add(label);
+    function toggleGroup(category: WorkflowNodeCategory) {
+        if (expandedGroups.has(category)) expandedGroups.delete(category);
+        else expandedGroups.add(category);
     }
 
     interface WorkflowDiagnostic {
@@ -263,9 +326,9 @@
         if (
             node.class === 'Agent' &&
             !(await appConfirm({
-                title: 'Delete agent node?',
-                description: `Delete agent node "${node.name}"?`,
-                confirmText: 'Delete',
+                title: $t('workflow.graph.deleteAgentTitle'),
+                description: $t('workflow.graph.deleteAgentBody', { name: node.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             }))
         ) {
@@ -314,7 +377,10 @@
                 ) {
                     result.push({
                         nodeId: node.id,
-                        message: `${node.name}: ${port.name} input is required`
+                        message: $t('workflow.graph.diagnosticRequired', {
+                            node: node.name,
+                            port: port.name
+                        })
                     });
                 }
             }
@@ -323,7 +389,7 @@
         try {
             validateWorkflow(value);
         } catch (error) {
-            const message = getErrorMessage(error, 'Invalid workflow');
+            const message = getErrorMessage(error, $t('workflow.graph.invalidWorkflow'));
             if (!result.some((diagnostic) => diagnostic.message === message)) {
                 result.push({ message });
             }
@@ -343,9 +409,9 @@
 
 {#snippet nodeAddList()}
     <div class="flex flex-col gap-1 pr-0.5">
-        {#each nodeGroups as group (group.label)}
-            {@const isExpanded = expandedGroups.has(group.label)}
-            {@const meta = categoryMeta[group.label] ?? {
+        {#each nodeGroups as group (group.category)}
+            {@const isExpanded = expandedGroups.has(group.category)}
+            {@const meta = categoryMeta[group.category] ?? {
                 icon: Layers,
                 color: 'text-primary',
                 bg: 'bg-primary/10'
@@ -357,7 +423,7 @@
                 <button
                     type="button"
                     class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold text-foreground/90 transition-colors hover:bg-muted/70"
-                    onclick={() => toggleGroup(group.label)}
+                    onclick={() => toggleGroup(group.category)}
                     aria-expanded={isExpanded}
                 >
                     <div class="flex min-w-0 items-center gap-2">
@@ -394,9 +460,7 @@
                                 {disabled}
                                 onclick={() => addWorkflowNode(nodeClass)}
                             >
-                                <span class="truncate"
-                                    >{WORKFLOW_NODE_DEFINITIONS[nodeClass].label}</span
-                                >
+                                <span class="truncate">{translatedNodeLabels[nodeClass]}</span>
                                 <Plus
                                     class="size-3 text-primary opacity-0 transition-opacity shrink-0 group-hover/item:opacity-100"
                                 />
@@ -423,13 +487,15 @@
         >
             <span class="min-w-0 max-w-40 truncate">{selectedNode.name}</span>
             {#if selectedNode.class === 'Output'}
-                <span class="font-mono text-[10px] text-muted-foreground">Required</span>
+                <span class="font-mono text-[10px] text-muted-foreground"
+                    >{$t('workflow.graph.required')}</span
+                >
             {:else}
                 <button
                     type="button"
                     class="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
-                    title="Delete selected node"
-                    aria-label="Delete selected node"
+                    title={$t('workflow.graph.deleteSelected')}
+                    aria-label={$t('workflow.graph.deleteSelected')}
                     onclick={deleteSelectedNode}
                 >
                     <Trash2 class="size-3" />
@@ -443,12 +509,12 @@
             <div
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-xl border bg-background/90 p-6 text-center shadow-sm"
             >
-                <p class="text-sm font-medium">This workflow is empty</p>
+                <p class="text-sm font-medium">{$t('workflow.graph.emptyTitle')}</p>
                 <p class="max-w-64 text-xs text-muted-foreground">
-                    Start with the required Output node, then connect an Agent or another source.
+                    {$t('workflow.graph.emptyBody')}
                 </p>
                 <Button size="sm" onclick={() => addWorkflowNode('Output')}
-                    ><Plus class="size-3.5" /> Add Output</Button
+                    ><Plus class="size-3.5" /> {$t('workflow.graph.addOutput')}</Button
                 >
             </div>
         </div>
@@ -463,7 +529,7 @@
                 <p class="truncate text-destructive">{diagnostics[0].message}</p>
                 {#if diagnostics.length > 1}
                     <p class="text-[10px] text-muted-foreground">
-                        +{diagnostics.length - 1} more issue{diagnostics.length > 2 ? 's' : ''}
+                        {$t('workflow.graph.moreIssues', { count: diagnostics.length - 1 })}
                     </p>
                 {/if}
             </div>
@@ -503,12 +569,14 @@
                 class="flex max-h-[60vh] flex-col overflow-hidden rounded-t-xl border-x border-t bg-background/95 shadow-lg backdrop-blur"
             >
                 <div class="flex shrink-0 items-center justify-between px-3 py-2">
-                    <span class="text-xs font-semibold text-muted-foreground">Add node</span>
+                    <span class="text-xs font-semibold text-muted-foreground"
+                        >{$t('workflow.graph.addNode')}</span
+                    >
                     <button
                         type="button"
                         class="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                         onclick={() => (mobileNodePanelOpen = false)}
-                        aria-label="Close node panel"
+                        aria-label={$t('workflow.graph.closePanel')}
                     >
                         <ChevronDown class="size-4" />
                     </button>
@@ -525,7 +593,7 @@
                 onclick={() => (mobileNodePanelOpen = true)}
             >
                 <Plus class="size-3.5" />
-                Add node
+                {$t('workflow.graph.addNode')}
             </button>
         {/if}
     </div>

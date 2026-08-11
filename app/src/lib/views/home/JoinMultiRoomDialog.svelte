@@ -10,7 +10,7 @@
     } from '$lib/components/ui/dialog';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { requestJoinMultiRoom } from '$lib/stores';
+    import { requestJoinMultiRoom, t } from '$lib/stores';
     import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
     import { getErrorMessage } from '$lib/types/errors';
     import { toast } from '$lib/ui';
@@ -41,8 +41,8 @@
             roomId = '';
             open = false;
             toast.success({
-                title: 'Join request sent',
-                description: 'A room owner needs to approve your request.'
+                title: $t('library.multiRoomDialog.sentTitle'),
+                description: $t('library.multiRoomDialog.sentBody')
             });
         } catch (error) {
             errorMessage = getErrorMessage(error);
@@ -71,11 +71,12 @@
     <DialogContent class="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
             <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <UsersRound class="size-3.5" /> Multi Rooms
+                <UsersRound class="size-3.5" />
+                {$t('library.multiRoomDialog.eyebrow')}
             </div>
-            <DialogTitle class="text-lg">Join a shared room</DialogTitle>
+            <DialogTitle class="text-lg">{$t('library.multiRoomDialog.joinTitle')}</DialogTitle>
             <DialogDescription>
-                Request access with a room ID or discover public rooms.
+                {$t('library.multiRoomDialog.joinDescription')}
             </DialogDescription>
         </DialogHeader>
 
@@ -92,7 +93,8 @@
                         errorMessage = '';
                     }}
                 >
-                    <KeyRound class="size-4" /> Room ID
+                    <KeyRound class="size-4" />
+                    {$t('library.multiRoomDialog.modeId')}
                 </button>
                 <button
                     type="button"
@@ -105,7 +107,8 @@
                         errorMessage = '';
                     }}
                 >
-                    <Globe2 class="size-4" /> Discover
+                    <Globe2 class="size-4" />
+                    {$t('library.multiRoomDialog.modeDiscover')}
                 </button>
             </div>
 
@@ -118,16 +121,18 @@
                     }}
                 >
                     <div class="space-y-2">
-                        <Label for="multi-room-id">Room ID</Label>
+                        <Label for="multi-room-id"
+                            >{$t('library.multiRoomDialog.roomIdLabel')}</Label
+                        >
                         <Input
                             id="multi-room-id"
                             bind:value={roomId}
-                            placeholder="Paste a room ID"
+                            placeholder={$t('library.multiRoomDialog.placeholderId')}
                             autocomplete="off"
                             autofocus
                         />
                         <p class="text-xs text-muted-foreground">
-                            Ask a member for the room ID. Joining always requires owner approval.
+                            {$t('library.multiRoomDialog.roomIdHint')}
                         </p>
                     </div>
                     <Button
@@ -136,7 +141,8 @@
                         disabled={joining || !roomId.trim()}
                         aria-busy={joining}
                     >
-                        <KeyRound class="size-4" /> Request access
+                        <KeyRound class="size-4" />
+                        {$t('library.multiRoomDialog.requestAccess')}
                     </Button>
                 </form>
             {:else}
@@ -155,14 +161,14 @@
                             <Input
                                 bind:value={query}
                                 class="pl-9"
-                                placeholder="Search public rooms"
-                                aria-label="Search public rooms"
+                                placeholder={$t('library.multiRoomDialog.placeholderSearch')}
+                                aria-label={$t('library.multiRoomDialog.searchAria')}
                             />
                         </div>
                         <Button
                             type="submit"
                             size="icon"
-                            aria-label="Search public rooms"
+                            aria-label={$t('library.multiRoomDialog.searchAria')}
                             disabled={searching}
                             aria-busy={searching}
                         >
@@ -191,7 +197,8 @@
                                         disabled={joining}
                                         onclick={() => requestAccess(result.id)}
                                     >
-                                        <KeyRound class="size-3.5" /> Request
+                                        <KeyRound class="size-3.5" />
+                                        {$t('library.multiRoomDialog.request')}
                                     </Button>
                                 </div>
                             {/each}
@@ -199,14 +206,16 @@
                     {:else if hasSearched && !searching && !errorMessage}
                         <div class="rounded-md border border-dashed px-4 py-8 text-center">
                             <Globe2 class="mx-auto size-5 text-muted-foreground" />
-                            <p class="mt-2 text-sm font-medium">No public rooms found</p>
+                            <p class="mt-2 text-sm font-medium">
+                                {$t('library.multiRoomDialog.emptySearchTitle')}
+                            </p>
                             <p class="mt-1 text-xs text-muted-foreground">
-                                Try another name or join with a room ID.
+                                {$t('library.multiRoomDialog.emptySearchBody')}
                             </p>
                         </div>
                     {:else}
                         <div class="rounded-md bg-muted/30 px-4 py-5 text-sm text-muted-foreground">
-                            Public rooms are discoverable, but owners still approve every member.
+                            {$t('library.multiRoomDialog.discoverBody')}
                         </div>
                     {/if}
                 </div>

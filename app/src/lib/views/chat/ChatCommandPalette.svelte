@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { ResolvedChatCommand } from '$lib/types/command';
+    import { t } from '$lib/stores';
 
     let {
         commands,
@@ -15,7 +16,7 @@
 <div
     class="absolute inset-x-0 bottom-full z-30 mb-2 max-h-72 overflow-y-auto rounded-2xl border border-border/80 bg-popover/95 p-1.5 text-popover-foreground shadow-xl backdrop-blur-xl"
     role="listbox"
-    aria-label="Chat commands"
+    aria-label={$t('chat.commandPalette.region')}
 >
     {#each commands as resolved, index (`${resolved.owner.type}:${resolved.owner.id}:${resolved.command.id}`)}
         {@const command = resolved.command}

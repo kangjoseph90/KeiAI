@@ -3,6 +3,7 @@
     import type { ToolCallStatus } from '$lib/types/tools';
     import { listAgentTools } from '$lib/workflow/agent/tool';
     import { ChevronRight, FilePenLine, FileSearch, Wrench } from 'lucide-svelte';
+    import { t } from '$lib/stores';
 
     let {
         id,
@@ -19,13 +20,13 @@
     let detail = $state<ToolCall | null>(null);
     let loadError = $state('');
 
-    const statusLabels: Record<ToolCallStatus, string> = {
-        pending: 'Pending',
-        running: 'Running',
-        success: 'Completed',
-        rejected: 'Rejected',
-        error: 'Error'
-    };
+    const statusLabels = $derived<Record<ToolCallStatus, string>>({
+        pending: $t('chat.toolCall.pending'),
+        running: $t('chat.toolCall.running'),
+        success: $t('chat.toolCall.completed'),
+        rejected: $t('chat.toolCall.rejected'),
+        error: $t('chat.toolCall.error')
+    });
     const agentTools = listAgentTools();
     const toolDefinition = $derived(agentTools.find((tool) => tool.name === name));
     const toolLabel = $derived(toolDefinition?.label ?? name);
@@ -42,10 +43,9 @@
         loadError = '';
         try {
             detail = await ToolCallService.get(id);
-            if (!detail) loadError = 'Tool call details are unavailable on this device.';
+            if (!detail) loadError = $t('chat.toolCall.unavailable');
         } catch (error) {
-            loadError =
-                error instanceof Error ? error.message : 'Failed to load tool call details.';
+            loadError = error instanceof Error ? error.message : $t('chat.toolCall.loadFailed');
         } finally {
             loading = false;
         }
@@ -66,6 +66,8 @@
     <button
         type="button"
         class="inline-flex w-fit max-w-full items-center gap-1.5 py-1 text-left hover:text-foreground"
+        aria-expanded={expanded}
+        aria-label={`${toolLabel} · ${statusLabels[status]}`}
         onclick={toggleExpanded}
     >
         <ToolIcon class="size-3.5 shrink-0" />
@@ -82,12 +84,14 @@
                 class="mt-1 mr-2 ml-5 space-y-2 rounded-md border border-border/70 bg-background/60 px-2 py-2 text-[11px]"
             >
                 {#if loading}
-                    <p>Loading details…</p>
+                    <p>{$t('chat.toolCall.loadingDetails')}</p>
                 {:else if loadError}
                     <p class="text-destructive">{loadError}</p>
                 {:else if detail}
                     <div>
-                        <p class="mb-1 font-medium text-foreground">Arguments</p>
+                        <p class="mb-1 font-medium text-foreground">
+                            {$t('chat.toolCall.arguments')}
+                        </p>
                         <pre
                             class="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2">{JSON.stringify(
                                 detail.call.args,
@@ -97,7 +101,9 @@
                     </div>
                     {#if detail.response}
                         <div>
-                            <p class="mb-1 font-medium text-foreground">Response</p>
+                            <p class="mb-1 font-medium text-foreground">
+                                {$t('chat.toolCall.response')}
+                            </p>
                             <pre
                                 class="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2">{JSON.stringify(
                                     detail.response,

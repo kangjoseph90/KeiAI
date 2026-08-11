@@ -249,6 +249,7 @@ export function getWorkflowLLMTypes(workflow: WorkflowDefinition | undefined): L
     for (const [type, names] of agentNames) {
         definitions.push({
             type,
+            agentNames: names,
             description: `Model used by ${names.join(', ')}`
         });
     }

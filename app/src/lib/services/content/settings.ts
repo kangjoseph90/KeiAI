@@ -34,12 +34,15 @@ import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 import { normalizeWorkflow } from '$lib/workflow/normalization';
-import type { LanguageCode } from '$lib/language';
+import type { LanguageCode, UiLocale } from '$lib/language';
 import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
+    ui: {
+        locale: UiLocale;
+    };
     chat: {
         saveMessagesOnSwipe: boolean;
         expandStepsOnGeneration: boolean;
@@ -106,6 +109,9 @@ export interface AppSettingsRefs {
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettings = {
+    ui: {
+        locale: 'en'
+    },
     chat: {
         saveMessagesOnSwipe: true,
         expandStepsOnGeneration: false,

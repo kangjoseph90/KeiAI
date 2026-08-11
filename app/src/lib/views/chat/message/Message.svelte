@@ -61,7 +61,8 @@
         translationTasks,
         selectChat,
         updateMessage,
-        updateMessageSwipe
+        updateMessageSwipe,
+        t
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
@@ -192,7 +193,7 @@
     let speakerName = $derived(
         (isUser ? currentPersona?.name : currentCharacter?.name) ??
             activeSwipe?.speakerName ??
-            (isUser ? 'User' : 'Assistant')
+            (isUser ? $t('chat.message.speakerUser') : $t('chat.message.speakerAssistant'))
     );
     let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
@@ -275,7 +276,7 @@
     // ── Actions ───────────────────────────────────────────────────────────────
 
     async function handleCopy() {
-        if (!(await copyTextToClipboard(visibleContent, 'Copied message'))) return;
+        if (!(await copyTextToClipboard(visibleContent, $t('chat.message.copied')))) return;
         copied = true;
         setTimeout(() => (copied = false), 2000);
     }
@@ -322,7 +323,7 @@
         if (isEditingTranslation) {
             if (!swipe.translation) return;
             const translation = { ...swipe.translation, text: editText };
-            await runMessageAction('save', 'Could not save translation', async () => {
+            await runMessageAction('save', $t('chat.toast.saveTranslation'), async () => {
                 await updateMessageSwipe(message.id, message.activeSwipeId, { translation });
                 cancelEdit();
             });
@@ -337,7 +338,7 @@
             parts.push({ type: 'text', text: editText });
         }
 
-        await runMessageAction('save', 'Could not save message', async () => {
+        await runMessageAction('save', $t('chat.toast.saveMessage'), async () => {
             await updateMessageSwipe(message.id, message.activeSwipeId, { parts });
             cancelEdit();
         });
@@ -346,11 +347,11 @@
     async function handleDelete(): Promise<void> {
         const messageId = message.id;
         const chatId = message.chatId;
-        await runMessageAction('delete', 'Could not delete message', async () => {
+        await runMessageAction('delete', $t('chat.toast.deleteMessage'), async () => {
             const confirmed = await appConfirm({
-                title: 'Delete message?',
-                description: 'Delete this message and all of its swipes? This cannot be undone.',
-                confirmText: 'Delete',
+                title: $t('chat.message.deleteTitle'),
+                description: $t('chat.message.deleteBody'),
+                confirmText: $t('chat.message.more.delete'),
                 variant: 'destructive'
             });
             if (confirmed && $activeChat?.id === chatId) {
@@ -361,7 +362,7 @@
 
     async function handleSwipe(newSwipeId: string): Promise<void> {
         const messageId = message.id;
-        await runMessageAction('swipe', 'Could not change swipe', async () => {
+        await runMessageAction('swipe', $t('chat.toast.changeSwipe'), async () => {
             await updateMessage(messageId, { activeSwipeId: newSwipeId });
         });
     }
@@ -371,7 +372,7 @@
         const messageId = message.id;
         const roomId = $activeRoom?.id;
         if (!roomId) return;
-        await runMessageAction('fork', 'Could not fork chat', async () => {
+        await runMessageAction('fork', $t('chat.toast.forkChat'), async () => {
             const newChatId = await forkChat(messageId);
             if ($activeChat?.id !== sourceChatId) return;
             await syncChatGreetings(newChatId);
@@ -398,7 +399,7 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start chat generation',
+                title: $t('chat.toast.startGeneration'),
                 description: getErrorMessage(error)
             });
         }
@@ -413,7 +414,7 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start translation',
+                title: $t('chat.toast.startTranslation'),
                 description: getErrorMessage(error)
             });
         }
@@ -624,7 +625,8 @@
                         aria-busy={busyAction === 'save'}
                         onclick={() => void saveEdit()}
                     >
-                        <Check class="size-4" /> Save
+                        <Check class="size-4" />
+                        {$t('common.actions.save')}
                     </Button>
                     <Button
                         size="sm"
@@ -633,7 +635,8 @@
                         disabled={actionsDisabled}
                         onclick={cancelEdit}
                     >
-                        <X class="size-4" /> Cancel
+                        <X class="size-4" />
+                        {$t('common.actions.cancel')}
                     </Button>
                 </div>
             </div>
@@ -641,8 +644,8 @@
             <!-- Error Bubble -->
         {:else if message.displayStatus === 'error'}
             <TaskErrorNotice
-                title="Generation failed"
-                message={message.errorMessage ?? 'Unknown error'}
+                title={$t('chat.message.generationFailed')}
+                message={message.errorMessage ?? $t('common.error.fallback')}
                 onDismiss={() => dismissChat(message.chatId)}
             />
 
@@ -658,7 +661,7 @@
                 {#if message.displayStatus === 'generating' && parts.length === 0}
                     <span class="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 class="size-3 animate-spin" />
-                        {isUser ? 'Sending...' : 'Thinking...'}
+                        {isUser ? $t('chat.message.sending') : $t('chat.message.thinking')}
                     </span>
                 {:else if parts.length === 0}
                     <div class="min-h-5"></div>
@@ -671,11 +674,12 @@
                             type="button"
                             class="trace-summary-btn {detailsOpen ? 'is-open' : ''}"
                             onclick={() => (detailsOpen = !detailsOpen)}
-                            aria-label="Toggle trace timeline"
+                            title={$t('chat.message.toggleTrace')}
+                            aria-label={$t('chat.message.toggleTrace')}
                         >
                             <span class="trace-root-dot"></span>
                             <span class="font-medium"
-                                >{traceCount} step{traceCount > 1 ? 's' : ''}</span
+                                >{$t('chat.message.traceCount', { count: traceCount })}</span
                             >
                         </button>
                     {/if}
@@ -767,24 +771,24 @@
 
             {#if matchingTranslationTask?.status === 'error'}
                 <TaskErrorNotice
-                    title="Translation failed"
-                    message={matchingTranslationTask.errorMessage ?? 'Unknown error'}
+                    title={$t('chat.message.translationFailed')}
+                    message={matchingTranslationTask.errorMessage ?? $t('common.error.fallback')}
                     onDismiss={() => dismissTranslation(message.id)}
                 />
             {/if}
 
             {#if imageGenerationTask?.status === 'error'}
                 <TaskErrorNotice
-                    title="Image generation failed"
-                    message={imageGenerationTask.errorMessage ?? 'Unknown error'}
+                    title={$t('chat.message.imageFailed')}
+                    message={imageGenerationTask.errorMessage ?? $t('common.error.fallback')}
                     onDismiss={() => dismissImageGeneration(message.id)}
                 />
             {/if}
 
             {#if ttsTask?.status === 'error'}
                 <TaskErrorNotice
-                    title="Text to speech failed"
-                    message={ttsTask.errorMessage ?? 'Unknown error'}
+                    title={$t('chat.message.ttsFailed')}
+                    message={ttsTask.errorMessage ?? $t('common.error.fallback')}
                     onDismiss={() => dismissTTS(message.id)}
                 />
             {/if}
@@ -803,7 +807,8 @@
                             class="relative flex size-6 items-center justify-center rounded hover:bg-muted after:absolute after:-inset-1 after:content-[''] disabled:opacity-30"
                             disabled={actionsDisabled || swipePos <= 0}
                             aria-busy={busyAction === 'swipe'}
-                            aria-label="Previous swipe"
+                            title={$t('chat.message.swipe.previous')}
+                            aria-label={$t('chat.message.swipe.previous')}
                             onclick={() => void handleSwipe(sortedSwipes[swipePos - 1].id)}
                         >
                             <ChevronLeft class="size-3.5" />
@@ -815,7 +820,8 @@
                             class="relative flex size-6 items-center justify-center rounded hover:bg-muted after:absolute after:-inset-1 after:content-[''] disabled:opacity-30"
                             disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
                             aria-busy={busyAction === 'swipe'}
-                            aria-label="Next swipe"
+                            title={$t('chat.message.swipe.next')}
+                            aria-label={$t('chat.message.swipe.next')}
                             onclick={() => void handleSwipe(sortedSwipes[swipePos + 1].id)}
                         >
                             <ChevronRight class="size-3.5" />
@@ -829,7 +835,8 @@
                     size="sm"
                     class="relative size-8 px-0 text-xs text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                     onclick={handleCopy}
-                    aria-label={copied ? 'Copied message' : 'Copy message'}
+                    title={copied ? $t('chat.message.copied') : $t('chat.message.copy')}
+                    aria-label={copied ? $t('chat.message.copied') : $t('chat.message.copy')}
                 >
                     {#if copied}
                         <Check class="size-3.5" />
@@ -844,8 +851,8 @@
                         size="sm"
                         class="relative size-8 px-0 text-xs text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                         onclick={() => stopTranslation(message.id)}
-                        title="Stop translation"
-                        aria-label="Stop translation"
+                        title={$t('chat.message.translation.stop')}
+                        aria-label={$t('chat.message.translation.stop')}
                     >
                         <Loader2 class="size-3.5 animate-spin" />
                     </Button>
@@ -866,14 +873,14 @@
                         }}
                         title={cachedTranslation
                             ? showTranslation
-                                ? 'Show original'
-                                : 'Show translation'
-                            : 'Translate'}
+                                ? $t('chat.message.translation.showOriginalTitle')
+                                : $t('chat.message.translation.showTranslationTitle')
+                            : $t('chat.message.translation.translateTitle')}
                         aria-label={cachedTranslation
                             ? showTranslation
-                                ? 'Show original message'
-                                : 'Show translated message'
-                            : 'Translate message'}
+                                ? $t('chat.message.translation.showOriginal')
+                                : $t('chat.message.translation.showTranslated')
+                            : $t('chat.message.translation.translateMessage')}
                     >
                         <Languages class="size-3.5" />
                     </Button>
@@ -886,7 +893,8 @@
                         class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                         disabled={actionsDisabled}
                         onclick={() => void handleRegenerate()}
-                        aria-label="Regenerate response"
+                        title={$t('chat.message.regenerate')}
+                        aria-label={$t('chat.message.regenerate')}
                     >
                         <RefreshCw class="size-3.5" />
                     </Button>
@@ -898,7 +906,8 @@
                     class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                     disabled={actionsDisabled}
                     onclick={startEdit}
-                    aria-label="Edit message"
+                    title={$t('chat.message.edit')}
+                    aria-label={$t('chat.message.edit')}
                 >
                     <Pencil class="size-3.5" />
                 </Button>

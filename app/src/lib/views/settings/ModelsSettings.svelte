@@ -2,7 +2,7 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { activePreset } from '$lib/stores';
+    import { activePreset, t } from '$lib/stores';
     import ModelTab from './chatbot/ModelTab.svelte';
     import ParametersTab from './chatbot/ParametersTab.svelte';
     import CustomModelsTab from './chatbot/CustomModelsTab.svelte';
@@ -22,7 +22,11 @@
                     : 'text-muted-foreground hover:text-foreground'}"
                 onclick={() => (activeTab = tab as Tab)}
             >
-                {tab === 'custom' ? 'Custom Models' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'custom'
+                    ? $t('settings.models.tabs.customModels')
+                    : tab === 'model'
+                      ? $t('settings.models.tabs.model')
+                      : $t('settings.models.tabs.parameters')}
             </button>
         {/each}
     </div>
@@ -30,8 +34,10 @@
     {#if !$activePreset && activeTab !== 'custom'}
         <div class="flex flex-1 items-center justify-center p-12 text-center">
             <div class="flex flex-col gap-4">
-                <p class="text-muted-foreground">No active preset selected.</p>
-                <Button onclick={() => (activeTab = 'custom')}>Manage Custom Models</Button>
+                <p class="text-muted-foreground">{$t('settings.models.noPreset')}</p>
+                <Button onclick={() => (activeTab = 'custom')}
+                    >{$t('settings.models.manageCustom')}</Button
+                >
             </div>
         </div>
     {:else}

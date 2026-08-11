@@ -3,7 +3,7 @@
     import { slide } from 'svelte/transition';
     import { Badge } from '$lib/components/ui/badge';
     import ModelConfigCard from './ModelConfigCard.svelte';
-    import { appSettings, modules, selectActiveModules, updatePreset } from '$lib/stores';
+    import { appSettings, modules, selectActiveModules, updatePreset, t } from '$lib/stores';
     import {
         BUILT_IN_LLM_MODELS,
         type LLMProvider,
@@ -46,8 +46,13 @@
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
         for (const d of allTypes) {
+            const existingNames = definitions[d.type]?.agentNames ?? [];
+            const newNames = d.agentNames ?? [];
+            const mergedNames = Array.from(new Set([...existingNames, ...newNames]));
+
             definitions[d.type] = {
                 type: d.type,
+                agentNames: mergedNames.length > 0 ? mergedNames : undefined,
                 description: definitions[d.type]?.description ?? d.description
             };
         }
@@ -108,11 +113,11 @@
                 <h3
                     class="flex items-center justify-between text-lg font-semibold tracking-tight text-foreground"
                 >
-                    Chat Model
-                    <Badge variant="secondary">chat</Badge>
+                    {$t('settings.modelTab.chatModel')}
+                    <Badge variant="secondary">{$t('settings.modelTab.chatBadge')}</Badge>
                 </h3>
                 <p class="text-sm text-muted-foreground">
-                    Primary model used for main chat completions.
+                    {$t('settings.modelTab.chatDescription')}
                 </p>
             </div>
             <ModelConfigCard
@@ -130,11 +135,11 @@
                 <h3
                     class="flex items-center justify-between text-lg font-semibold tracking-tight text-foreground"
                 >
-                    Auxiliary Model
-                    <Badge variant="outline">aux</Badge>
+                    {$t('settings.modelTab.auxiliaryModel')}
+                    <Badge variant="outline">{$t('settings.modelTab.auxBadge')}</Badge>
                 </h3>
                 <p class="text-sm text-muted-foreground">
-                    Secondary model for auxiliary reasoning and tasks.
+                    {$t('settings.modelTab.auxiliaryDescription')}
                 </p>
             </div>
             <ModelConfigCard
@@ -152,7 +157,9 @@
                 type="button"
                 class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onclick={() => (advancedOpen = !advancedOpen)}
-                aria-label={advancedOpen ? 'Collapse' : 'Expand'}
+                aria-label={advancedOpen
+                    ? $t('settings.modelTab.collapse')
+                    : $t('settings.modelTab.expand')}
             >
                 {#if advancedOpen}
                     <ChevronDown class="size-4" />
@@ -166,10 +173,10 @@
                     class="text-base font-medium text-foreground hover:opacity-80 transition-opacity"
                     onclick={() => (advancedOpen = !advancedOpen)}
                 >
-                    Model Type Overrides
+                    {$t('settings.modelTab.overridesButton')}
                 </button>
                 <p class="text-xs text-muted-foreground">
-                    Override model selections for specific agent or workflow roles.
+                    {$t('settings.modelTab.overridesDescription')}
                 </p>
             </div>
         </div>
@@ -182,7 +189,13 @@
                         <div class="flex items-center justify-between">
                             <div>
                                 <h4 class="text-base font-medium text-foreground">{role.type}</h4>
-                                {#if role.description}
+                                {#if role.agentNames && role.agentNames.length > 0}
+                                    <p class="text-xs text-muted-foreground">
+                                        {$t('settings.modelTab.modelUsedBy', {
+                                            names: role.agentNames.join(', ')
+                                        })}
+                                    </p>
+                                {:else if role.description}
                                     <p class="text-xs text-muted-foreground">
                                         {role.description}
                                     </p>
@@ -191,7 +204,7 @@
                             <label
                                 class="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer"
                             >
-                                <span>Override</span>
+                                <span>{$t('settings.modelTab.override')}</span>
                                 <input
                                     type="checkbox"
                                     class="size-5 shrink-0 rounded border-primary cursor-pointer"

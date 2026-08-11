@@ -8,7 +8,8 @@
         characters,
         isMultiRoom,
         multiRoomCharacters,
-        roomCharacters
+        roomCharacters,
+        t
     } from '$lib/stores';
     import { addRoomCharacterFromLibrary, syncChatGreetings } from '$lib/managers';
     import { characterPickerOpen, toast } from '$lib/ui';
@@ -34,7 +35,7 @@
             return true;
         } catch (error) {
             toast.error({
-                title: 'Could not add characters',
+                title: $t('chat.toast.addCharacters'),
                 description: getErrorMessage(error)
             });
             return false;
@@ -52,7 +53,7 @@
             return true;
         } catch (error) {
             toast.error({
-                title: 'Could not copy characters',
+                title: $t('chat.toast.copyCharacters'),
                 description: getErrorMessage(error)
             });
             return false;
@@ -62,16 +63,16 @@
 
 <ResourcePickerDialog
     bind:open={$characterPickerOpen}
-    title="Add characters"
-    description="Choose who belongs in this room. You can add several at once."
-    singularLabel="character"
-    resourceLabel="characters"
+    title={$t('chat.characterPicker.title')}
+    description={$t('chat.characterPicker.description')}
+    singularLabel={$t('chat.characterPicker.singular')}
+    resourceLabel={$t('chat.characterPicker.plural')}
     resources={pickerCharacters}
     config={pickerConfig}
     attachedIds={$roomCharacters.map((character) => character.id)}
     ownerTable="characters"
     onAdd={addCharacters}
-    roomTabLabel="Room characters"
+    roomTabLabel={$t('chat.characterPicker.roomTab')}
     libraryResources={$isMultiRoom ? $characters : undefined}
     libraryConfig={$isMultiRoom ? $appSettings?.characters : undefined}
     onCopy={$isMultiRoom ? copyCharacters : undefined}

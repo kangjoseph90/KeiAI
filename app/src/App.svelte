@@ -32,7 +32,10 @@
         activeChatId,
         activeRoom,
         themePreference,
+        appLocale,
         loadThemePreference,
+        loadLocalePreference,
+        startLocalePreferenceCache,
         applyTheme,
         initDefaultContents,
         selectModule
@@ -56,6 +59,8 @@
     import TaskCenter from '$lib/components/app/TaskCenter.svelte';
     import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
     import { getEnvironmentConfigIssue } from '$lib/config';
+    import { getUiLocaleDirection } from '$lib/language';
+    import { t } from '$lib/stores';
 
     let ready = $state(false);
     let errorMsg = $state('');
@@ -81,6 +86,12 @@
     );
     const environmentIssue = getEnvironmentConfigIssue();
     const logger = createLogger('route:page');
+    const envVariables = $derived(environmentIssue?.missingVariables.join(' and ') ?? '');
+    const cryptoTitle = $derived(
+        cryptoIssue?.kind === 'insecure-context'
+            ? $t('shell.startup.cryptoTitleSecure')
+            : $t('shell.startup.cryptoTitleUnsupported')
+    );
 
     function navigateFromHome(r: RouteState) {
         navigate(r);
@@ -133,6 +144,11 @@
 
     $effect(() => {
         applyTheme(document.documentElement, $themePreference, systemThemeDark);
+    });
+
+    $effect(() => {
+        document.documentElement.lang = $appLocale;
+        document.documentElement.dir = getUiLocaleDirection($appLocale);
     });
 
     function suppressShellTransitions(): void {
@@ -267,12 +283,15 @@
     });
 
     let _cleanupHash: (() => void) | undefined;
+    let _cleanupLocaleCache: (() => void) | undefined;
 
     onMount(async () => {
         systemThemeMedia = window.matchMedia(SYSTEM_THEME_QUERY);
         systemThemeDark = systemThemeMedia.matches;
         systemThemeMedia.addEventListener('change', handleSystemThemeChange);
         await loadThemePreference();
+        await loadLocalePreference();
+        _cleanupLocaleCache = startLocalePreferenceCache();
 
         try {
             if (environmentIssue) return;
@@ -323,6 +342,7 @@
             cancelAnimationFrame(shellTransitionRestoreFrame);
         }
         _cleanupHash?.();
+        _cleanupLocaleCache?.();
     });
 </script>
 
@@ -349,7 +369,7 @@
             <p class="mt-3 wrap-break-word text-sm leading-6 text-muted-foreground">{message}</p>
             {#if instructions.length > 0}
                 <div class="mt-5 rounded-lg border bg-muted/30 p-4 text-sm">
-                    <p class="font-medium">How to continue</p>
+                    <p class="font-medium">{$t('shell.startup.continueHeading')}</p>
                     <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
                         {#each instructions as instruction (instruction)}
                             <li>{instruction}</li>
@@ -371,41 +391,40 @@
 >
     {#if environmentIssue}
         {@render startupIssue(
-            'Startup blocked',
-            environmentIssue.title,
-            environmentIssue.message,
+            $t('shell.startup.label'),
+            $t('shell.startup.envTitle'),
+            $t('shell.startup.envMessage', { variables: envVariables }),
             [
-                `Add ${environmentIssue.missingVariables.join(' and ')} to the root .env file.`,
-                'Restart the development server or rebuild the app after updating the environment.'
+                $t('shell.startup.envInstructionAdd', { variables: envVariables }),
+                $t('shell.startup.envInstructionRestart')
             ],
-            'Retry startup'
+            $t('shell.startup.retry')
         )}
     {:else if cryptoIssue}
         {@render startupIssue(
-            'Startup blocked',
-            cryptoIssue.title,
-            cryptoIssue.message,
+            $t('shell.startup.label'),
+            cryptoTitle,
+            $t('shell.startup.cryptoMessage'),
             [
-                'Open KeiAI from an HTTPS address.',
-                'Use a modern browser with Web Crypto support.',
-                'Use the native Tauri app when available.'
+                $t('shell.startup.cryptoOpenHttps'),
+                $t('shell.startup.cryptoModernBrowser'),
+                $t('shell.startup.cryptoTauri')
             ],
             null
         )}
     {:else if errorMsg}
         {@render startupIssue(
-            'Startup failed',
-            'KeiAI could not finish starting',
+            $t('shell.startup.failedLabel'),
+            $t('shell.startup.title'),
             errorMsg,
-            [
-                'Your local data has not been removed.',
-                'Check storage permissions and connectivity before retrying.'
-            ],
-            'Retry startup'
+            [$t('shell.startup.dataIntact'), $t('shell.startup.checkStorage')],
+            $t('shell.startup.retry')
         )}
     {:else if !ready}
         <div class="flex flex-1 items-center justify-center p-6">
-            <p class="text-sm text-muted-foreground" role="status">Loading KeiAI...</p>
+            <p class="text-sm text-muted-foreground" role="status">
+                {$t('shell.loading.app')}
+            </p>
         </div>
     {:else}
         {#if appSidebarVisible}

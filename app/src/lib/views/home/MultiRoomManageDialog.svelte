@@ -22,6 +22,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import type { MultiRoom, MultiRoomMember, Room } from '$lib/services';
+    import { t } from '$lib/stores';
 
     interface Props {
         open: boolean;
@@ -114,12 +115,14 @@
     <DialogContent class="p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
             <DialogTitle class="text-lg">
-                {isOwner ? 'Manage Multi Room' : (room?.name ?? 'Multi Room')}
+                {isOwner
+                    ? $t('library.multiRoomManage.titleOwner')
+                    : (room?.name ?? $t('library.multiRoomManage.titleMember'))}
             </DialogTitle>
             <DialogDescription>
                 {isOwner
-                    ? 'Manage room settings, access, and membership.'
-                    : 'View members or leave this room.'}
+                    ? $t('library.multiRoomManage.descriptionOwner')
+                    : $t('library.multiRoomManage.descriptionMember')}
             </DialogDescription>
         </DialogHeader>
 
@@ -136,13 +139,15 @@
                     {#if isOwner}
                         <div class="space-y-1.5">
                             <div class="min-w-0 flex-1 space-y-1.5">
-                                <Label for="multi-room-name">Room name</Label>
+                                <Label for="multi-room-name"
+                                    >{$t('library.multiRoomDialog.roomName')}</Label
+                                >
                                 <Input
                                     id="multi-room-name"
                                     bind:value={nameDraft}
                                     class="h-9"
                                     disabled={busy}
-                                    placeholder="Multi room name..."
+                                    placeholder={$t('library.multiRoomManage.placeholder')}
                                 />
                             </div>
                         </div>
@@ -151,9 +156,11 @@
                         class="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4"
                     >
                         <div>
-                            <h3 class="text-sm font-medium">Visibility</h3>
+                            <h3 class="text-sm font-medium">
+                                {$t('library.multiRoomManage.visibilityHeading')}
+                            </h3>
                             <p class="mt-0.5 text-xs text-muted-foreground">
-                                Public rooms appear in discovery. Joining still requires approval.
+                                {$t('library.multiRoomManage.visibilityHelp')}
                             </p>
                         </div>
                         <div class="flex rounded-md border bg-muted/30 p-1 max-sm:[&>*]:flex-1">
@@ -165,7 +172,8 @@
                                 aria-pressed={visibilityDraft === 'private'}
                                 onclick={() => (visibilityDraft = 'private')}
                             >
-                                <Lock class="size-3.5" /> Private
+                                <Lock class="size-3.5" />
+                                {$t('library.multiRoomDialog.private')}
                             </Button>
                             <Button
                                 size="sm"
@@ -175,7 +183,8 @@
                                 aria-pressed={visibilityDraft === 'public'}
                                 onclick={() => (visibilityDraft = 'public')}
                             >
-                                <Globe2 class="size-3.5" /> Public
+                                <Globe2 class="size-3.5" />
+                                {$t('library.multiRoomDialog.public')}
                             </Button>
                         </div>
                     </div>
@@ -188,7 +197,9 @@
 
                 {#if isOwner && pendingMembers.length > 0}
                     <section class="px-5 py-3">
-                        <h3 class="text-sm font-medium">Join requests</h3>
+                        <h3 class="text-sm font-medium">
+                            {$t('library.multiRoomManage.joinRequests')}
+                        </h3>
                         <div class="mt-3 divide-y rounded-md border">
                             {#each pendingMembers as member (member.id)}
                                 <div class="flex items-center justify-between gap-3 px-3 py-2.5">
@@ -197,8 +208,10 @@
                                         <Button
                                             size="icon-sm"
                                             variant="outline"
-                                            title="Approve member"
-                                            aria-label={`Approve ${member.userId}`}
+                                            title={$t('library.multiRoomManage.approve')}
+                                            aria-label={$t('library.multiRoomManage.approveNamed', {
+                                                user: member.userId
+                                            })}
                                             disabled={busy}
                                             onclick={() => onApprove(member.userId)}
                                         >
@@ -207,8 +220,10 @@
                                         <Button
                                             size="icon-sm"
                                             variant="ghost"
-                                            title="Reject request"
-                                            aria-label={`Reject ${member.userId}`}
+                                            title={$t('library.multiRoomManage.reject')}
+                                            aria-label={$t('library.multiRoomManage.rejectNamed', {
+                                                user: member.userId
+                                            })}
                                             disabled={busy}
                                             onclick={() => onReject(member.userId)}
                                         >
@@ -223,7 +238,7 @@
 
                 <section class="px-5 py-3">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-sm font-medium">Members</h3>
+                        <h3 class="text-sm font-medium">{$t('library.multiRoomManage.members')}</h3>
                         <span class="text-xs text-muted-foreground">{acceptedMembers.length}</span>
                     </div>
                     <div class="mt-3 divide-y rounded-md border">
@@ -240,10 +255,10 @@
                                         <p class="truncate text-sm">{member.userId}</p>
                                         <p class="text-[11px] text-muted-foreground">
                                             {memberIsOwner
-                                                ? 'Owner'
+                                                ? $t('library.multiRoomManage.roleOwner')
                                                 : member.userId === currentUserId
-                                                  ? 'You'
-                                                  : 'Member'}
+                                                  ? $t('library.multiRoomManage.roleYou')
+                                                  : $t('library.multiRoomManage.roleMember')}
                                         </p>
                                     </div>
                                 </div>
@@ -252,8 +267,10 @@
                                         size="icon-sm"
                                         variant="ghost"
                                         class="text-muted-foreground hover:text-destructive"
-                                        title="Remove member"
-                                        aria-label={`Remove ${member.userId}`}
+                                        title={$t('library.multiRoomManage.remove')}
+                                        aria-label={$t('library.multiRoomManage.removeNamed', {
+                                            user: member.userId
+                                        })}
                                         disabled={busy}
                                         aria-busy={busyAction === `revoke-member:${member.userId}`}
                                         onclick={() => onRevoke(member.userId)}
@@ -277,7 +294,8 @@
                         aria-busy={busyAction === `delete-multi-room:${room.id}`}
                         onclick={onDelete}
                     >
-                        <Trash2 class="size-4" /> Delete room
+                        <Trash2 class="size-4" />
+                        {$t('library.multiRoomManage.deleteRoom')}
                     </Button>
                     <Button
                         size="sm"
@@ -286,7 +304,7 @@
                         aria-busy={saving}
                         onclick={saveChanges}
                     >
-                        Save changes
+                        {$t('library.multiRoomManage.saveChanges')}
                     </Button>
                 {:else}
                     <Button
@@ -297,7 +315,8 @@
                         aria-busy={busyAction === `leave-multi-room:${room.id}`}
                         onclick={onLeave}
                     >
-                        <LogOut class="size-4" /> Leave room
+                        <LogOut class="size-4" />
+                        {$t('library.multiRoomManage.leaveRoom')}
                     </Button>
                 {/if}
             </DialogFooter>

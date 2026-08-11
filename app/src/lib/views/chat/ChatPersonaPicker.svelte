@@ -7,7 +7,8 @@
         chatPersonas,
         isMultiRoom,
         multiRoomPersonas,
-        personas
+        personas,
+        t
     } from '$lib/stores';
     import { addChatPersonaFromLibrary } from '$lib/managers';
     import { personaPickerOpen, toast } from '$lib/ui';
@@ -29,7 +30,7 @@
             return true;
         } catch (error) {
             toast.error({
-                title: 'Could not add personas',
+                title: $t('chat.toast.addPersonas'),
                 description: getErrorMessage(error)
             });
             return false;
@@ -45,7 +46,7 @@
             return true;
         } catch (error) {
             toast.error({
-                title: 'Could not copy personas',
+                title: $t('chat.toast.copyPersonas'),
                 description: getErrorMessage(error)
             });
             return false;
@@ -55,16 +56,16 @@
 
 <ResourcePickerDialog
     bind:open={$personaPickerOpen}
-    title="Add personas"
-    description="Choose the personas available in this chat. You can add several at once."
-    singularLabel="persona"
-    resourceLabel="personas"
+    title={$t('chat.personaPicker.title')}
+    description={$t('chat.personaPicker.description')}
+    singularLabel={$t('chat.personaPicker.singular')}
+    resourceLabel={$t('chat.personaPicker.plural')}
     resources={pickerPersonas}
     config={pickerConfig}
     attachedIds={$chatPersonas.map((persona) => persona.id)}
     ownerTable="personas"
     onAdd={addPersonas}
-    roomTabLabel="Room personas"
+    roomTabLabel={$t('chat.personaPicker.roomTab')}
     libraryResources={$isMultiRoom ? $personas : undefined}
     libraryConfig={$isMultiRoom ? $appSettings?.personas : undefined}
     onCopy={$isMultiRoom ? copyPersonas : undefined}

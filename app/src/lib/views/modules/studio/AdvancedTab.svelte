@@ -2,6 +2,7 @@
     import { Trash2 } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Label } from '$lib/components/ui/label';
+    import { t } from '$lib/stores';
     import type { Module, ModuleContent } from '$lib/services';
     import type { ModuleFileExport } from '$lib/porters/module';
     import type { DeepPartial } from '$lib/utils/defaults';
@@ -48,10 +49,11 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-6">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">Advanced Options</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('module.advanced.title')}
+            </h3>
             <p class="text-sm text-muted-foreground">
-                Configure global runtime state, low-level access, and initial variables for this
-                module.
+                {$t('module.advanced.description')}
             </p>
         </div>
 
@@ -59,10 +61,10 @@
             <div class="flex items-center justify-between py-3.5">
                 <div class="space-y-0.5 pr-4">
                     <Label for="module-enabled-globally" class="text-sm font-medium cursor-pointer">
-                        Enabled globally
+                        {$t('module.advanced.enabledGlobally')}
                     </Label>
                     <p class="text-xs text-muted-foreground">
-                        Turn this module runtime on or off globally.
+                        {$t('module.advanced.enabledGloballyHelp')}
                     </p>
                 </div>
                 <input
@@ -77,10 +79,10 @@
             <div class="flex items-center justify-between py-3.5">
                 <div class="space-y-0.5 pr-4">
                     <Label for="module-allow-low-level" class="text-sm font-medium cursor-pointer">
-                        Allow Low Level Access
+                        {$t('module.advanced.lowLevel')}
                     </Label>
                     <p class="text-xs text-muted-foreground">
-                        Bypass standard safety filters and prompt constraints.
+                        {$t('module.advanced.lowLevelHelp')}
                     </p>
                 </div>
                 <input
@@ -94,9 +96,9 @@
         </div>
 
         <div class="space-y-2">
-            <Label class="text-sm font-medium">Default Variables</Label>
+            <Label class="text-sm font-medium">{$t('module.advanced.variables')}</Label>
             <KeyValueEditor
-                emptyMessage="No initial variables defined."
+                emptyMessage={$t('module.advanced.variablesEmpty')}
                 data={module.defaultVariables}
                 onUpdateValue={handleUpdateVariableValue}
                 onAdd={handleAddVariable}
@@ -113,16 +115,20 @@
 
     <section class="space-y-4">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-destructive">Danger Zone</h3>
-            <p class="text-sm text-muted-foreground">Irreversible actions for this module.</p>
+            <h3 class="text-lg font-semibold tracking-tight text-destructive">
+                {$t('module.advanced.dangerZone')}
+            </h3>
+            <p class="text-sm text-muted-foreground">{$t('module.advanced.dangerZoneHelp')}</p>
         </div>
 
         <div class="divide-y divide-border">
             <div class="flex items-center justify-between py-2">
                 <div class="space-y-0.5 pr-4">
-                    <p class="text-sm font-medium text-foreground">Delete this module</p>
+                    <p class="text-sm font-medium text-foreground">
+                        {$t('module.advanced.deleteThis')}
+                    </p>
                     <p class="text-xs text-muted-foreground">
-                        This removes the module and its owned resources permanently.
+                        {$t('module.advanced.deleteHelp')}
                     </p>
                 </div>
                 <Button
@@ -132,7 +138,8 @@
                     aria-busy={deleting}
                     onclick={onDelete}
                 >
-                    <Trash2 class="size-4" /> Delete Module
+                    <Trash2 class="size-4" />
+                    {$t('module.advanced.deleteButton')}
                 </Button>
             </div>
         </div>

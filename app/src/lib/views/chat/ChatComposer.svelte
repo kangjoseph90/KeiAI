@@ -48,6 +48,7 @@
         setChatDraftInlayIds,
         setChatDraftText,
         suggestionTasks,
+        t,
         type DictationTask,
         type RecordAudioTask
     } from '$lib/stores';
@@ -388,7 +389,9 @@
                 personaId: selectedPersona?.id
             }).catch((error) => {
                 toast.error({
-                    title: `Could not run /${parsedCommand.resolved.command.name}`,
+                    title: $t('chat.toast.runCommand', {
+                        command: parsedCommand.resolved.command.name
+                    }),
                     description: getErrorMessage(error)
                 });
             });
@@ -454,7 +457,7 @@
             void runChat(targetChatId, targetCharacterId, targetPersonaId).catch((error) => {
                 if (error instanceof DOMException && error.name === 'AbortError') return;
                 toast.error({
-                    title: 'Could not start chat generation',
+                    title: $t('chat.toast.startGeneration'),
                     description: getErrorMessage(error)
                 });
             });
@@ -474,7 +477,7 @@
         void runChat($activeChat.id, selectedCharacter.id, selectedPersona.id).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start chat generation',
+                title: $t('chat.toast.startGeneration'),
                 description: getErrorMessage(error)
             });
         });
@@ -511,7 +514,7 @@
         }
         if (firstError) {
             toast.error({
-                title: 'Could not attach some media',
+                title: $t('chat.toast.attachMedia'),
                 description: getErrorMessage(firstError)
             });
         }
@@ -521,8 +524,10 @@
     async function handleAttachmentUpload(): Promise<void> {
         if (!$activeChat || attachmentIds.length >= MAX_ATTACHMENTS) return;
         const files = await appDialog.openMultipleFiles({
-            title: 'Attach Media',
-            filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
+            title: $t('chat.composer.attachMediaTitle'),
+            filters: [
+                { name: $t('common.fileFilters.media'), extensions: [...MEDIA_ASSET_EXTENSIONS] }
+            ]
         });
         if (files?.length) await attachFiles(files);
     }
@@ -537,10 +542,10 @@
     async function handleAttachCapturedMedia(file: File): Promise<void> {
         const chatId = cameraChatId;
         if (!chatId || $activeChat?.id !== chatId) {
-            throw new Error('The active chat changed before the media could be attached');
+            throw new Error($t('chat.error.activeChatChanged'));
         }
         const attached = await attachFiles([file], chatId);
-        if (attached === 0) throw new Error('The media could not be added to this message');
+        if (attached === 0) throw new Error($t('chat.error.attachMedia'));
     }
 
     function handleStartDictation(): void {
@@ -549,7 +554,7 @@
         void runDictation(chatId).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start dictation',
+                title: $t('chat.toast.startDictation'),
                 description: getErrorMessage(error)
             });
         });
@@ -576,7 +581,7 @@
         void runRecordAudio(chatId).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start audio recording',
+                title: $t('chat.toast.startAudio'),
                 description: getErrorMessage(error)
             });
         });
@@ -603,7 +608,7 @@
         void runInputTranslation(chatId).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start input translation',
+                title: $t('chat.toast.startInputTranslation'),
                 description: getErrorMessage(error)
             });
         });
@@ -615,7 +620,7 @@
         void runSuggestion(chatId).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start suggestion',
+                title: $t('chat.toast.startSuggestion'),
                 description: getErrorMessage(error)
             });
         });
@@ -624,7 +629,7 @@
 
 <div
     role="region"
-    aria-label="Message composer"
+    aria-label={$t('chat.composer.region')}
     inert={overlayInert}
     class="absolute inset-x-0 bottom-0 z-20 isolate px-3 pb-4 pt-1 md:px-4"
     ondragenter={handleDragEnter}
@@ -644,7 +649,7 @@
                 size="icon"
                 class="flex items-center justify-center rounded-full border bg-background/80 shadow-md backdrop-blur transition-opacity hover:bg-accent"
                 onclick={onScrollToBottom}
-                aria-label="Scroll to bottom"
+                aria-label={$t('chat.composer.scrollBottom')}
             >
                 <ArrowDown class="size-5" />
             </Button>
@@ -672,14 +677,14 @@
                             class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"
                         >
                             <Loader2 class="size-4 animate-spin" />
-                            Running
+                            {$t('chat.composer.commandRunning')}
                         </span>
                     {:else}
                         <span
                             class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"
                         >
                             <CheckCircle2 class="size-4 text-emerald-500" />
-                            Completed
+                            {$t('chat.composer.commandCompleted')}
                         </span>
                     {/if}
                 </div>
@@ -699,7 +704,7 @@
                 <div
                     class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
                 >
-                    Drop images, audio, or video to attach
+                    {$t('chat.composer.dropMedia')}
                 </div>
             {/if}
 
@@ -710,7 +715,7 @@
                             <button
                                 type="button"
                                 class="absolute inset-0 cursor-zoom-in overflow-hidden rounded-lg border text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                aria-label={`Open ${ref.name}`}
+                                aria-label={$t('chat.composer.attachmentOpen', { name: ref.name })}
                                 onclick={() => openGallery(ref.id)}
                             >
                                 <AssetView
@@ -731,7 +736,9 @@
                             <button
                                 type="button"
                                 class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
-                                aria-label={`Remove ${ref.name} attachment`}
+                                aria-label={$t('chat.composer.attachmentRemove', {
+                                    name: ref.name
+                                })}
                                 onmousedown={(event) => event.preventDefault()}
                                 onclick={() => removeAttachment(ref.id)}
                             >
@@ -747,10 +754,10 @@
                     phase={dictationTask.phase}
                     levels={dictationTask.levels}
                     errorMessage={dictationTask.errorMessage}
-                    errorTitle="Dictation failed"
-                    processingLabel="Transcribing…"
-                    finishTitle="Stop and transcribe"
-                    cancelTitle="Cancel dictation"
+                    errorTitle={$t('chat.recording.dictation.failed')}
+                    processingLabel={$t('chat.recording.dictation.processing')}
+                    finishTitle={$t('chat.recording.dictation.finish')}
+                    cancelTitle={$t('chat.recording.dictation.cancel')}
                     onCancel={handleCancelDictation}
                     onFinish={handleFinishDictation}
                     onDismiss={handleDismissDictation}
@@ -760,10 +767,10 @@
                     phase={recordAudioTask.phase}
                     levels={recordAudioTask.levels}
                     errorMessage={recordAudioTask.errorMessage}
-                    errorTitle="Audio recording failed"
-                    processingLabel="Saving recording…"
-                    finishTitle="Stop and attach"
-                    cancelTitle="Cancel audio recording"
+                    errorTitle={$t('chat.recording.audio.failed')}
+                    processingLabel={$t('chat.recording.audio.processing')}
+                    finishTitle={$t('chat.recording.audio.finish')}
+                    cancelTitle={$t('chat.recording.audio.cancel')}
                     onCancel={handleCancelRecordAudio}
                     onFinish={handleFinishRecordAudio}
                     onDismiss={handleDismissRecordAudio}
@@ -774,10 +781,10 @@
                         phase={dictationTask.phase}
                         levels={dictationTask.levels}
                         errorMessage={dictationTask.errorMessage}
-                        errorTitle="Dictation failed"
-                        processingLabel="Transcribing…"
-                        finishTitle="Stop and transcribe"
-                        cancelTitle="Cancel dictation"
+                        errorTitle={$t('chat.recording.dictation.failed')}
+                        processingLabel={$t('chat.recording.dictation.processing')}
+                        finishTitle={$t('chat.recording.dictation.finish')}
+                        cancelTitle={$t('chat.recording.dictation.cancel')}
                         onCancel={handleCancelDictation}
                         onFinish={handleFinishDictation}
                         onDismiss={handleDismissDictation}
@@ -789,10 +796,10 @@
                         phase={recordAudioTask.phase}
                         levels={recordAudioTask.levels}
                         errorMessage={recordAudioTask.errorMessage}
-                        errorTitle="Audio recording failed"
-                        processingLabel="Saving recording…"
-                        finishTitle="Stop and attach"
-                        cancelTitle="Cancel audio recording"
+                        errorTitle={$t('chat.recording.audio.failed')}
+                        processingLabel={$t('chat.recording.audio.processing')}
+                        finishTitle={$t('chat.recording.audio.finish')}
+                        cancelTitle={$t('chat.recording.audio.cancel')}
                         onCancel={handleCancelRecordAudio}
                         onFinish={handleFinishRecordAudio}
                         onDismiss={handleDismissRecordAudio}
@@ -816,8 +823,8 @@
                                     size="icon"
                                     class="rounded-full text-muted-foreground"
                                     disabled={attachmentIds.length >= MAX_ATTACHMENTS}
-                                    title="Add"
-                                    aria-label="Add"
+                                    title={$t('chat.composer.add')}
+                                    aria-label={$t('chat.composer.add')}
                                 >
                                     <Plus class="size-4" />
                                 </Button>
@@ -834,7 +841,7 @@
                                     onclick={() => void handleAttachmentUpload()}
                                 >
                                     <Paperclip class="size-4" />
-                                    Attach media
+                                    {$t('chat.composer.menu.attachMedia')}
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"
@@ -843,7 +850,7 @@
                                     onclick={handleOpenCamera}
                                 >
                                     <Camera class="size-4" />
-                                    Open Camera
+                                    {$t('chat.composer.menu.openCamera')}
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"
@@ -853,7 +860,7 @@
                                     onclick={handleStartRecordAudio}
                                 >
                                     <AudioLines class="size-4" />
-                                    Record audio
+                                    {$t('chat.composer.menu.recordAudio')}
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Separator />
                                 <DropdownMenu.Item
@@ -862,7 +869,7 @@
                                     onclick={handleSuggestion}
                                 >
                                     <CornerUpLeft class="size-4" />
-                                    Suggest input
+                                    {$t('chat.composer.menu.suggestInput')}
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item
                                     class="cursor-pointer whitespace-nowrap"
@@ -870,7 +877,7 @@
                                     onclick={handleInputTranslation}
                                 >
                                     <Languages class="size-4" />
-                                    Translate input
+                                    {$t('chat.composer.menu.translateInput')}
                                 </DropdownMenu.Item>
                             </DropdownMenu.Content>
                         </DropdownMenu.Root>
@@ -907,7 +914,7 @@
                             }
                         }}
                         onpaste={handlePaste}
-                        placeholder="Type a message..."
+                        placeholder={$t('chat.composer.placeholder')}
                     />
 
                     <div
@@ -921,8 +928,8 @@
                                 size="icon"
                                 class="shrink-0 rounded-full"
                                 onclick={handleStop}
-                                title="Stop generation"
-                                aria-label="Stop generation"
+                                title={$t('chat.composer.stopGeneration')}
+                                aria-label={$t('chat.composer.stopGeneration')}
                             >
                                 <Square class="size-4" />
                             </Button>
@@ -933,8 +940,8 @@
                                 class="shrink-0 rounded-full text-muted-foreground"
                                 onclick={handleStartDictation}
                                 disabled={$hasActiveRecording || dictationTask !== null}
-                                title="Start dictation"
-                                aria-label="Start dictation"
+                                title={$t('chat.composer.startDictation')}
+                                aria-label={$t('chat.composer.startDictation')}
                             >
                                 <Mic class="size-4" />
                             </Button>
@@ -943,8 +950,8 @@
                                     size="icon"
                                     class="shrink-0 rounded-full"
                                     onclick={() => void handleSendMessage()}
-                                    title="Send message"
-                                    aria-label="Send message"
+                                    title={$t('chat.composer.sendMessage')}
+                                    aria-label={$t('chat.composer.sendMessage')}
                                 >
                                     <SendHorizontal class="size-4" />
                                 </Button>
@@ -954,8 +961,8 @@
                                     size="icon"
                                     class="shrink-0 rounded-full"
                                     onclick={handleGenerateResponse}
-                                    title="Generate response"
-                                    aria-label="Generate response"
+                                    title={$t('chat.composer.generateResponse')}
+                                    aria-label={$t('chat.composer.generateResponse')}
                                 >
                                     <MessageSquare class="size-4" />
                                 </Button>
@@ -972,7 +979,7 @@
     bind:open={galleryOpen}
     bind:selectedId={selectedGalleryId}
     items={galleryItems}
-    title="Attached media"
+    title={$t('chat.composer.attachedMedia')}
 />
 
 <CameraCaptureDialog bind:open={cameraOpen} onAttach={handleAttachCapturedMedia} />

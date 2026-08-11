@@ -12,6 +12,7 @@
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     interface Props {
         character: Character;
@@ -32,7 +33,7 @@
         const oneLine = content.replace(/\n/g, ' ').trim();
         return oneLine.length > max
             ? oneLine.slice(0, max) + '...'
-            : oneLine || 'Empty greeting message';
+            : oneLine || $t('character.greetings.emptyMessage');
     }
 
     async function handleAdd() {
@@ -52,7 +53,10 @@
             await onSave(greeting);
             if (character.id === characterId) expanded.add(greeting.id);
         } catch (error) {
-            toast.error({ title: 'Could not add greeting', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.addGreeting'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -67,7 +71,7 @@
             await onSave({ ...greeting, sortOrder: newSortOrder, id });
         } catch (error) {
             toast.error({
-                title: 'Could not reorder greeting',
+                title: $t('character.toast.reorderGreeting'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -84,7 +88,7 @@
             await onSave({ ...greeting, content, id });
         } catch (error) {
             toast.error({
-                title: 'Could not update greeting',
+                title: $t('character.toast.updateGreeting'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -98,16 +102,16 @@
         busyAction = `delete:${id}`;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete greeting?',
-                description: 'This greeting will be permanently deleted.',
-                confirmText: 'Delete',
+                title: $t('character.greetings.deleteTitle'),
+                description: $t('character.greetings.deleteBody'),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || character.id !== characterId) return;
             await onDelete(id);
         } catch (error) {
             toast.error({
-                title: 'Could not delete greeting',
+                title: $t('character.toast.deleteGreeting'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -117,7 +121,7 @@
 </script>
 
 <section class="space-y-4">
-    <ListActionBar description="Opening messages for new conversations.">
+    <ListActionBar description={$t('character.greetings.description')}>
         <Button
             size="sm"
             class="gap-1.5"
@@ -125,13 +129,14 @@
             aria-busy={busyAction === 'create'}
             onclick={handleAdd}
         >
-            <Plus class="size-4" /> Add
+            <Plus class="size-4" />
+            {$t('character.greetings.addButton')}
         </Button>
     </ListActionBar>
 
     <SortableList entities={Object.values(character.greetings ?? {})} onReorder={handleReorder}>
         {#snippet empty()}
-            <EmptyListPlaceholder message="No greetings." />
+            <EmptyListPlaceholder message={$t('character.greetings.empty')} />
         {/snippet}
         {#snippet item({ entity: g })}
             <EditableListItem expanded={expanded.has(g.id)} busy={busyAction === `delete:${g.id}`}>
@@ -147,7 +152,9 @@
                         type="button"
                         class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         onclick={() => toggleExpand(g.id)}
-                        aria-label={expanded.has(g.id) ? 'Collapse' : 'Expand'}
+                        aria-label={expanded.has(g.id)
+                            ? $t('common.actions.collapse')
+                            : $t('common.actions.expand')}
                     >
                         {#if expanded.has(g.id)}
                             <ChevronDown class="size-3.5" />
@@ -164,7 +171,7 @@
                         </span>
                     {:else}
                         <span class="text-xs font-medium text-foreground flex-1 select-none pl-1">
-                            Greeting Message
+                            {$t('character.greetings.title')}
                         </span>
                     {/if}
 
@@ -175,7 +182,7 @@
                         disabled={busyAction !== null}
                         aria-busy={busyAction === `delete:${g.id}`}
                         onclick={() => handleDelete(g.id)}
-                        aria-label="Delete greeting"
+                        aria-label={$t('character.greetings.delete')}
                     >
                         <Trash2 class="size-3.5" />
                     </Button>
@@ -187,7 +194,7 @@
                         rows={6}
                         value={g.content}
                         disabled={busyAction !== null}
-                        placeholder="Write greeting message..."
+                        placeholder={$t('character.greetings.placeholder')}
                         onchange={(e) => handleUpdate(g.id, e.currentTarget.value)}
                         class="text-xs bg-background leading-relaxed"
                     />

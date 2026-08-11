@@ -31,18 +31,21 @@
     } from '$lib/components/ui/dialog';
     import { getAssetMediaType } from '$lib/types/asset';
     import { SvelteMap } from 'svelte/reactivity';
+    import { t } from '$lib/stores';
 
     let {
         open = $bindable(false),
         selectedId = $bindable<string | undefined>(),
         items,
-        title = 'Asset gallery'
+        title
     }: {
         open?: boolean;
         selectedId?: string;
         items: MediaGalleryItem[];
         title?: string;
     } = $props();
+
+    const resolvedTitle = $derived(title ?? $t('components.mediaGallery.defaultTitle'));
 
     let currentIndex = $derived(getGalleryItemIndex(items, selectedId));
     let currentItem = $derived(currentIndex >= 0 ? items[currentIndex] : undefined);
@@ -136,15 +139,17 @@
         onkeydown={handleKeydown}
     >
         <DialogHeader class="min-w-0 border-b px-5 py-4 pr-12 text-left">
-            <DialogTitle class="truncate text-base">{currentItem?.name ?? title}</DialogTitle>
+            <DialogTitle class="truncate text-base"
+                >{currentItem?.name ?? resolvedTitle}</DialogTitle
+            >
             <DialogDescription class="flex items-center gap-2 text-xs">
-                <span>{title}</span>
+                <span>{resolvedTitle}</span>
                 {#if currentItem}
                     <span aria-hidden="true">·</span>
                     <span class="font-mono"
                         >{currentItem.asset?.mimeType ??
                             currentItem.mimeType ??
-                            'Unknown type'}</span
+                            $t('components.mediaGallery.unknownType')}</span
                     >
                 {/if}
             </DialogDescription>
@@ -155,7 +160,9 @@
                 {#if mediaType === 'other'}
                     <div class="flex flex-col items-center gap-3 text-muted-foreground">
                         <FileQuestion class="size-12" />
-                        <span class="text-sm">Preview unavailable</span>
+                        <span class="text-sm"
+                            >{$t('components.mediaGallery.previewUnavailable')}</span
+                        >
                     </div>
                 {:else if currentItem.asset}
                     <AssetView
@@ -196,7 +203,7 @@
                     {/if}
                 {/if}
             {:else}
-                <p class="text-sm text-muted-foreground">No assets to preview.</p>
+                <p class="text-sm text-muted-foreground">{$t('components.mediaGallery.empty')}</p>
             {/if}
 
             {#if showGalleryNavigation}
@@ -206,7 +213,7 @@
                     tabindex={-1}
                     onmousedown={(e) => e.preventDefault()}
                     class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md focus:outline-none focus:ring-0 focus-visible:ring-0"
-                    aria-label="Previous asset"
+                    aria-label={$t('components.mediaGallery.previous')}
                     onclick={() => navigate(-1)}
                 >
                     <ChevronLeft class="size-5" />
@@ -217,7 +224,7 @@
                     tabindex={-1}
                     onmousedown={(e) => e.preventDefault()}
                     class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full shadow-md focus:outline-none focus:ring-0 focus-visible:ring-0"
-                    aria-label="Next asset"
+                    aria-label={$t('components.mediaGallery.next')}
                     onclick={() => navigate(1)}
                 >
                     <ChevronRight class="size-5" />
@@ -242,7 +249,7 @@
                                 currentItem?.id
                                     ? 'border-primary ring-2 ring-primary/20'
                                     : 'hover:border-foreground/30'}"
-                                aria-label={`View ${item.name}`}
+                                aria-label={$t('components.mediaGallery.view', { name: item.name })}
                                 aria-current={item.id === currentItem?.id ? 'true' : undefined}
                                 title={item.name}
                                 onclick={() => (selectedId = item.id)}

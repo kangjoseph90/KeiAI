@@ -9,7 +9,8 @@
         changeProxyConnection,
         changeServerConnection,
         serverTransitionLocked,
-        serverTransitionProgress
+        serverTransitionProgress,
+        t
     } from '$lib/stores';
     import { isKeiDefaultProxy, isKeiDefaultServer, PB_URL, PROXY_URL } from '$lib/config';
     import type { ProxyMode, ServerMode } from '$lib/types/connections';
@@ -17,8 +18,16 @@
     import { toast } from '$lib/ui';
 
     const nativeRuntime = isTauri();
-    const defaultServerLabel = isKeiDefaultServer() ? 'Kei Cloud' : 'Default';
-    const defaultProxyLabel = isKeiDefaultProxy() ? 'Kei Proxy' : 'Default';
+    const defaultServerLabel = $derived(
+        isKeiDefaultServer()
+            ? $t('settings.connections.defaultServer')
+            : $t('settings.connections.defaultServerBadge')
+    );
+    const defaultProxyLabel = $derived(
+        isKeiDefaultProxy()
+            ? $t('settings.connections.defaultProxy')
+            : $t('settings.connections.defaultProxyBadge')
+    );
 
     let hydratedUserId = $state('');
     let serverMode = $state<ServerMode>('default');
@@ -46,10 +55,10 @@
                 mode: serverMode,
                 customUrl: serverCustomUrl.trim() || undefined
             });
-            toast.success({ title: 'Server connection updated' });
+            toast.success({ title: $t('settings.connections.toast.serverUpdated') });
         } catch (error) {
             toast.error({
-                title: 'Server connection update failed',
+                title: $t('settings.connections.toast.serverFailed'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -65,10 +74,10 @@
                 mode: proxyMode,
                 customUrl: proxyCustomUrl.trim() || undefined
             });
-            toast.success({ title: 'Proxy connection updated' });
+            toast.success({ title: $t('settings.connections.toast.proxyUpdated') });
         } catch (error) {
             toast.error({
-                title: 'Proxy connection update failed',
+                title: $t('settings.connections.toast.proxyFailed'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -84,10 +93,11 @@
             <h3
                 class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
             >
-                <Server class="size-5" /> Server
+                <Server class="size-5" />
+                {$t('settings.connections.serverTitle')}
             </h3>
             <p class="text-sm text-muted-foreground">
-                Choose the KeiAI server used for accounts, sync, assets, rooms, and other services.
+                {$t('settings.connections.serverDescription')}
             </p>
         </div>
 
@@ -116,15 +126,20 @@
                     onclick={() => (serverMode = 'custom')}
                 >
                     <div class="flex items-center gap-2 font-medium">
-                        <Server class="size-4" /> Custom
+                        <Server class="size-4" />
+                        {$t('settings.connections.custom')}
                     </div>
-                    <p class="mt-1 text-xs text-muted-foreground">Use a compatible KeiAI server.</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {$t('settings.connections.serverCustomHelp')}
+                    </p>
                 </button>
             </div>
 
             {#if serverMode === 'custom'}
                 <div class="space-y-2">
-                    <Label for="custom-server-url">Custom server URL</Label>
+                    <Label for="custom-server-url"
+                        >{$t('settings.connections.customServerLabel')}</Label
+                    >
                     <Input
                         id="custom-server-url"
                         bind:value={serverCustomUrl}
@@ -136,7 +151,7 @@
             {/if}
 
             <p class="text-xs text-muted-foreground">
-                Changing servers downloads remote assets first and signs out of the previous server.
+                {$t('settings.connections.serverChangeWarning')}
             </p>
 
             {#if $serverTransitionProgress}
@@ -163,7 +178,7 @@
             {/if}
 
             <Button size="sm" disabled={serverBusy || $serverTransitionLocked} onclick={saveServer}>
-                Save server connection
+                {$t('settings.connections.saveServer')}
             </Button>
         </div>
     </section>
@@ -177,10 +192,11 @@
                 <h3
                     class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
                 >
-                    <Network class="size-5" /> Proxy
+                    <Network class="size-5" />
+                    {$t('settings.connections.proxyTitle')}
                 </h3>
                 <p class="text-sm text-muted-foreground">
-                    Choose how browser requests that require CORS bypass are sent.
+                    {$t('settings.connections.proxyDescription')}
                 </p>
             </div>
 
@@ -209,10 +225,11 @@
                         onclick={() => (proxyMode = 'custom')}
                     >
                         <div class="flex items-center gap-2 font-medium">
-                            <Server class="size-4" /> Custom
+                            <Server class="size-4" />
+                            {$t('settings.connections.custom')}
                         </div>
                         <p class="mt-1 text-xs text-muted-foreground">
-                            Use a compatible KeiAI proxy.
+                            {$t('settings.connections.proxyCustomHelp')}
                         </p>
                     </button>
                     <button
@@ -224,17 +241,20 @@
                         onclick={() => (proxyMode = 'off')}
                     >
                         <div class="flex items-center gap-2 font-medium">
-                            <Unplug class="size-4" /> Off
+                            <Unplug class="size-4" />
+                            {$t('settings.connections.off')}
                         </div>
                         <p class="mt-1 text-xs text-muted-foreground">
-                            Send requests directly without a proxy.
+                            {$t('settings.connections.proxyOffHelp')}
                         </p>
                     </button>
                 </div>
 
                 {#if proxyMode === 'custom'}
                     <div class="space-y-2">
-                        <Label for="custom-proxy-url">Custom proxy URL</Label>
+                        <Label for="custom-proxy-url"
+                            >{$t('settings.connections.customProxyLabel')}</Label
+                        >
                         <Input
                             id="custom-proxy-url"
                             bind:value={proxyCustomUrl}
@@ -247,8 +267,7 @@
                         >
                             <AlertTriangle class="mt-0.5 size-4 shrink-0" />
                             <span>
-                                API keys and request content pass through this proxy. Only use a
-                                server you trust.
+                                {$t('settings.connections.proxyWarning')}
                             </span>
                         </div>
                     </div>
@@ -257,14 +276,12 @@
                         class="flex gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300"
                     >
                         <AlertTriangle class="mt-0.5 size-4 shrink-0" />
-                        <span
-                            >Provider requests may fail when the browser blocks them with CORS.</span
-                        >
+                        <span>{$t('settings.connections.proxyCorsNote')}</span>
                     </div>
                 {/if}
 
                 <Button size="sm" disabled={proxyBusy} onclick={saveProxy}
-                    >Save proxy connection</Button
+                    >{$t('settings.connections.saveProxy')}</Button
                 >
             </div>
         </section>

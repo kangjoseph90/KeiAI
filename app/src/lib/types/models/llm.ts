@@ -11,6 +11,7 @@ export type LLMType = BuiltInLLMType | string;
 
 export interface LLMTypeDefinition {
     type: LLMType;
+    agentNames?: string[];
     description?: string;
 }
 

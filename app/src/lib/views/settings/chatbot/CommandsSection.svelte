@@ -20,6 +20,7 @@
         normalizeChatCommandName
     } from '$lib/managers/command';
     import type { FolderDef } from '$lib/types/refs';
+    import { t } from '$lib/stores';
     import CommandItem from './CommandItem.svelte';
 
     let {
@@ -57,7 +58,10 @@
             await onSave(command);
             editingId = command.id;
         } catch (error) {
-            toast.error({ title: 'Could not add command', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.presets.toast.create'),
+                description: getErrorMessage(error)
+            });
         } finally {
             creating = false;
         }
@@ -82,9 +86,10 @@
 </script>
 
 <section class="flex flex-col gap-4 px-2">
-    <ListActionBar description="Run custom workflows from the chat composer with slash commands.">
+    <ListActionBar description={$t('settings.chat.commandsDescription')}>
         <Button size="sm" class="gap-1.5" disabled={creating} aria-busy={creating} onclick={add}>
-            <Plus class="size-4" /> Add command
+            <Plus class="size-4" />
+            {$t('settings.chat.addCommand')}
         </Button>
     </ListActionBar>
 
@@ -98,7 +103,9 @@
         {onDeleteFolder}
         {onMoveItem}
     >
-        {#snippet empty()}<EmptyListPlaceholder message="No custom commands defined." />{/snippet}
+        {#snippet empty()}<EmptyListPlaceholder
+                message={$t('settings.chat.noCommands')}
+            />{/snippet}
         {#snippet item({ entity: command }: { entity: ChatCommand })}
             <CommandItem
                 item={command}

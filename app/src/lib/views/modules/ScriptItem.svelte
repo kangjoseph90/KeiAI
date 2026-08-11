@@ -19,6 +19,7 @@
     } from 'lucide-svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     let {
         item,
@@ -52,7 +53,10 @@
         try {
             await onUpdate(item.id, changes);
         } catch (error) {
-            toast.error({ title: 'Script update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('module.scriptItem.toast.update'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -63,15 +67,18 @@
         busy = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete script?',
-                description: `Delete "${item.name}"?`,
-                confirmText: 'Delete',
+                title: $t('module.scriptItem.deleteTitle'),
+                description: $t('module.scriptItem.deleteBody', { name: item.name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed) return;
             await onDelete(item.id);
         } catch (error) {
-            toast.error({ title: 'Could not delete script', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('module.scriptItem.toast.delete'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -90,7 +97,9 @@
             type="button"
             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
-            aria-label={expanded ? 'Collapse script' : 'Expand script'}
+            aria-label={expanded
+                ? $t('module.scriptItem.collapseAria')
+                : $t('module.scriptItem.expandAria')}
         >
             {#if expanded}
                 <ChevronDown class="size-3.5" />
@@ -102,7 +111,7 @@
         <Input
             disabled={busy}
             value={item.name}
-            aria-label="Script name"
+            aria-label={$t('module.scriptItem.nameAria')}
             class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
@@ -113,8 +122,10 @@
             size="icon-sm"
             variant="ghost"
             class="shrink-0 text-muted-foreground"
-            title={item.enabled ? 'Disable script' : 'Enable script'}
-            aria-label={item.enabled ? 'Disable script' : 'Enable script'}
+            title={item.enabled ? $t('module.scriptItem.disable') : $t('module.scriptItem.enable')}
+            aria-label={item.enabled
+                ? $t('module.scriptItem.disable')
+                : $t('module.scriptItem.enable')}
             disabled={busy}
             onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
@@ -128,8 +139,8 @@
             size="icon-sm"
             variant="ghost"
             class="shrink-0 text-muted-foreground hover:text-destructive"
-            title="Delete script"
-            aria-label="Delete script"
+            title={$t('module.scriptItem.deleteAria')}
+            aria-label={$t('module.scriptItem.deleteAria')}
             disabled={busy}
             onclick={handleDelete}
         >
@@ -139,7 +150,7 @@
 
     {#snippet details()}
         <div class="space-y-1.5">
-            <Label class="text-xs">Phase</Label>
+            <Label class="text-xs">{$t('module.scriptItem.phaseLabel')}</Label>
             <div class="flex flex-wrap gap-1">
                 {#each PHASE_OPTIONS as phase (phase)}
                     <button
@@ -157,7 +168,7 @@
         </div>
 
         <div class="space-y-1.5">
-            <Label class="text-xs">Regex</Label>
+            <Label class="text-xs">{$t('module.scriptItem.regexLabel')}</Label>
             <Input
                 disabled={busy}
                 class="bg-background text-sm font-mono leading-relaxed"
@@ -166,7 +177,7 @@
             />
         </div>
         <div class="space-y-1.5">
-            <Label class="text-xs">Replacement</Label>
+            <Label class="text-xs">{$t('module.scriptItem.replacementLabel')}</Label>
             <Textarea
                 disabled={busy}
                 class="bg-background text-sm font-mono leading-relaxed min-h-25"
@@ -182,7 +193,7 @@
                 class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
                 onclick={() => (advancedOpen = !advancedOpen)}
             >
-                Advanced Settings
+                {$t('module.scriptItem.advancedToggle')}
                 {#if advancedOpen}
                     <ChevronUp class="size-3" />
                 {:else}
@@ -194,7 +205,7 @@
                 <div transition:slide={{ duration: 150 }}>
                     <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border sm:grid-cols-3">
                         <div class="space-y-1.5">
-                            <Label class="text-xs">Flag</Label>
+                            <Label class="text-xs">{$t('module.scriptItem.flagLabel')}</Label>
                             <Input
                                 disabled={busy}
                                 class="bg-background text-sm font-mono"
@@ -203,7 +214,7 @@
                             />
                         </div>
                         <div class="space-y-1.5">
-                            <Label class="text-xs">Order</Label>
+                            <Label class="text-xs">{$t('module.scriptItem.orderLabel')}</Label>
                             <Input
                                 disabled={busy}
                                 class="bg-background text-sm"
@@ -216,7 +227,7 @@
                             />
                         </div>
                         <div class="space-y-1.5">
-                            <Label class="text-xs">Repeat</Label>
+                            <Label class="text-xs">{$t('module.scriptItem.repeatLabel')}</Label>
                             <Input
                                 disabled={busy}
                                 class="bg-background text-sm"

@@ -12,7 +12,7 @@
     import { onMount } from 'svelte';
     import { Button } from '$lib/components/ui/button';
     import { pointerDrag } from '$lib/components/entitylist/pointer-drag';
-    import { collectedTasks, type CollectedTask } from '$lib/stores';
+    import { collectedTasks, t, type CollectedTask } from '$lib/stores';
     import { navigate } from '$lib/router';
     import TaskErrorInfo from './TaskErrorInfo.svelte';
     import {
@@ -69,7 +69,13 @@
         return { errors, recordings, running, completed };
     });
     const taskCenterLabel = $derived(
-        `Task Center: ${visibleTasks.length} task${visibleTasks.length === 1 ? '' : 's'}, ${taskSummary.errors} failed, ${taskSummary.recordings} recording, ${taskSummary.running} running, ${taskSummary.completed} completed`
+        $t('tasks.center.summary', {
+            total: visibleTasks.length,
+            failed: taskSummary.errors,
+            recordings: taskSummary.recordings,
+            running: taskSummary.running,
+            completed: taskSummary.completed
+        })
     );
 
     $effect(() => {
@@ -242,10 +248,10 @@
             aria-expanded={expanded}
             disabled={visibleTasks.length === 0}
             title={visibleTasks.length === 0
-                ? 'No tasks'
+                ? $t('tasks.center.noTasks')
                 : expanded
-                  ? 'Collapse Task Center'
-                  : 'Expand Task Center'}
+                  ? $t('tasks.center.collapse')
+                  : $t('tasks.center.expand')}
         >
             {#if visibleTasks.length === 0}
                 <ListTodo class="size-5 text-muted-foreground" />
@@ -263,7 +269,7 @@
                     class="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background shadow-sm"
                     aria-hidden="true"
                 >
-                    {visibleTasks.length > 9 ? '9+' : visibleTasks.length}
+                    {visibleTasks.length > 9 ? $t('tasks.center.overflow') : visibleTasks.length}
                 </span>
             {/if}
         </Button>
@@ -277,14 +283,14 @@
                 ? 'bottom-[calc(100%+0.5rem)]'
                 : 'top-[calc(100%+0.5rem)]'}"
             style={`max-height: min(32rem, ${panelMaxHeight}px)`}
-            aria-label="Task Center tasks"
+            aria-label={$t('tasks.center.region')}
         >
             <div class="flex min-h-0 flex-col divide-y overflow-y-auto" aria-live="polite">
                 {#each visibleTasks as task (task.id)}
                     <section class="p-3">
                         <div class="mb-2 flex min-w-0 items-center gap-2">
                             <span class="min-w-0 flex-1 truncate text-xs font-medium">
-                                {task.chatTitle || 'Untitled Chat'}
+                                {task.chatTitle || $t('tasks.center.untitledChat')}
                             </span>
                             <span class="shrink-0 text-[10px] text-muted-foreground">
                                 {task.title}
@@ -295,14 +301,16 @@
                             {#if task.status === 'error'}
                                 <TaskErrorInfo errorMessage={task.errorMessage} />
                                 <span class="min-w-0 flex-1 text-sm font-medium text-destructive">
-                                    Failed
+                                    {$t('tasks.center.statusFailed')}
                                 </span>
                                 <Button
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => openTaskChat(task)}
-                                    aria-label={`Open ${task.chatTitle || 'Untitled Chat'}`}
-                                    title="Open chat"
+                                    aria-label={$t('tasks.center.openChatNamed', {
+                                        title: task.chatTitle || $t('tasks.center.untitledChat')
+                                    })}
+                                    title={$t('tasks.center.openChat')}
                                 >
                                     <Search class="size-3.5" />
                                 </Button>
@@ -310,20 +318,26 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => dismissTask(task)}
-                                    aria-label={`Dismiss ${task.title}`}
-                                    title="Dismiss"
+                                    aria-label={$t('tasks.center.dismissNamed', {
+                                        title: task.title
+                                    })}
+                                    title={$t('tasks.center.dismiss')}
                                 >
                                     <X class="size-3.5" />
                                 </Button>
                             {:else if task.status === 'completed'}
                                 <CheckCircle2 class="size-4 shrink-0 text-emerald-500" />
-                                <span class="min-w-0 flex-1 text-sm">Completed</span>
+                                <span class="min-w-0 flex-1 text-sm">
+                                    {$t('tasks.center.statusCompleted')}
+                                </span>
                                 <Button
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => openTaskChat(task)}
-                                    aria-label={`Open ${task.chatTitle || 'Untitled Chat'}`}
-                                    title="Open chat"
+                                    aria-label={$t('tasks.center.openChatNamed', {
+                                        title: task.chatTitle || $t('tasks.center.untitledChat')
+                                    })}
+                                    title={$t('tasks.center.openChat')}
                                 >
                                     <Search class="size-3.5" />
                                 </Button>
@@ -331,15 +345,17 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => dismissTask(task)}
-                                    aria-label={`Dismiss ${task.title}`}
-                                    title="Dismiss"
+                                    aria-label={$t('tasks.center.dismissNamed', {
+                                        title: task.title
+                                    })}
+                                    title={$t('tasks.center.dismiss')}
                                 >
                                     <X class="size-3.5" />
                                 </Button>
                             {:else if isRecordingTask(task)}
                                 <Mic class="size-4 shrink-0 text-recording" />
                                 <span class="min-w-0 flex-1 text-sm text-recording">
-                                    Recording
+                                    {$t('tasks.center.statusRecording')}
                                 </span>
                                 <Button
                                     variant="secondary"
@@ -349,11 +365,11 @@
                                             ? finishDictation(task.chatId)
                                             : finishRecordAudio(task.chatId)}
                                     aria-label={task.kind === 'dictation'
-                                        ? 'Stop and transcribe'
-                                        : 'Stop and attach'}
+                                        ? $t('tasks.center.stopTranscribe')
+                                        : $t('tasks.center.stopAttach')}
                                     title={task.kind === 'dictation'
-                                        ? 'Stop and transcribe'
-                                        : 'Stop and attach'}
+                                        ? $t('tasks.center.stopTranscribe')
+                                        : $t('tasks.center.stopAttach')}
                                 >
                                     <Square class="size-3 fill-current" />
                                 </Button>
@@ -361,8 +377,10 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => openTaskChat(task)}
-                                    aria-label={`Open ${task.chatTitle || 'Untitled Chat'}`}
-                                    title="Open chat"
+                                    aria-label={$t('tasks.center.openChatNamed', {
+                                        title: task.chatTitle || $t('tasks.center.untitledChat')
+                                    })}
+                                    title={$t('tasks.center.openChat')}
                                 >
                                     <Search class="size-3.5" />
                                 </Button>
@@ -371,9 +389,9 @@
                                     size="icon-sm"
                                     onclick={() => cancelTask(task)}
                                     aria-label={task.kind === 'dictation'
-                                        ? 'Cancel dictation'
-                                        : 'Cancel audio recording'}
-                                    title="Cancel"
+                                        ? $t('tasks.center.cancelDictation')
+                                        : $t('tasks.center.cancelRecording')}
+                                    title={$t('tasks.center.cancel')}
                                 >
                                     <X class="size-3.5" />
                                 </Button>
@@ -381,17 +399,19 @@
                                 <Loader2 class="size-4 shrink-0 animate-spin text-primary" />
                                 <span class="min-w-0 flex-1 text-sm text-muted-foreground">
                                     {task.kind === 'dictation'
-                                        ? 'Transcribing'
+                                        ? $t('tasks.center.statusTranscribing')
                                         : task.kind === 'record_audio'
-                                          ? 'Saving recording'
-                                          : 'Running'}
+                                          ? $t('tasks.center.statusSavingRecording')
+                                          : $t('tasks.center.statusRunning')}
                                 </span>
                                 <Button
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => openTaskChat(task)}
-                                    aria-label={`Open ${task.chatTitle || 'Untitled Chat'}`}
-                                    title="Open chat"
+                                    aria-label={$t('tasks.center.openChatNamed', {
+                                        title: task.chatTitle || $t('tasks.center.untitledChat')
+                                    })}
+                                    title={$t('tasks.center.openChat')}
                                 >
                                     <Search class="size-3.5" />
                                 </Button>
@@ -399,8 +419,10 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() => cancelTask(task)}
-                                    aria-label={`Cancel ${task.title}`}
-                                    title="Cancel"
+                                    aria-label={$t('tasks.center.cancelNamed', {
+                                        title: task.title
+                                    })}
+                                    title={$t('tasks.center.cancel')}
                                 >
                                     <X class="size-3.5" />
                                 </Button>

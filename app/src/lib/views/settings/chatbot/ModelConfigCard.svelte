@@ -6,7 +6,7 @@
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import SuggestedInput from '$lib/components/SuggestedInput.svelte';
     import { Separator } from '$lib/components/ui/separator';
-    import { appSettings, updateSettings } from '$lib/stores';
+    import { appSettings, updateSettings, t } from '$lib/stores';
     import {
         getBuiltInLLMModels,
         getLLMProviderName,
@@ -117,7 +117,7 @@
 {#snippet fields()}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="flex flex-col gap-1.5">
-            <Label>Provider</Label>
+            <Label>{$t('settings.modelConfig.provider')}</Label>
             <OptionSelect
                 value={config.provider}
                 options={providers.map((provider) => ({
@@ -128,7 +128,7 @@
             />
         </div>
         <div class="flex flex-col gap-1.5">
-            <Label>Model</Label>
+            <Label>{$t('settings.modelConfig.model')}</Label>
             {#if config.provider === 'openrouter'}
                 <SuggestedInput
                     id="openrouter-model"
@@ -157,12 +157,14 @@
         {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}
             <div class="flex flex-col gap-1.5 sm:col-span-2">
                 <Label>
-                    {getLLMProviderName(config.provider)} API Key
+                    {$t('settings.modelConfig.apiKeySuffix', {
+                        provider: getLLMProviderName(config.provider)
+                    })}
                 </Label>
                 <form onsubmit={(e) => e.preventDefault()} class="flex gap-2">
                     <Input
                         type={showKey ? 'text' : 'password'}
-                        placeholder="Enter API Key"
+                        placeholder={$t('settings.modelConfig.enterApiKey')}
                         value={getProviderApiKey(config.provider)}
                         oninput={(e) => handleApiKeyChange(config.provider, e.currentTarget.value)}
                         class="font-mono text-sm"
@@ -173,7 +175,9 @@
                         variant="ghost"
                         size="sm"
                         onclick={() => (showKey = !showKey)}
-                        aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                        aria-label={showKey
+                            ? $t('settings.modelConfig.hideKey')
+                            : $t('settings.modelConfig.showKey')}
                     >
                         {#if showKey}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
                     </Button>

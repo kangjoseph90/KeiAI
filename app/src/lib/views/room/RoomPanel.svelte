@@ -47,7 +47,8 @@
         titleTasks,
         updateChat,
         updateRoom,
-        updateRoomFolder
+        updateRoomFolder,
+        t
     } from '$lib/stores';
     import { appAlert, appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
@@ -111,8 +112,9 @@
     async function handleCreateChat(): Promise<void> {
         if (!$activeRoom) return;
         const roomId = $activeRoom.id;
-        await runPanelAction('create-chat', 'Could not create chat', async () => {
+        await runPanelAction('create-chat', $t('library.toast.createChat'), async () => {
             const chat = await createChat(roomId, {
+                // i18n-ignore: default fallback chat title
                 title: `New Chat ${$roomChats.length + 1}`
             });
             await syncChatGreetings(chat.id);
@@ -123,16 +125,20 @@
     }
 
     function handleOpenCharacter(characterId: string): void {
-        void runPanelAction(`open-character:${characterId}`, 'Could not open character', () =>
-            navigateToCharacterStudio(characterId)
+        void runPanelAction(
+            `open-character:${characterId}`,
+            $t('library.toast.openCharacter'),
+            () => navigateToCharacterStudio(characterId)
         );
     }
 
     async function handleSelectCharacter(characterId: string): Promise<void> {
         if (!$activeChat) return;
         const chatId = $activeChat.id;
-        await runPanelAction(`select-character:${characterId}`, 'Could not select character', () =>
-            setChatSelectedCharacter(chatId, characterId)
+        await runPanelAction(
+            `select-character:${characterId}`,
+            $t('library.toast.selectCharacter'),
+            () => setChatSelectedCharacter(chatId, characterId)
         );
     }
 
@@ -141,7 +147,7 @@
         const chatId = $activeChat.id;
         await runPanelAction(
             `default-character:${characterId}`,
-            'Could not set default character',
+            $t('library.toast.setDefaultCharacter'),
             () => setChatDefaultCharacter(chatId, characterId)
         );
     }
@@ -153,12 +159,14 @@
         const character = $roomCharacters.find((item) => item.id === characterId);
         await runPanelAction(
             `remove-character:${characterId}`,
-            'Could not remove character',
+            $t('library.toast.removeCharacter'),
             async () => {
                 const confirmed = await appConfirm({
-                    title: 'Remove character from room?',
-                    description: `Remove "${character?.name ?? 'this character'}" from this room?`,
-                    confirmText: 'Remove',
+                    title: $t('library.room.removeCharacterTitle'),
+                    description: $t('library.room.removeCharacterBody', {
+                        name: character?.name ?? $t('common.label.name')
+                    }),
+                    confirmText: $t('common.confirm.remove'),
                     variant: 'destructive'
                 });
                 if (!confirmed || $activeRoom?.id !== roomId) return;
@@ -171,7 +179,7 @@
     async function handleSelectChat(chatId: string): Promise<void> {
         if (!$activeRoom) return;
         const roomId = $activeRoom.id;
-        await runPanelAction(`select-chat:${chatId}`, 'Could not open chat', async () => {
+        await runPanelAction(`select-chat:${chatId}`, $t('library.toast.openChat'), async () => {
             await syncChatGreetings(chatId);
             if ($activeRoom?.id === roomId) onNavigate({ view: 'room', roomId, chatId });
         });
@@ -181,7 +189,7 @@
         const title = editingChatTitle.trim();
         if (!title) return;
 
-        await runPanelAction(`rename-chat:${chatId}`, 'Could not rename chat', async () => {
+        await runPanelAction(`rename-chat:${chatId}`, $t('library.toast.renameChat'), async () => {
             await updateChat(chatId, { title });
             editingChatId = null;
             editingChatTitle = '';
@@ -193,7 +201,7 @@
         const name = roomNameDraft.trim();
         if (!name) return;
         const roomId = $activeRoom.id;
-        await runPanelAction('rename-room', 'Could not rename room', async () => {
+        await runPanelAction('rename-room', $t('library.toast.renameRoom'), async () => {
             await updateRoom(roomId, { name });
             editingRoomName = false;
             roomNameDraft = '';
@@ -210,11 +218,11 @@
         if (!$activeRoom || $isMultiRoom) return;
         const roomId = $activeRoom.id;
         const roomName = $activeRoom.name;
-        await runPanelAction('delete-room', 'Could not delete room', async () => {
+        await runPanelAction('delete-room', $t('library.toast.deleteRoom'), async () => {
             const confirmed = await appConfirm({
-                title: 'Delete room?',
-                description: `Delete room "${roomName}"?`,
-                confirmText: 'Delete',
+                title: $t('library.room.deleteTitle'),
+                description: $t('library.room.deleteBody', { name: roomName }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activeRoom?.id !== roomId) return;
@@ -227,18 +235,20 @@
         if (!$activeRoom) return;
         const roomId = $activeRoom.id;
         const chat = $roomChats.find((item) => item.id === chatId);
-        await runPanelAction(`delete-chat:${chatId}`, 'Could not delete chat', async () => {
+        await runPanelAction(`delete-chat:${chatId}`, $t('library.toast.deleteChat'), async () => {
             if ($roomChats.length <= 1) {
                 await appAlert({
-                    title: 'Cannot delete chat',
-                    description: 'A room must contain at least one chat.'
+                    title: $t('library.room.cannotDeleteChatTitle'),
+                    description: $t('library.room.cannotDeleteChatBody')
                 });
                 return;
             }
             const confirmed = await appConfirm({
-                title: 'Delete chat?',
-                description: `Delete "${chat?.title || 'Untitled Chat'}" and its messages?`,
-                confirmText: 'Delete',
+                title: $t('library.room.deleteChatTitle'),
+                description: $t('library.room.deleteChatBody', {
+                    name: chat?.title || $t('library.room.untitledChat')
+                }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activeRoom?.id !== roomId) return;
@@ -258,7 +268,10 @@
     function handleGenerateTitle(chatId: string): void {
         void runTitle(chatId).catch((error) => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
-            toast.error({ title: 'Could not generate title', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('library.toast.generateTitle'),
+                description: getErrorMessage(error)
+            });
         });
     }
 
@@ -293,7 +306,7 @@
                         <Button
                             type="submit"
                             size="icon-sm"
-                            aria-label="Save room name"
+                            aria-label={$t('library.room.rename.save')}
                             disabled={panelAction !== null}
                             aria-busy={panelAction === 'rename-room'}
                         >
@@ -303,7 +316,7 @@
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="Cancel room rename"
+                            aria-label={$t('library.room.rename.cancel')}
                             disabled={panelAction !== null}
                             onclick={() => {
                                 editingRoomName = false;
@@ -321,7 +334,7 @@
                         <span
                             class="shrink-0 rounded-full border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
                         >
-                            Multi Room
+                            {$t('library.room.multiRoomBadge')}
                         </span>
                     {/if}
                     {#if !$isMultiRoom}
@@ -329,8 +342,8 @@
                             variant="ghost"
                             size="icon-sm"
                             class="shrink-0 text-muted-foreground"
-                            title="Rename room"
-                            aria-label="Rename room"
+                            title={$t('library.room.renameButton')}
+                            aria-label={$t('library.room.renameButton')}
                             disabled={panelAction !== null}
                             onclick={startRenameRoom}
                         >
@@ -340,8 +353,8 @@
                             variant="ghost"
                             size="icon-sm"
                             class="shrink-0 text-muted-foreground hover:text-destructive"
-                            title="Delete room"
-                            aria-label={`Delete ${$activeRoom.name}`}
+                            title={$t('library.room.deleteButton')}
+                            aria-label={$t('library.room.deleteNamed', { name: $activeRoom.name })}
                             disabled={panelAction !== null}
                             aria-busy={panelAction === 'delete-room'}
                             onclick={handleDeleteRoom}
@@ -357,14 +370,15 @@
                     <p
                         class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
-                        <UserRound class="size-3" /> Characters
+                        <UserRound class="size-3" />
+                        {$t('library.room.section.characters')}
                     </p>
                     <Button
                         variant="ghost"
                         size="icon-sm"
                         class="text-muted-foreground hover:text-foreground"
-                        title="Add characters"
-                        aria-label="Add characters"
+                        title={$t('library.room.addCharacters')}
+                        aria-label={$t('library.room.addCharacters')}
                         disabled={panelAction !== null}
                         onclick={() => ($characterPickerOpen = true)}
                     >
@@ -400,7 +414,7 @@
                 >
                     {#snippet empty()}
                         <div class="col-span-full">
-                            <EmptyListPlaceholder message="No characters." />
+                            <EmptyListPlaceholder message={$t('library.room.noCharacters')} />
                         </div>
                     {/snippet}
                     {#snippet folder({ folder: f, collapsed, toggle, parts })}
@@ -484,8 +498,11 @@
                                             <span
                                                 role="img"
                                                 class="inline-flex size-3 shrink-0 items-center justify-center text-primary"
-                                                title="Default character"
-                                                aria-label={`${character.name} is the default character`}
+                                                title={$t('library.room.defaultCharacter')}
+                                                aria-label={$t(
+                                                    'library.room.defaultCharacterHint',
+                                                    { name: character.name }
+                                                )}
                                             >
                                                 <Pin class="size-3" />
                                             </span>
@@ -518,7 +535,7 @@
                     />
                     <Input
                         bind:value={chatSearch}
-                        placeholder="Search chats..."
+                        placeholder={$t('library.room.searchChats')}
                         class="h-8 pl-8 text-xs"
                     />
                 </div>
@@ -526,8 +543,8 @@
                     variant="ghost"
                     size="icon-sm"
                     class="shrink-0"
-                    title="New chat"
-                    aria-label="New chat"
+                    title={$t('library.room.newChatButton')}
+                    aria-label={$t('library.room.newChatButton')}
                     disabled={panelAction !== null}
                     aria-busy={panelAction === 'create-chat'}
                     onclick={handleCreateChat}
@@ -558,7 +575,7 @@
                             )}
                     >
                         {#snippet empty()}
-                            <EmptyListPlaceholder message="No chats yet." />
+                            <EmptyListPlaceholder message={$t('library.room.noChats')} />
                         {/snippet}
                         {#snippet folder({ folder: f, collapsed, toggle, parts })}
                             <div
@@ -630,7 +647,7 @@
                                         <Button
                                             type="submit"
                                             size="icon-sm"
-                                            aria-label="Save chat name"
+                                            aria-label={$t('library.room.rename.save')}
                                             disabled={panelAction !== null}
                                             aria-busy={panelAction === `rename-chat:${chat.id}`}
                                         >
@@ -640,7 +657,7 @@
                                             type="button"
                                             variant="ghost"
                                             size="icon-sm"
-                                            aria-label="Cancel chat rename"
+                                            aria-label={$t('library.room.rename.cancel')}
                                             disabled={panelAction !== null}
                                             onclick={() => {
                                                 editingChatId = null;
@@ -662,7 +679,8 @@
                                             />
                                             <span class="min-w-0 flex-1 truncate text-foreground">
                                                 <TypewriterText
-                                                    text={chat.title || 'Untitled Chat'}
+                                                    text={chat.title ||
+                                                        $t('library.room.untitledChat')}
                                                 />
                                             </span>
                                         </div>
@@ -675,19 +693,21 @@
                                                     <Loader2
                                                         class="size-3.5 animate-spin text-primary"
                                                         role="status"
-                                                        aria-label="Task running"
+                                                        aria-label={$t('library.room.taskRunning')}
                                                     />
                                                 {:else if taskIndicator === 'error'}
                                                     <span
                                                         class="size-2 rounded-full bg-destructive"
                                                         role="status"
-                                                        aria-label="Task failed"
+                                                        aria-label={$t('library.room.taskFailed')}
                                                     ></span>
                                                 {:else if taskIndicator === 'completed'}
                                                     <span
                                                         class="size-2 rounded-full bg-emerald-500"
                                                         role="status"
-                                                        aria-label="Task completed"
+                                                        aria-label={$t(
+                                                            'library.room.taskCompleted'
+                                                        )}
                                                     ></span>
                                                 {/if}
                                             </div>
@@ -701,8 +721,12 @@
                                                 variant="ghost"
                                                 size="icon-sm"
                                                 class="text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                title="Generate title"
-                                                aria-label={`Generate title for ${chat.title || 'Untitled Chat'}`}
+                                                title={$t('library.room.generateTitleButton')}
+                                                aria-label={$t('library.room.generateTitleNamed', {
+                                                    name:
+                                                        chat.title ||
+                                                        $t('library.room.untitledChat')
+                                                })}
                                                 disabled={panelAction !== null ||
                                                     chat.messageCount === 0 ||
                                                     $titleTasks.get(chat.id)?.status ===
@@ -718,13 +742,18 @@
                                                 variant="ghost"
                                                 size="icon-sm"
                                                 class="text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                title="Rename chat"
-                                                aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
+                                                title={$t('library.room.renameChatButton')}
+                                                aria-label={$t('library.room.renameChatNamed', {
+                                                    name:
+                                                        chat.title ||
+                                                        $t('library.room.untitledChat')
+                                                })}
                                                 disabled={panelAction !== null}
                                                 onclick={() =>
                                                     startRenameChat(
                                                         chat.id,
-                                                        chat.title || 'Untitled Chat'
+                                                        chat.title ||
+                                                            $t('library.room.untitledChat')
                                                     )}
                                             >
                                                 <Edit3 class="size-3.5" />
@@ -734,8 +763,12 @@
                                                 variant="ghost"
                                                 size="icon-sm"
                                                 class="text-destructive hover:bg-destructive/10"
-                                                title="Delete chat"
-                                                aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
+                                                title={$t('library.room.deleteChatButton')}
+                                                aria-label={$t('library.room.deleteChatNamed', {
+                                                    name:
+                                                        chat.title ||
+                                                        $t('library.room.untitledChat')
+                                                })}
                                                 disabled={panelAction !== null}
                                                 aria-busy={panelAction === `delete-chat:${chat.id}`}
                                                 onclick={() => handleDeleteChat(chat.id)}
@@ -758,7 +791,11 @@
                                                         variant="ghost"
                                                         size="icon-sm"
                                                         class="relative text-muted-foreground after:absolute after:-inset-2"
-                                                        aria-label={`Actions for ${chat.title || 'Untitled Chat'}`}
+                                                        aria-label={$t('library.room.chatActions', {
+                                                            name:
+                                                                chat.title ||
+                                                                $t('library.room.untitledChat')
+                                                        })}
                                                         disabled={panelAction !== null}
                                                     >
                                                         <MoreVertical class="size-3.5" />
@@ -778,7 +815,7 @@
                                                         onclick={() => handleGenerateTitle(chat.id)}
                                                     >
                                                         <Wand2 class="size-4" />
-                                                        Generate title
+                                                        {$t('library.room.generateTitleButton')}
                                                     </DropdownMenu.Item>
                                                     <DropdownMenu.Item
                                                         class="cursor-pointer"
@@ -786,11 +823,12 @@
                                                         onclick={() =>
                                                             startRenameChat(
                                                                 chat.id,
-                                                                chat.title || 'Untitled Chat'
+                                                                chat.title ||
+                                                                    $t('library.room.untitledChat')
                                                             )}
                                                     >
                                                         <Edit3 class="size-4" />
-                                                        Rename
+                                                        {$t('library.room.renameChatButton')}
                                                     </DropdownMenu.Item>
                                                     <DropdownMenu.Separator />
                                                     <DropdownMenu.Item
@@ -802,7 +840,7 @@
                                                         onclick={() => handleDeleteChat(chat.id)}
                                                     >
                                                         <Trash2 class="size-4" />
-                                                        Delete
+                                                        {$t('library.room.deleteChatButton')}
                                                     </DropdownMenu.Item>
                                                 </DropdownMenu.Content>
                                             </DropdownMenu.Root>
@@ -818,7 +856,7 @@
             {#if $activePreset && toggleSources.length > 0}
                 <div class="max-h-[40%] min-h-0 overflow-y-auto border-t border-sidebar-border p-3">
                     <p class="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                        Toggles
+                        {$t('settings.chat.tabs.toggles')}
                     </p>
                     <div class="flex flex-col gap-3">
                         {#each toggleSources as source (`${source.owner.type}:${source.owner.id}`)}

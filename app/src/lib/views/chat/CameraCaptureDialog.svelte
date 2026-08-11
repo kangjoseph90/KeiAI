@@ -25,6 +25,7 @@
         DialogTitle
     } from '$lib/components/ui/dialog';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     type CameraPhase =
         | 'starting'
@@ -66,7 +67,9 @@
     let startVersion = 0;
     let wasOpen = false;
 
-    const capturedLabel = $derived(captureMode === 'photo' ? 'photo' : 'video');
+    const capturedLabel = $derived(
+        captureMode === 'photo' ? $t('chat.camera.photoLabel') : $t('chat.camera.videoLabel')
+    );
 
     $effect(() => {
         if (open === wasOpen) return;
@@ -202,7 +205,7 @@
         } catch (error) {
             if (nextController.signal.aborted || !open || version !== startVersion) return;
             stopPreview();
-            errorMessage = getErrorMessage(error, 'Could not start the camera');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.start'));
             phase = 'error';
         }
     }
@@ -272,7 +275,7 @@
             setCapturedFile(file);
         } catch (error) {
             if (!isCurrentCapture(version, currentCapture)) return;
-            errorMessage = getErrorMessage(error, 'Could not take the photo');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.takePhoto'));
             stopPreview();
             phase = 'error';
         } finally {
@@ -300,13 +303,13 @@
                 videoRecording = null;
                 stopRecordingClock();
                 changingRecordingState = false;
-                errorMessage = getErrorMessage(error, 'Video recording failed');
+                errorMessage = getErrorMessage(error, $t('chat.camera.error.videoFailed'));
                 stopPreview();
                 phase = 'error';
             });
         } catch (error) {
             if (!open || capture !== currentCapture) return;
-            errorMessage = getErrorMessage(error, 'Could not start video recording');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.startVideo'));
             phase = 'preview';
         }
     }
@@ -323,7 +326,7 @@
             phase = 'paused';
         } catch (error) {
             if (videoRecording !== recording) return;
-            errorMessage = getErrorMessage(error, 'Could not pause video recording');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.pauseVideo'));
             stopPreview();
             phase = 'error';
         } finally {
@@ -346,7 +349,7 @@
             phase = 'recording';
         } catch (error) {
             if (videoRecording !== recording) return;
-            errorMessage = getErrorMessage(error, 'Could not resume video recording');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.resumeVideo'));
             stopPreview();
             phase = 'error';
         } finally {
@@ -374,7 +377,7 @@
             setCapturedFile(file);
         } catch (error) {
             if (!currentCapture || !isCurrentCapture(version, currentCapture)) return;
-            errorMessage = getErrorMessage(error, 'Could not finish video recording');
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.finishVideo'));
             stopPreview();
             phase = 'error';
         }
@@ -392,7 +395,7 @@
             if (isCurrentSession(version) && capturedFile === file) open = false;
         } catch (error) {
             if (!isCurrentSession(version) || capturedFile !== file) return;
-            errorMessage = getErrorMessage(error, `Could not attach the ${label}`);
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.attach', { label }));
         } finally {
             if (version === startVersion) attaching = false;
         }
@@ -410,7 +413,7 @@
             setCapturedFile(file);
         } catch (error) {
             if (!isCurrentSession(version)) return;
-            errorMessage = getErrorMessage(error, `Could not choose a ${label}`);
+            errorMessage = getErrorMessage(error, $t('chat.camera.error.choose', { label }));
         }
     }
 
@@ -427,9 +430,9 @@
         class="max-h-[calc(100vh-1rem)] w-[calc(100%-1rem)] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl"
     >
         <DialogHeader class="border-b px-5 py-4 pr-12 text-left">
-            <DialogTitle class="text-base">Capture media</DialogTitle>
+            <DialogTitle class="text-base">{$t('chat.camera.title')}</DialogTitle>
             <DialogDescription class="text-xs">
-                Take a photo or record up to 60 seconds, then review it before attaching.
+                {$t('chat.camera.description')}
             </DialogDescription>
         </DialogHeader>
 
@@ -438,12 +441,16 @@
         >
             {#if phase === 'captured' && previewUrl}
                 {#if captureMode === 'photo'}
-                    <img src={previewUrl} alt="Captured preview" class="size-full object-contain" />
+                    <img
+                        src={previewUrl}
+                        alt={$t('chat.camera.capturedPreview')}
+                        class="size-full object-contain"
+                    />
                 {:else}
                     <!-- svelte-ignore a11y_media_has_caption -->
                     <video
                         src={previewUrl}
-                        aria-label="Recorded video preview"
+                        aria-label={$t('chat.camera.videoPreview')}
                         class="size-full object-contain"
                         controls
                         playsinline
@@ -452,7 +459,7 @@
             {:else}
                 <video
                     bind:this={videoElement}
-                    aria-label="Camera preview"
+                    aria-label={$t('chat.camera.livePreview')}
                     class="size-full object-contain transition-opacity duration-200 {phase ===
                         'preview' ||
                     phase === 'preparing' ||
@@ -472,7 +479,7 @@
                         role="status"
                     >
                         <LoaderCircle class="size-7 animate-spin" />
-                        <span class="text-sm">Starting camera…</span>
+                        <span class="text-sm">{$t('chat.camera.starting')}</span>
                     </div>
                 {:else if phase === 'stopping'}
                     <div
@@ -480,7 +487,7 @@
                         role="status"
                     >
                         <LoaderCircle class="size-7 animate-spin" />
-                        <span class="text-sm">Preparing video…</span>
+                        <span class="text-sm">{$t('chat.camera.preparingVideo')}</span>
                     </div>
                 {:else if phase === 'error'}
                     <div
@@ -493,9 +500,11 @@
                             <CameraOff class="size-6" />
                         </div>
                         <div>
-                            <p class="text-sm font-medium text-white">Camera unavailable</p>
+                            <p class="text-sm font-medium text-white">
+                                {$t('chat.camera.unavailable')}
+                            </p>
                             <p class="mt-1 text-xs leading-relaxed text-white/65">
-                                {errorMessage ?? 'Check camera access and try again.'}
+                                {errorMessage ?? $t('chat.camera.unavailableHint')}
                             </p>
                         </div>
                     </div>
@@ -512,7 +521,9 @@
                                 : ''}"
                         ></span>
                         {#if phase === 'paused'}
-                            <span class="font-sans text-[11px] font-medium">Paused</span>
+                            <span class="font-sans text-[11px] font-medium"
+                                >{$t('chat.camera.paused')}</span
+                            >
                         {/if}
                         <span>{formatDuration(elapsedMs)} / 01:00</span>
                     </div>
@@ -549,7 +560,9 @@
                         disabled={attaching}
                     >
                         <RotateCcw class="size-4" />
-                        {captureMode === 'photo' ? 'Retake' : 'Record again'}
+                        {captureMode === 'photo'
+                            ? $t('chat.camera.retakePhoto')
+                            : $t('chat.camera.recordAgain')}
                     </Button>
                     <div class="flex min-w-0 flex-col items-end gap-1">
                         {#if errorMessage}
@@ -560,14 +573,14 @@
                         <Button onclick={() => void attachMedia()} disabled={attaching}>
                             {#if attaching}
                                 <LoaderCircle class="size-4 animate-spin" />
-                                Attaching…
+                                {$t('chat.camera.attaching')}
                             {:else}
                                 {#if captureMode === 'photo'}
                                     <Camera class="size-4" />
                                 {:else}
                                     <Video class="size-4" />
                                 {/if}
-                                Attach {capturedLabel}
+                                {$t('chat.camera.attach', { label: capturedLabel })}
                             {/if}
                         </Button>
                     </div>
@@ -575,23 +588,25 @@
             {:else if phase === 'error'}
                 <div class="flex w-full items-center justify-between gap-3">
                     <Button variant="outline" onclick={() => void chooseMedia()}>
-                        Choose {capturedLabel}
+                        {$t('chat.camera.choose', { label: capturedLabel })}
                     </Button>
                     <Button variant="secondary" onclick={() => void startPreview()}>
                         <RotateCcw class="size-4" />
-                        Try camera again
+                        {$t('chat.camera.tryAgain')}
                     </Button>
                 </div>
             {:else}
                 <div class="flex w-full items-center justify-center gap-4">
                     {#if phase === 'preparing'}
-                        <span class="sr-only" role="status">Preparing video recording</span>
+                        <span class="sr-only" role="status"
+                            >{$t('chat.camera.preparingVideoRecording')}</span
+                        >
                     {/if}
                     {#if phase === 'stopping'}
                         <div
                             class="flex size-16 items-center justify-center rounded-full border-2 border-border bg-background"
                             role="status"
-                            aria-label="Preparing video"
+                            aria-label={$t('chat.camera.preparingVideo')}
                         >
                             <LoaderCircle class="size-5 animate-spin text-muted-foreground" />
                         </div>
@@ -601,8 +616,8 @@
                             class="flex size-11 items-center justify-center rounded-full border border-border/80 bg-muted text-foreground shadow-sm transition hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45"
                             disabled={changingRecordingState}
                             aria-label={phase === 'recording'
-                                ? 'Pause video recording'
-                                : 'Resume video recording'}
+                                ? $t('chat.camera.pauseVideo')
+                                : $t('chat.camera.resumeVideo')}
                             onclick={() =>
                                 void (phase === 'recording'
                                     ? pauseVideoRecording()
@@ -620,7 +635,7 @@
                             type="button"
                             class="group flex size-16 items-center justify-center rounded-full border-2 border-recording/70 bg-background p-1.5 shadow-sm transition hover:border-recording focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-recording focus-visible:ring-offset-2"
                             disabled={changingRecordingState}
-                            aria-label="Stop video recording"
+                            aria-label={$t('chat.camera.stopVideo')}
                             onclick={() => void finishVideoRecording()}
                         >
                             <span
@@ -638,8 +653,8 @@
                                 : 'size-11 border-border/80 text-muted-foreground hover:border-foreground/30 hover:text-foreground'}"
                             disabled={phase !== 'preview' || takingPhoto}
                             aria-label={captureMode === 'photo'
-                                ? 'Take photo'
-                                : 'Select photo mode'}
+                                ? $t('chat.camera.takePhoto')
+                                : $t('chat.camera.selectPhotoMode')}
                             onclick={handlePhotoAction}
                         >
                             {#if captureMode === 'photo'}
@@ -665,9 +680,9 @@
                             disabled={phase !== 'preview' || takingPhoto}
                             aria-label={captureMode === 'video'
                                 ? phase === 'preparing'
-                                    ? 'Preparing video recording'
-                                    : 'Start video recording'
-                                : 'Select video mode'}
+                                    ? $t('chat.camera.preparingVideoRecording')
+                                    : $t('chat.camera.startVideo')
+                                : $t('chat.camera.selectVideoMode')}
                             onclick={handleVideoAction}
                         >
                             {#if captureMode === 'video'}

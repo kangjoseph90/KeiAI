@@ -46,6 +46,7 @@
     import type { LLMType } from '$lib/types/models/llm';
     import type { WorkflowNodeCategory } from '$lib/workflow';
     import { listAgentTools } from '$lib/workflow/agent/tool';
+    import { t } from '$lib/stores';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import WorkflowInputRow from './WorkflowInputRow.svelte';
 
@@ -221,7 +222,7 @@
         <input
             class="nodrag min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-current/50"
             value={data.node.name}
-            aria-label="Node name"
+            aria-label={$t('workflow.node.nameAria')}
             onchange={(event) =>
                 data.onUpdateNode(data.node.id, { name: event.currentTarget.value })}
         />
@@ -229,8 +230,8 @@
             <button
                 type="button"
                 class="nodrag flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-background/70"
-                title="Edit agent"
-                aria-label="Edit agent"
+                title={$t('workflow.node.editAgent')}
+                aria-label={$t('workflow.node.editAgent')}
                 onclick={() => data.onEditAgent?.(data.node.id)}
             >
                 <FileText class="size-4" />
@@ -240,8 +241,8 @@
         <button
             type="button"
             class="nodrag flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-background/70"
-            title={collapsed ? 'Expand node' : 'Collapse node'}
-            aria-label={collapsed ? 'Expand node' : 'Collapse node'}
+            title={collapsed ? $t('workflow.node.expand') : $t('workflow.node.collapse')}
+            aria-label={collapsed ? $t('workflow.node.expand') : $t('workflow.node.collapse')}
             onclick={() => data.onUpdateNode(data.node.id, { collapsed: !collapsed })}
         >
             {#if collapsed}
@@ -257,7 +258,7 @@
             {#if data.node.class === 'Agent'}
                 <div class="grid grid-cols-2 gap-2 text-[10px]">
                     <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
-                        LLM Type
+                        {$t('workflow.node.llmType')}
                         <input
                             class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                             value={data.node.llmType}
@@ -268,7 +269,7 @@
                         />
                     </label>
                     <label class="flex flex-col gap-1 text-muted-foreground">
-                        Max Context
+                        {$t('workflow.node.maxContext')}
                         <input
                             type="number"
                             class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -278,7 +279,7 @@
                         />
                     </label>
                     <label class="flex flex-col gap-1 text-muted-foreground">
-                        Max Response
+                        {$t('workflow.node.maxResponse')}
                         <input
                             type="number"
                             class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -288,7 +289,7 @@
                         />
                     </label>
                     <label class="flex flex-col gap-1 text-muted-foreground">
-                        Lorebook Ratio
+                        {$t('workflow.node.lorebookRatio')}
                         <input
                             type="number"
                             step="0.05"
@@ -299,7 +300,7 @@
                         />
                     </label>
                     <label class="flex flex-col gap-1 text-muted-foreground">
-                        Memory Ratio
+                        {$t('workflow.node.memoryRatio')}
                         <input
                             type="number"
                             step="0.05"
@@ -310,7 +311,7 @@
                         />
                     </label>
                     <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
-                        Lorebook Scan Depth
+                        {$t('workflow.node.scanDepth')}
                         <input
                             type="number"
                             class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -325,7 +326,7 @@
                             class="nodrag flex h-8 w-full items-center justify-between rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/50"
                             onclick={() => (toolsExpanded = !toolsExpanded)}
                         >
-                            <span>Tools</span>
+                            <span>{$t('workflow.node.tools')}</span>
                             {#if toolsExpanded}
                                 <ChevronUp class="size-3" />
                             {:else}
@@ -347,7 +348,9 @@
                                                         event.currentTarget.checked
                                                     )}
                                             />
-                                            {tool.label}
+                                            {tool.id === 'file_read'
+                                                ? $t('workflow.graph.node.FileRead')
+                                                : $t('workflow.graph.node.FileWrite')}
                                         </label>
                                     {/each}
                                 </div>
@@ -357,18 +360,18 @@
                 </div>
             {:else if data.node.class === 'String'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Content
+                    {$t('workflow.node.content')}
                     <textarea
                         class="nodrag min-h-20 resize-y rounded-md border bg-background p-2 text-xs leading-relaxed text-foreground"
                         value={data.node.content}
-                        placeholder="Enter text..."
+                        placeholder={$t('workflow.node.contentPlaceholder')}
                         onchange={(event) =>
                             data.onUpdateNode(data.node.id, { content: event.currentTarget.value })}
                     ></textarea>
                 </label>
             {:else if data.node.class === 'Number'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Value
+                    {$t('workflow.node.value')}
                     <input
                         type="number"
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
@@ -383,7 +386,7 @@
                 <label
                     class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
                 >
-                    Value
+                    {$t('workflow.node.value')}
                     <input
                         type="checkbox"
                         class="nodrag size-4"
@@ -396,16 +399,16 @@
                 </label>
             {:else if data.node.class === 'NumberMath'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Operator
+                    {$t('workflow.node.operator')}
                     <OptionSelect
                         id={`workflow-node-${data.node.id}-number-math-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
                         options={[
-                            { value: 'add', label: 'add' },
-                            { value: 'subtract', label: 'subtract' },
-                            { value: 'multiply', label: 'multiply' },
-                            { value: 'divide', label: 'divide' }
+                            { value: 'add', label: $t('workflow.node.opAdd') },
+                            { value: 'subtract', label: $t('workflow.node.opSubtract') },
+                            { value: 'multiply', label: $t('workflow.node.opMultiply') },
+                            { value: 'divide', label: $t('workflow.node.opDivide') }
                         ]}
                         onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
@@ -415,18 +418,21 @@
                 </label>
             {:else if data.node.class === 'NumberCompare'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Operator
+                    {$t('workflow.node.operator')}
                     <OptionSelect
                         id={`workflow-node-${data.node.id}-number-compare-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
                         options={[
-                            { value: 'equal', label: 'equal' },
-                            { value: 'notEqual', label: 'not equal' },
-                            { value: 'greaterThan', label: 'greater than' },
-                            { value: 'greaterThanOrEqual', label: 'greater than or equal' },
-                            { value: 'lessThan', label: 'less than' },
-                            { value: 'lessThanOrEqual', label: 'less than or equal' }
+                            { value: 'equal', label: $t('workflow.node.opEqual') },
+                            { value: 'notEqual', label: $t('workflow.node.opNotEqual') },
+                            { value: 'greaterThan', label: $t('workflow.node.opGreaterThan') },
+                            {
+                                value: 'greaterThanOrEqual',
+                                label: $t('workflow.node.opGreaterOrEqual')
+                            },
+                            { value: 'lessThan', label: $t('workflow.node.opLessThan') },
+                            { value: 'lessThanOrEqual', label: $t('workflow.node.opLessOrEqual') }
                         ]}
                         onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
@@ -436,18 +442,18 @@
                 </label>
             {:else if data.node.class === 'BooleanLogic'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Operator
+                    {$t('workflow.node.operator')}
                     <OptionSelect
                         id={`workflow-node-${data.node.id}-boolean-logic-operator`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.operator}
                         options={[
-                            { value: 'and', label: 'and' },
-                            { value: 'or', label: 'or' },
-                            { value: 'xor', label: 'xor' },
-                            { value: 'nand', label: 'nand' },
-                            { value: 'nor', label: 'nor' },
-                            { value: 'xnor', label: 'xnor' }
+                            { value: 'and', label: $t('workflow.node.opAnd') },
+                            { value: 'or', label: $t('workflow.node.opOr') },
+                            { value: 'xor', label: $t('workflow.node.opXor') },
+                            { value: 'nand', label: $t('workflow.node.opNand') },
+                            { value: 'nor', label: $t('workflow.node.opNor') },
+                            { value: 'xnor', label: $t('workflow.node.opXnor') }
                         ]}
                         onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
@@ -459,7 +465,7 @@
                 <label
                     class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
                 >
-                    Case sensitive
+                    {$t('workflow.node.caseSensitive')}
                     <input
                         type="checkbox"
                         class="nodrag size-4"
@@ -482,7 +488,7 @@
                                     includeText: event.currentTarget.checked
                                 })}
                         />
-                        Text
+                        {$t('workflow.node.filterText')}
                     </label>
                     <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
                         <input
@@ -494,7 +500,7 @@
                                     includeThought: event.currentTarget.checked
                                 })}
                         />
-                        Thought
+                        {$t('workflow.node.filterThought')}
                     </label>
                     <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
                         <input
@@ -506,7 +512,7 @@
                                     includeInlay: event.currentTarget.checked
                                 })}
                         />
-                        Inlay
+                        {$t('workflow.node.filterInlay')}
                     </label>
                     <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
                         <input
@@ -518,20 +524,20 @@
                                     includeToolCalls: event.currentTarget.checked
                                 })}
                         />
-                        Tool calls
+                        {$t('workflow.node.filterToolCalls')}
                     </label>
                 </div>
             {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    Namespace
+                    {$t('workflow.node.namespace')}
                     <OptionSelect
                         id={`workflow-node-${data.node.id}-namespace`}
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
                         value={data.node.namespace}
                         options={[
-                            { value: 'global', label: 'global' },
-                            { value: 'room', label: 'room' },
-                            { value: 'chat', label: 'chat' }
+                            { value: 'global', label: $t('workflow.node.namespaceGlobal') },
+                            { value: 'room', label: $t('workflow.node.namespaceRoom') },
+                            { value: 'chat', label: $t('workflow.node.namespaceChat') }
                         ]}
                         onChange={(value) =>
                             data.onUpdateNode(data.node.id, {
@@ -561,7 +567,7 @@
                         <button
                             class="nodrag flex h-6 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
                             onclick={() => data.onAddSlot(data.node.id)}
-                            ><Plus class="size-3" /> Add input</button
+                            ><Plus class="size-3" /> {$t('workflow.node.addInput')}</button
                         >
                     {/if}
                 </div>
@@ -569,7 +575,7 @@
                 <button
                     class="nodrag flex h-7 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
                     onclick={() => data.onAddSlot(data.node.id)}
-                    ><Plus class="size-3" /> Add input</button
+                    ><Plus class="size-3" /> {$t('workflow.node.addInput')}</button
                 >
             {/if}
 

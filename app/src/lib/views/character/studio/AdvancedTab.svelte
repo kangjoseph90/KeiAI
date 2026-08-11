@@ -7,6 +7,7 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import ExportTab from './ExportTab.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import { t } from '$lib/stores';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
 
@@ -44,9 +45,11 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-6">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">Advanced Options</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('character.advanced.title')}
+            </h3>
             <p class="text-sm text-muted-foreground">
-                Configure low-level access and initial variables for this character.
+                {$t('character.advanced.description')}
             </p>
         </div>
 
@@ -57,10 +60,10 @@
                         for="character-allow-low-level"
                         class="text-sm font-medium cursor-pointer"
                     >
-                        Allow Low Level Access
+                        {$t('character.advanced.lowLevel')}
                     </Label>
                     <p class="text-xs text-muted-foreground">
-                        Bypass standard safety filters and prompt constraints.
+                        {$t('character.advanced.lowLevelHelp')}
                     </p>
                 </div>
                 <input
@@ -74,9 +77,9 @@
         </div>
 
         <div class="space-y-2">
-            <Label class="text-sm font-medium">Default Variables</Label>
+            <Label class="text-sm font-medium">{$t('character.advanced.variables')}</Label>
             <KeyValueEditor
-                emptyMessage="No initial variables defined."
+                emptyMessage={$t('character.advanced.variablesEmpty')}
                 data={character.defaultVariables}
                 onUpdateValue={handleUpdateVariableValue}
                 onAdd={handleAddVariable}
@@ -93,16 +96,22 @@
 
     <section class="space-y-4">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-destructive">Danger Zone</h3>
-            <p class="text-sm text-muted-foreground">Irreversible actions for this character.</p>
+            <h3 class="text-lg font-semibold tracking-tight text-destructive">
+                {$t('character.advanced.dangerZone')}
+            </h3>
+            <p class="text-sm text-muted-foreground">
+                {$t('character.advanced.dangerZoneHelp')}
+            </p>
         </div>
 
         <div class="divide-y divide-border">
             <div class="flex items-center justify-between py-2">
                 <div class="space-y-0.5 pr-4">
-                    <p class="text-sm font-medium text-foreground">Delete this character</p>
+                    <p class="text-sm font-medium text-foreground">
+                        {$t('character.advanced.deleteThis')}
+                    </p>
                     <p class="text-xs text-muted-foreground">
-                        This removes the character and its owned resources permanently.
+                        {$t('character.advanced.deleteHelp')}
                     </p>
                 </div>
                 <Button
@@ -112,7 +121,8 @@
                     aria-busy={deleting}
                     onclick={onDelete}
                 >
-                    <Trash2 class="size-4" /> Delete Character
+                    <Trash2 class="size-4" />
+                    {$t('character.advanced.deleteButton')}
                 </Button>
             </div>
         </div>

@@ -22,6 +22,7 @@
         rejectJoinMultiRoom,
         revokeMultiRoomMember,
         selectMultiRoom,
+        t,
         updateGlobalFolder,
         updateMultiRoomIndex,
         updateRoom,
@@ -115,7 +116,7 @@
         title: string,
         description: string,
         action: () => void | Promise<unknown>,
-        confirmText = 'Delete'
+        confirmText = $t('common.confirm.delete')
     ): Promise<boolean> {
         let confirmed = false;
         const completed = await runHomeAction(key, errorTitle, async () => {
@@ -142,17 +143,24 @@
 
             if (!trusted) {
                 const ok = await appConfirm({
-                    title: 'Trust member key?',
-                    description: `First time seeing ${userLabel}.\n\nFingerprint\n${formatted}`,
-                    confirmText: 'Trust',
+                    title: $t('library.multiRooms.trustTitle'),
+                    description: $t('library.multiRooms.trustBody', {
+                        user: userLabel,
+                        fingerprint: formatted
+                    }),
+                    confirmText: $t('common.confirm.trust'),
                     variant: 'destructive'
                 });
                 if (!ok) return;
                 await MultiRoomService.trustUserPublicKey(user, fingerprint);
             } else if (trusted.publicKeyFingerprint !== fingerprint) {
                 await appAlert({
-                    title: 'Public key changed',
-                    description: `Public key fingerprint changed for ${userLabel}.\n\nPrevious\n${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\n\nCurrent\n${formatted}`
+                    title: $t('library.multiRooms.keyChangedTitle'),
+                    description: $t('library.multiRooms.keyChangedBody', {
+                        user: userLabel,
+                        previous: formatPublicKeyFingerprint(trusted.publicKeyFingerprint),
+                        current: formatted
+                    })
                 });
                 return;
             } else {
@@ -207,7 +215,7 @@
         const visibilityChanged = visibility !== managedRoomMeta.visibility;
         if (!nameChanged && !visibilityChanged) return;
 
-        await runHomeAction('save-multi-room', 'Could not save multi room', async () => {
+        await runHomeAction('save-multi-room', $t('library.multiRooms.toast.save'), async () => {
             if (nameChanged) await updateRoom(roomId, { name: trimmedName });
 
             try {
@@ -230,12 +238,14 @@
         try {
             await runHomeAction(
                 `revoke-member:${memberUserId}`,
-                'Could not remove member',
+                $t('library.multiRooms.toast.removeMember'),
                 async () => {
                     const confirmed = await appConfirm({
-                        title: 'Remove member?',
-                        description: `Remove member ${memberUserId} from this room?`,
-                        confirmText: 'Remove',
+                        title: $t('library.multiRooms.removeMemberTitle'),
+                        description: $t('library.multiRooms.removeMemberBody', {
+                            user: memberUserId
+                        }),
+                        confirmText: $t('common.confirm.remove'),
                         variant: 'destructive'
                     });
                     if (confirmed) await revokeMultiRoomMember(roomId, memberUserId);
@@ -254,9 +264,9 @@
     async function handleDeleteMultiRoom(roomId: string, name: string): Promise<boolean> {
         return runConfirmedHomeAction(
             `delete-multi-room:${roomId}`,
-            'Could not delete multi room',
-            'Delete multi room?',
-            `Delete multi room "${name}"?`,
+            $t('library.multiRooms.toast.delete'),
+            $t('library.multiRooms.deleteTitle'),
+            $t('library.multiRooms.deleteBody', { name }),
             () => deleteMultiRoom(roomId)
         );
     }
@@ -264,11 +274,11 @@
     async function handleLeaveMultiRoom(roomId: string, name: string): Promise<boolean> {
         return runConfirmedHomeAction(
             `leave-multi-room:${roomId}`,
-            'Could not leave multi room',
-            'Leave multi room?',
-            `Leave multi room "${name}"?`,
+            $t('library.multiRooms.toast.leave'),
+            $t('library.multiRooms.leaveTitle'),
+            $t('library.multiRooms.leaveBody', { name }),
             () => leaveMultiRoom(roomId),
-            'Leave'
+            $t('common.confirm.leave')
         );
     }
 
@@ -299,7 +309,7 @@
     >
         <MediaEntityCard
             name={folder.name}
-            meta={`${childCount} item${childCount === 1 ? '' : 's'}`}
+            meta={$t('common.counts.items', { count: childCount })}
             class="cursor-pointer"
         >
             {#snippet visual()}
@@ -322,7 +332,9 @@
 <div class="flex h-full flex-col overflow-hidden bg-background" aria-busy={homeAction !== null}>
     <header class="shrink-0 border-b px-4 py-4 sm:px-6 md:px-8 md:py-5">
         <div class="mx-auto max-w-5xl text-center">
-            <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">KeiAI</h1>
+            <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">
+                {$t('library.title')}
+            </h1>
         </div>
     </header>
 
@@ -331,7 +343,9 @@
             <div class="flex flex-col gap-4 md:gap-3">
                 <div class="mx-auto w-full max-w-3xl text-center">
                     <div class="inline-flex items-center gap-2">
-                        <h2 class="text-lg font-semibold tracking-tight">Multi Rooms</h2>
+                        <h2 class="text-lg font-semibold tracking-tight">
+                            {$t('library.multiRooms.title')}
+                        </h2>
                         <span
                             class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground"
                         >
@@ -339,7 +353,7 @@
                         </span>
                     </div>
                     <p class="mt-0.5 text-sm text-muted-foreground">
-                        Encrypted shared spaces for rooms and their content.
+                        {$t('library.multiRooms.subtitle')}
                     </p>
                 </div>
 
@@ -350,7 +364,7 @@
                         />
                         <Input
                             bind:value={query}
-                            placeholder="Search multi rooms..."
+                            placeholder={$t('library.search.multiRooms')}
                             class="pl-9"
                         />
                     </div>
@@ -359,22 +373,24 @@
                         variant="outline"
                         class="shrink-0 gap-2 px-3"
                         disabled={!$pbConnected}
-                        title={$pbConnected ? 'Join room' : 'Sign in to join a multi room'}
+                        title={$pbConnected
+                            ? $t('library.multiRooms.joinTitle')
+                            : $t('library.multiRooms.joinSignIn')}
                         onclick={() => (joinDialogOpen = true)}
                     >
                         <KeyRound class="size-4" />
-                        <span class="hidden sm:inline">Join Room</span>
+                        <span class="hidden sm:inline">{$t('library.multiRooms.join')}</span>
                     </Button>
                     <Button
                         class="shrink-0 gap-2 px-3"
                         disabled={!$pbConnected}
                         title={$pbConnected
-                            ? 'Create multi room'
-                            : 'Sign in to create a multi room'}
+                            ? $t('library.multiRooms.createTitle')
+                            : $t('library.multiRooms.createSignIn')}
                         onclick={() => (createMultiRoomDialogOpen = true)}
                     >
                         <Plus class="size-4" />
-                        <span class="hidden sm:inline">New Multi Room</span>
+                        <span class="hidden sm:inline">{$t('library.multiRooms.new')}</span>
                     </Button>
                 </div>
             </div>
@@ -418,10 +434,10 @@
                                     <DoorOpen class="size-6 text-muted-foreground" />
                                 </div>
                                 <h2 class="mt-4 text-lg font-semibold">
-                                    Create your first multi room
+                                    {$t('library.multiRooms.emptyTitle')}
                                 </h2>
                                 <p class="mt-2 text-sm text-muted-foreground">
-                                    Multi rooms are shared spaces with room-scoped content.
+                                    {$t('library.multiRooms.emptyBody')}
                                 </p>
                             </div>
                         </div>
@@ -439,7 +455,14 @@
                                 : 0}
                         <MediaEntityCard
                             name={room.name}
-                            meta={`${memberCount} member${memberCount === 1 ? '' : 's'}${pendingCount > 0 ? ` · ${pendingCount} pending` : ''}`}
+                            meta={pendingCount > 0
+                                ? $t('library.multiRooms.meta', {
+                                      members: $t('library.multiRooms.memberCount', {
+                                          count: memberCount
+                                      }),
+                                      pending: pendingCount
+                                  })
+                                : $t('library.multiRooms.memberCount', { count: memberCount })}
                             class="cursor-pointer"
                         >
                             {#snippet visual()}
@@ -447,11 +470,11 @@
                                     role="img"
                                     class="text-muted-foreground"
                                     title={meta?.visibility === 'public'
-                                        ? 'Public multi room'
-                                        : 'Private multi room'}
+                                        ? $t('library.multiRooms.publicRoom')
+                                        : $t('library.multiRooms.privateRoom')}
                                     aria-label={meta?.visibility === 'public'
-                                        ? 'Public multi room'
-                                        : 'Private multi room'}
+                                        ? $t('library.multiRooms.publicRoom')
+                                        : $t('library.multiRooms.privateRoom')}
                                 >
                                     {#if meta?.visibility === 'public'}
                                         <Globe2 class="size-9" />
@@ -465,8 +488,10 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     class="size-7 rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-background hover:text-foreground"
-                                    title="Manage multi room"
-                                    aria-label={`Manage ${room.name}`}
+                                    title={$t('library.multiRooms.manage')}
+                                    aria-label={$t('library.multiRooms.manageNamed', {
+                                        name: room.name
+                                    })}
                                     onclick={(event) => {
                                         event.stopPropagation();
                                         handleOpenMultiRoomManagement(room.id);

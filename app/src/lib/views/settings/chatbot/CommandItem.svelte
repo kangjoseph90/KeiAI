@@ -10,6 +10,7 @@
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     let {
         item,
@@ -41,7 +42,10 @@
         try {
             await onUpdate(item.id, changes);
         } catch (error) {
-            toast.error({ title: 'Command update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.updateFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -50,9 +54,9 @@
     async function remove(): Promise<void> {
         if (busy) return;
         const confirmed = await appConfirm({
-            title: 'Delete command?',
-            description: `Delete "/${item.name}"?`,
-            confirmText: 'Delete',
+            title: $t('settings.presets.deleteTitle'),
+            description: $t('settings.presets.deleteBody', { name: `/${item.name}` }),
+            confirmText: $t('common.confirm.delete'),
             variant: 'destructive'
         });
         if (!confirmed) return;
@@ -60,7 +64,10 @@
         try {
             await onDelete(item.id);
         } catch (error) {
-            toast.error({ title: 'Could not delete command', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.presets.toast.delete'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -88,7 +95,9 @@
             type="button"
             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
             onclick={() => (expanded = !expanded)}
-            aria-label={expanded ? 'Collapse command' : 'Expand command'}
+            aria-label={expanded
+                ? $t('settings.customModels.collapse')
+                : $t('settings.customModels.expand')}
         >
             {#if expanded}<ChevronDown class="size-3.5" />{:else}<ChevronRight
                     class="size-3.5"
@@ -99,7 +108,7 @@
             <Input
                 value={item.name}
                 disabled={busy}
-                aria-label="Command name"
+                aria-label={$t('settings.customModels.nameAria')}
                 class="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 font-mono font-medium shadow-none focus-visible:ring-0 dark:bg-transparent"
                 onchange={(event) => update({ name: event.currentTarget.value })}
             />
@@ -108,8 +117,8 @@
             size="icon-sm"
             variant="ghost"
             class="text-muted-foreground hover:text-destructive"
-            title="Delete command"
-            aria-label="Delete command"
+            title={$t('settings.presets.deleteAria')}
+            aria-label={$t('settings.presets.deleteAria')}
             onclick={remove}
         >
             <Trash2 class="size-3.5" />
@@ -118,11 +127,11 @@
 
     {#snippet details()}
         <div class="space-y-1.5">
-            <Label class="text-xs">Description</Label>
+            <Label class="text-xs">{$t('common.label.description')}</Label>
             <Input
                 value={item.description}
                 disabled={busy}
-                placeholder="Describe what this command does"
+                placeholder={$t('common.label.description')}
                 onchange={(event) => update({ description: event.currentTarget.value })}
             />
         </div>

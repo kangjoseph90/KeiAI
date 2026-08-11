@@ -12,7 +12,7 @@
         Trash2
     } from 'lucide-svelte';
     import type { DisplayMessage } from '$lib/stores';
-    import { imageGenerationTasks, ttsTasks } from '$lib/stores';
+    import { imageGenerationTasks, ttsTasks, t } from '$lib/stores';
     import {
         runImageGeneration,
         runTTS,
@@ -53,7 +53,7 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start image generation',
+                title: $t('chat.toast.startImage'),
                 description: getErrorMessage(error)
             });
         }
@@ -69,7 +69,7 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start text to speech',
+                title: $t('chat.toast.startTts'),
                 description: getErrorMessage(error)
             });
         }
@@ -81,7 +81,7 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             toast.error({
-                title: 'Could not start translation',
+                title: $t('chat.toast.startTranslation'),
                 description: getErrorMessage(error)
             });
         }
@@ -94,7 +94,8 @@
             variant="ghost"
             size="sm"
             class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
-            aria-label="More message actions"
+            title={$t('chat.message.moreActions')}
+            aria-label={$t('chat.message.moreActions')}
             {disabled}
         >
             <MoreVertical class="size-3.5" />
@@ -113,10 +114,12 @@
         >
             {#if imageTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
-                Stop image generation
+                {$t('chat.message.more.stopImage')}
             {:else}
                 <ImageIcon class="size-4" />
-                {hasImageAttachments ? 'Regenerate image' : 'Generate image'}
+                {hasImageAttachments
+                    ? $t('chat.message.more.regenerateImage')
+                    : $t('chat.message.more.generateImage')}
             {/if}
         </DropdownMenu.Item>
         <DropdownMenu.Item
@@ -126,10 +129,12 @@
         >
             {#if audioTaskStatus === 'generating'}
                 <Loader2 class="size-4 animate-spin" />
-                Stop audio generation
+                {$t('chat.message.more.stopAudio')}
             {:else}
                 <AudioLines class="size-4" />
-                {hasAudioAttachments ? 'Regenerate audio' : 'Generate audio'}
+                {hasAudioAttachments
+                    ? $t('chat.message.more.regenerateAudio')
+                    : $t('chat.message.more.generateAudio')}
             {/if}
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
@@ -140,11 +145,11 @@
                 onclick={() => void handleTranslationTask()}
             >
                 <Languages class="size-4" />
-                Retranslate
+                {$t('chat.message.more.retranslate')}
             </DropdownMenu.Item>
             <DropdownMenu.Item class="cursor-pointer" {disabled} onclick={onEditTranslation}>
                 <Pencil class="size-4" />
-                Edit translation
+                {$t('chat.message.more.editTranslation')}
             </DropdownMenu.Item>
         {/if}
         <DropdownMenu.Item
@@ -154,7 +159,7 @@
             onclick={onFork}
         >
             <GitBranch class="size-4" />
-            Fork chat
+            {$t('chat.message.more.forkChat')}
         </DropdownMenu.Item>
         <DropdownMenu.Separator />
         <DropdownMenu.Item
@@ -165,7 +170,7 @@
             onclick={onDelete}
         >
             <Trash2 class="size-4" />
-            Delete
+            {$t('chat.message.more.delete')}
         </DropdownMenu.Item>
     </DropdownMenu.Content>
 </DropdownMenu.Root>

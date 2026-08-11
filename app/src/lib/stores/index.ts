@@ -75,6 +75,8 @@ export const collectedTasks = readonly(StoreState.collectedTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
+    appLocale,
+    t,
     activePreset,
     hasActiveModule,
     hasActiveRoom,
@@ -147,3 +149,4 @@ export * from './user';
 export * from './sync';
 export * from './init';
 export * from './theme';
+export * from './locale';

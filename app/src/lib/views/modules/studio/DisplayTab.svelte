@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Label } from '$lib/components/ui/label';
     import { Textarea } from '$lib/components/ui/textarea';
+    import { t } from '$lib/stores';
     import type { Module, ModuleContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -15,28 +16,28 @@
 
 <div class="space-y-4">
     <div class="grid gap-1.5">
-        <Label for="module-background-html">Background HTML</Label>
+        <Label for="module-background-html">{$t('module.display.backgroundLabel')}</Label>
         <Textarea
             id="module-background-html"
             rows={12}
             value={module.backgroundHTML}
             oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
-            placeholder="&lt;style&gt;...&lt;/style&gt;"
+            placeholder={$t('module.display.backgroundPlaceholder')}
             class="font-mono text-sm"
         />
-        <p class="text-xs text-muted-foreground">HTML rendered in the chat background.</p>
+        <p class="text-xs text-muted-foreground">{$t('module.display.backgroundHelp')}</p>
     </div>
 
     <div class="grid gap-1.5">
-        <Label for="module-message-css">Message CSS</Label>
+        <Label for="module-message-css">{$t('module.display.cssLabel')}</Label>
         <Textarea
             id="module-message-css"
             rows={12}
             value={module.messageCSS}
             oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}
-            placeholder=".status-panel &#123; ... &#125;"
+            placeholder={$t('module.display.cssPlaceholder')}
             class="font-mono text-sm"
         />
-        <p class="text-xs text-muted-foreground">CSS styles applied to messages.</p>
+        <p class="text-xs text-muted-foreground">{$t('module.display.cssHelp')}</p>
     </div>
 </div>

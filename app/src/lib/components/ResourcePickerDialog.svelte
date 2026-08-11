@@ -14,6 +14,7 @@
     } from '$lib/components/ui/dialog';
     import { Input } from '$lib/components/ui/input';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
+    import { t } from '$lib/stores';
     import type { Character, Persona } from '$lib/services';
     import type { EntityListConfig, FolderDef } from '$lib/types/refs';
     import type { Snippet } from 'svelte';
@@ -61,7 +62,7 @@
         attachedIds,
         ownerTable,
         onAdd,
-        roomTabLabel = `Room ${resourceLabel}`,
+        roomTabLabel = undefined,
         libraryResources = undefined,
         libraryConfig = undefined,
         onCopy = undefined
@@ -90,11 +91,13 @@
     const displayConfig = $derived<EntityListConfig>(
         normalizedQuery ? { refs: {}, folders: {} } : activeConfig
     );
-    const actionVerb = $derived(source === 'library' ? 'Copy' : 'Add');
+    const resolvedRoomTabLabel = $derived(
+        roomTabLabel ?? $t('components.resourcePicker.roomTab', { resource: resourceLabel })
+    );
     const addButtonLabel = $derived(
         selectedIds.length === 0
-            ? `${actionVerb} ${resourceLabel}`
-            : `${actionVerb} ${selectedIds.length} ${selectedIds.length === 1 ? singularLabel : resourceLabel}`
+            ? `${$t(source === 'library' ? 'common.actions.copy' : 'common.actions.add')} ${resourceLabel}`
+            : `${selectedIds.length} ${selectedIds.length === 1 ? singularLabel : resourceLabel}`
     );
 
     $effect(() => {
@@ -193,7 +196,7 @@
                         onclick={() => selectSource('room')}
                     >
                         <UsersRound class="size-3.5" />
-                        {roomTabLabel}
+                        {resolvedRoomTabLabel}
                     </Button>
                     <Button
                         variant={source === 'library' ? 'secondary' : 'ghost'}
@@ -201,7 +204,8 @@
                         class="h-8 flex-1 gap-2 text-xs"
                         onclick={() => selectSource('library')}
                     >
-                        <Library class="size-3.5" /> Copy from library
+                        <Library class="size-3.5" />
+                        {$t('components.resourcePicker.copyFromLibrary')}
                     </Button>
                 </div>
             {/if}
@@ -212,8 +216,12 @@
                 <Input
                     bind:value={query}
                     class="h-9 bg-background pl-9 text-sm"
-                    placeholder="Search {resourceLabel}..."
-                    aria-label="Search {resourceLabel}"
+                    placeholder={$t('components.resourcePicker.searchPlaceholder', {
+                        resource: resourceLabel
+                    })}
+                    aria-label={$t('components.resourcePicker.searchAria', {
+                        resource: resourceLabel
+                    })}
                 />
             </div>
         </div>
@@ -239,9 +247,11 @@
                             >
                                 <UserRoundPlus class="size-5" />
                             </div>
-                            <p class="text-sm font-medium">No {resourceLabel} found</p>
+                            <p class="text-sm font-medium">
+                                {$t('components.resourcePicker.empty', { resource: resourceLabel })}
+                            </p>
                             <p class="max-w-64 text-xs text-muted-foreground">
-                                Try another search or create one from the library.
+                                {$t('components.resourcePicker.emptyHelp')}
                             </p>
                         </div>
                     {/snippet}
@@ -307,15 +317,26 @@
         <DialogFooter class="flex-row items-center justify-between gap-3 border-t px-5 py-3">
             <p class="text-xs text-muted-foreground">
                 {selectedIds.length === 0
-                    ? `Select ${resourceLabel} to ${source === 'library' ? 'copy' : 'add'}`
-                    : `${selectedIds.length} selected`}
+                    ? $t(
+                          source === 'library'
+                              ? 'components.resourcePicker.selectToCopy'
+                              : 'components.resourcePicker.selectToAdd',
+                          { resource: resourceLabel }
+                      )
+                    : $t('components.resourcePicker.selected', { count: selectedIds.length })}
             </p>
             <div class="flex items-center gap-2">
                 <Button variant="ghost" onclick={() => (open = false)} disabled={adding}>
-                    Cancel
+                    {$t('components.resourcePicker.cancel')}
                 </Button>
                 <Button onclick={addSelected} disabled={selectedIds.length === 0 || adding}>
-                    {adding ? (source === 'library' ? 'Copying...' : 'Adding...') : addButtonLabel}
+                    {adding
+                        ? $t(
+                              source === 'library'
+                                  ? 'components.resourcePicker.copying'
+                                  : 'components.resourcePicker.adding'
+                          )
+                        : addButtonLabel}
                 </Button>
             </div>
         </DialogFooter>

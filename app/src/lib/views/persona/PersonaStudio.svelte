@@ -36,6 +36,7 @@
         activeRoom,
         deletePersona,
         removePersonaAvatar,
+        t,
         updatePersona,
         updatePersonaAvatar,
         createPersonaAsset,
@@ -68,11 +69,11 @@
     type ExportButton = 'risu' | 'keipersona-light' | 'keipersona-baked';
     let exporting = $state<ExportButton | null>(null);
 
-    const tabs = [
-        { id: 'profile' as const, label: 'Profile', icon: UserRoundPen },
-        { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
-        { id: 'advanced' as const, label: 'Advanced', icon: Settings2 }
-    ];
+    const tabs = $derived([
+        { id: 'profile', label: $t('persona.studio.tabs.profile'), icon: UserRoundPen },
+        { id: 'assets', label: $t('persona.studio.tabs.assets'), icon: ImageIcon },
+        { id: 'advanced', label: $t('persona.studio.tabs.advanced'), icon: Settings2 }
+    ] as const);
 
     $effect(() => {
         if (personaTab) activeTab = personaTab;
@@ -141,13 +142,21 @@
         resourceAction = 'avatar-upload';
         try {
             const file = await appDialog.openFile({
-                title: 'Upload Persona Avatar',
-                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
+                title: $t('persona.profile.uploadAvatarTitle'),
+                filters: [
+                    {
+                        name: $t('common.fileFilters.images'),
+                        extensions: [...IMAGE_ASSET_EXTENSIONS]
+                    }
+                ]
             });
             if (!file || $activePersona?.id !== personaId) return;
             await updatePersonaAvatar(personaId, file);
         } catch (error) {
-            toast.error({ title: 'Could not update avatar', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.updateAvatar'),
+                description: getErrorMessage(error)
+            });
         } finally {
             resourceAction = null;
         }
@@ -164,15 +173,18 @@
         resourceAction = 'avatar-remove';
         try {
             const confirmed = await appConfirm({
-                title: 'Remove persona avatar?',
-                description: `Remove the avatar for "${target.name}"?`,
-                confirmText: 'Remove',
+                title: $t('persona.profile.removeAvatarTitle'),
+                description: $t('persona.profile.removeAvatarBody', { name: target.name }),
+                confirmText: $t('common.actions.remove'),
                 variant: 'destructive'
             });
             if (!confirmed || $activePersona?.id !== target.id) return;
             await removePersonaAvatar(target.id);
         } catch (error) {
-            toast.error({ title: 'Could not remove avatar', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.removeAvatar'),
+                description: getErrorMessage(error)
+            });
         } finally {
             resourceAction = null;
         }
@@ -184,16 +196,19 @@
         deleting = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete persona?',
-                description: `Delete "${target.name}" and its owned assets? This cannot be undone.`,
-                confirmText: 'Delete',
+                title: $t('persona.deleteTitle'),
+                description: $t('persona.deleteBody', { name: target.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activePersona?.id !== target.id) return;
             await deletePersona(target.id);
             backToContext();
         } catch (error) {
-            toast.error({ title: 'Could not delete persona', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.delete'),
+                description: getErrorMessage(error)
+            });
         } finally {
             deleting = false;
         }
@@ -211,7 +226,10 @@
         try {
             await exportPersonaFile(targetId, request);
         } catch (error) {
-            toast.error({ title: 'Could not export persona', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.export'),
+                description: getErrorMessage(error)
+            });
         } finally {
             exporting = null;
         }
@@ -244,7 +262,10 @@
             });
             if ($activePersona?.id === personaId) cancelRename();
         } catch (error) {
-            toast.error({ title: 'Could not rename asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.renameAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             resourceAction = null;
         }
@@ -256,10 +277,10 @@
         resourceAction = 'asset-upload';
         try {
             const files = await appDialog.openMultipleFiles({
-                title: 'Upload Persona Asset',
+                title: $t('persona.assets.uploadTitle'),
                 filters: [
                     {
-                        name: 'Images, audio, and video',
+                        name: $t('common.fileFilters.media'),
                         extensions: [...MEDIA_ASSET_EXTENSIONS]
                     }
                 ]
@@ -276,7 +297,10 @@
             }
             if (uploadError) throw uploadError;
         } catch (error) {
-            toast.error({ title: 'Could not upload asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.uploadAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             resourceAction = null;
         }
@@ -288,15 +312,18 @@
         resourceAction = `asset-delete:${ref.id}`;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete persona asset?',
-                description: `Delete "${ref.name}"?`,
-                confirmText: 'Delete',
+                title: $t('persona.assets.deleteTitle'),
+                description: $t('persona.assets.deleteBody', { name: ref.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activePersona?.id !== personaId) return;
             await deletePersonaAsset(personaId, ref.id);
         } catch (error) {
-            toast.error({ title: 'Could not delete asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('persona.toast.deleteAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             resourceAction = null;
         }
@@ -319,7 +346,7 @@
                       mimeType: $activePersona.avatar.mimeType
                   }
                 : null}
-            alt={$activePersona?.name ?? 'Persona'}
+            alt={$activePersona?.name ?? $t('persona.studio.avatarFallback')}
             class="size-full object-cover"
             fallback="none"
             focus="top"
@@ -332,7 +359,7 @@
 {/snippet}
 
 <WorkspaceShell
-    workspaceName="Persona Studio"
+    workspaceName={$t('persona.studio.title')}
     entityName={$activePersona?.name}
     sections={tabs}
     activeSection={activeTab}
@@ -340,12 +367,12 @@
     onSelect={openTab}
     onBack={returnToTabs}
     onClose={backToContext}
-    closeLabel="Close studio"
+    closeLabel={$t('persona.studio.close')}
     identity={identityAvatar}
 >
     {#if !$activePersona}
         <div class="flex flex-1 items-center justify-center">
-            <p class="text-muted-foreground">Loading persona data...</p>
+            <p class="text-muted-foreground">{$t('persona.studio.loading')}</p>
         </div>
     {:else}
         <ScrollArea class="min-h-0 flex-1">
@@ -358,8 +385,10 @@
                                     <button
                                         type="button"
                                         class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        aria-label={`View ${$activePersona.name} avatar`}
-                                        title="View avatar"
+                                        aria-label={$t('persona.profile.viewNamedAvatar', {
+                                            name: $activePersona.name
+                                        })}
+                                        title={$t('persona.profile.viewAvatar')}
                                         onclick={() => (avatarGalleryOpen = true)}
                                     >
                                         <AssetView
@@ -393,14 +422,14 @@
 
                             <div class="min-w-0 flex-1 space-y-3">
                                 <div class="grid gap-1.5">
-                                    <Label>Persona Name</Label>
+                                    <Label>{$t('persona.profile.nameLabel')}</Label>
                                     <Input
                                         value={$activePersona.name}
                                         oninput={(e) =>
                                             updatePersona($activePersona!.id, {
                                                 name: e.currentTarget.value
                                             })}
-                                        placeholder="Enter persona name..."
+                                        placeholder={$t('persona.profile.namePlaceholder')}
                                     />
                                 </div>
                                 <div class="flex flex-wrap items-center gap-1">
@@ -412,7 +441,8 @@
                                         aria-busy={resourceAction === 'avatar-upload'}
                                         onclick={handleAvatarUpload}
                                     >
-                                        <Upload class="size-4" /> Upload avatar
+                                        <Upload class="size-4" />
+                                        {$t('persona.profile.uploadAvatarButton')}
                                     </Button>
                                     <Button
                                         variant="ghost"
@@ -422,14 +452,14 @@
                                         aria-busy={resourceAction === 'avatar-remove'}
                                         onclick={handleAvatarRemove}
                                     >
-                                        Remove avatar
+                                        {$t('persona.profile.removeAvatarButton')}
                                     </Button>
                                 </div>
                             </div>
                         </div>
 
                         <div class="grid gap-1.5">
-                            <Label>Persona Description</Label>
+                            <Label>{$t('persona.profile.descriptionLabel')}</Label>
                             <Textarea
                                 rows={5}
                                 value={$activePersona.description}
@@ -437,7 +467,7 @@
                                     updatePersona($activePersona!.id, {
                                         description: e.currentTarget.value
                                     })}
-                                placeholder="Describe how this persona should speak, act, or be represented..."
+                                placeholder={$t('persona.profile.descriptionPlaceholder')}
                             />
                         </div>
                     </div>
@@ -447,7 +477,7 @@
                             <Label
                                 class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
                             >
-                                Assets
+                                {$t('persona.profile.assetsLabel')}
                             </Label>
                             <div class="flex items-center gap-2">
                                 <Badge variant="outline" class="text-[10px] font-mono"
@@ -461,7 +491,8 @@
                                     aria-busy={resourceAction === 'asset-upload'}
                                     onclick={handleAssetFileSelect}
                                 >
-                                    <Plus class="size-3" /> Add
+                                    <Plus class="size-3" />
+                                    {$t('persona.profile.addButton')}
                                 </Button>
                             </div>
                         </div>
@@ -493,9 +524,7 @@
                             onItemClick={openAssetGallery}
                         >
                             {#snippet empty()}
-                                <EmptyListPlaceholder
-                                    message="No assets. Upload an image, audio, or video file."
-                                />
+                                <EmptyListPlaceholder message={$t('persona.assets.empty')} />
                             {/snippet}
                             {#snippet item({ entity: ref })}
                                 <div
@@ -556,8 +585,10 @@
                                         {#if editingId === ref.id}
                                             <Button
                                                 size="icon-sm"
-                                                title="Save"
-                                                aria-label={`Save ${ref.name} name`}
+                                                title={$t('persona.assets.save')}
+                                                aria-label={$t('persona.assets.saveNamed', {
+                                                    name: ref.name
+                                                })}
                                                 disabled={resourceAction !== null ||
                                                     !editName.trim()}
                                                 aria-busy={resourceAction ===
@@ -569,8 +600,10 @@
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                title="Cancel"
-                                                aria-label={`Cancel renaming ${ref.name}`}
+                                                title={$t('common.actions.cancel')}
+                                                aria-label={$t('persona.assets.cancelRename', {
+                                                    name: ref.name
+                                                })}
                                                 disabled={resourceAction !== null}
                                                 onclick={cancelRename}
                                             >
@@ -580,8 +613,10 @@
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                title="Rename"
-                                                aria-label={`Rename ${ref.name}`}
+                                                title={$t('persona.assets.rename')}
+                                                aria-label={$t('persona.assets.renameNamed', {
+                                                    name: ref.name
+                                                })}
                                                 disabled={resourceAction !== null}
                                                 onclick={() => startRename(ref)}
                                             >
@@ -591,8 +626,10 @@
                                                 variant="ghost"
                                                 size="icon-sm"
                                                 class="text-destructive hover:text-destructive"
-                                                title="Delete"
-                                                aria-label={`Delete ${ref.name}`}
+                                                title={$t('common.actions.delete')}
+                                                aria-label={$t('persona.assets.deleteNamed', {
+                                                    name: ref.name
+                                                })}
                                                 disabled={resourceAction !== null}
                                                 aria-busy={resourceAction ===
                                                     `asset-delete:${ref.id}`}
@@ -638,11 +675,13 @@
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}
-    title={`${$activePersona?.name ?? 'Persona'} assets`}
+    title={$t('persona.assets.galleryTitle', {
+        name: $activePersona?.name ?? $t('persona.studio.avatarFallback')
+    })}
 />
 
 <MediaGalleryDialog
     bind:open={avatarGalleryOpen}
     items={avatarGalleryItems}
-    title="Persona avatar"
+    title={$t('persona.profile.avatar')}
 />

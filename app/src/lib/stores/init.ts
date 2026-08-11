@@ -16,6 +16,8 @@ import {
     createDefaultTTSWorkflow,
     createDefaultTranslationWorkflow
 } from '$lib/workflow/defaults';
+import { get } from 'svelte/store';
+import { deviceLocale } from './state';
 
 export async function loadGlobalState() {
     await loadSettings();
@@ -45,6 +47,7 @@ export async function initDefaultContents(): Promise<void> {
     await addRoomCharacter(room.id, character.id);
     await selectPreset(preset.id);
     await updateSettings({
+        ui: { locale: get(deviceLocale) },
         translation: { workflow: createDefaultTranslationWorkflow() },
         imageGeneration: { workflow: createDefaultImageGenerationWorkflow() },
         tts: { workflow: createDefaultTTSWorkflow() },

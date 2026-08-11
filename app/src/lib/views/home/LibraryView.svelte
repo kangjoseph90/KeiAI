@@ -33,6 +33,7 @@
         rooms,
         selectRoom,
         setModuleEnabled,
+        t,
         updateGlobalFolder
     } from '$lib/stores';
     import { libraryTab, toast } from '$lib/ui';
@@ -134,47 +135,47 @@
     }
 
     async function openRoom(roomId: string): Promise<void> {
-        await runHomeAction(`open-room:${roomId}`, 'Could not open room', () =>
+        await runHomeAction(`open-room:${roomId}`, $t('library.toast.openRoom'), () =>
             prepareAndNavigateRoom(roomId)
         );
     }
 
     async function handleCreateRoom() {
-        await runHomeAction('create-room', 'Could not create room', async () => {
+        await runHomeAction('create-room', $t('library.toast.createRoom'), async () => {
             const room = await createRoom();
             await prepareAndNavigateRoom(room.id);
         });
     }
 
     async function handleCreateCharacter() {
-        await runHomeAction('create-character', 'Could not create character', async () => {
+        await runHomeAction('create-character', $t('library.toast.createCharacter'), async () => {
             const character = await createCharacter();
             if (!destroyed) await navigateToCharacterStudio(character.id);
         });
     }
 
     async function handleCreateModule() {
-        await runHomeAction('create-module', 'Could not create module', async () => {
+        await runHomeAction('create-module', $t('library.toast.createModule'), async () => {
             const mod = await createModule();
             if (!destroyed) await navigateToModuleStudio(mod.id);
         });
     }
 
     async function handleCreatePersona() {
-        await runHomeAction('create-persona', 'Could not create persona', async () => {
+        await runHomeAction('create-persona', $t('library.toast.createPersona'), async () => {
             const persona = await createPersona();
             if (!destroyed) await navigateToPersonaStudio(persona.id);
         });
     }
 
     async function handleSetModuleEnabled(moduleId: string, enabled: boolean) {
-        await runHomeAction(`toggle-module:${moduleId}`, 'Could not update module', () =>
+        await runHomeAction(`toggle-module:${moduleId}`, $t('library.toast.updateModule'), () =>
             setModuleEnabled(moduleId, enabled)
         );
     }
 
     async function handleImportModule() {
-        await runHomeAction('import-module', 'Could not import module', async () => {
+        await runHomeAction('import-module', $t('library.toast.importModule'), async () => {
             const mod = await importModuleFile({
                 allowLightAssets: isKeiServer(),
                 select: true
@@ -184,7 +185,7 @@
     }
 
     async function handleImportCharacter() {
-        await runHomeAction('import-character', 'Could not import character', async () => {
+        await runHomeAction('import-character', $t('library.toast.importCharacter'), async () => {
             const character = await importCharacterFile({
                 allowLightAssets: isKeiServer(),
                 select: true
@@ -196,7 +197,7 @@
     }
 
     async function handleImportPersona() {
-        await runHomeAction('import-persona', 'Could not import persona', async () => {
+        await runHomeAction('import-persona', $t('library.toast.importPersona'), async () => {
             const persona = await importPersonaFile({
                 allowLightAssets: isKeiServer(),
                 select: true
@@ -205,26 +206,35 @@
         });
     }
 
-    function searchPlaceholder(): string {
-        if ($libraryTab === 'rooms') return 'Search rooms...';
-        if ($libraryTab === 'characters') return 'Search characters...';
-        if ($libraryTab === 'modules') return 'Search modules...';
-        return 'Search personas...';
-    }
+    const searchPlaceholder = $derived(
+        $libraryTab === 'rooms'
+            ? $t('library.search.rooms')
+            : $libraryTab === 'characters'
+              ? $t('library.search.characters')
+              : $libraryTab === 'modules'
+                ? $t('library.search.modules')
+                : $t('library.search.personas')
+    );
 
-    function libraryTabDescription(): string {
-        if ($libraryTab === 'characters') return 'Reusable speakers for every room.';
-        if ($libraryTab === 'modules') return 'Reusable context and automation bundles.';
-        if ($libraryTab === 'personas') return 'Your identities across conversations.';
-        return 'Spaces for characters and conversations.';
-    }
+    const libraryTabDescription = $derived(
+        $libraryTab === 'characters'
+            ? $t('library.tabDescription.characters')
+            : $libraryTab === 'modules'
+              ? $t('library.tabDescription.modules')
+              : $libraryTab === 'personas'
+                ? $t('library.tabDescription.personas')
+                : $t('library.tabDescription.rooms')
+    );
 
-    function libraryCreateLabel(): string {
-        if ($libraryTab === 'rooms') return 'New Room';
-        if ($libraryTab === 'characters') return 'New Character';
-        if ($libraryTab === 'modules') return 'New Module';
-        return 'New Persona';
-    }
+    const libraryCreateLabel = $derived(
+        $libraryTab === 'rooms'
+            ? $t('library.create.room')
+            : $libraryTab === 'characters'
+              ? $t('library.create.character')
+              : $libraryTab === 'modules'
+                ? $t('library.create.module')
+                : $t('library.create.persona')
+    );
 
     function libraryCreateAction(): string {
         if ($libraryTab === 'rooms') return 'create-room';
@@ -277,7 +287,7 @@
     >
         <MediaEntityCard
             name={folder.name}
-            meta={`${childCount} item${childCount === 1 ? '' : 's'}`}
+            meta={$t('common.counts.items', { count: childCount })}
             class="cursor-pointer"
         >
             {#snippet visual()}
@@ -300,7 +310,9 @@
 <div class="flex h-full flex-col overflow-hidden bg-background" aria-busy={homeAction !== null}>
     <header class="shrink-0 border-b px-4 py-4 sm:px-6 md:px-8 md:py-5">
         <div class="mx-auto max-w-5xl text-center">
-            <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">KeiAI</h1>
+            <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">
+                {$t('library.title')}
+            </h1>
         </div>
     </header>
 
@@ -309,7 +321,7 @@
             <div class="flex flex-col gap-4 md:gap-3">
                 <nav
                     class="mx-auto grid w-full max-w-xl grid-cols-4 gap-2"
-                    aria-label="Library categories"
+                    aria-label={$t('library.categories')}
                 >
                     <button
                         class="group flex min-w-0 flex-col items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all md:py-2 {$libraryTab ===
@@ -327,7 +339,7 @@
                         >
                             <DoorOpen class="size-4" aria-hidden="true" />
                         </span>
-                        <span class="truncate">Rooms</span>
+                        <span class="truncate">{$t('library.tabs.rooms')}</span>
                     </button>
                     <button
                         class="group flex min-w-0 flex-col items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all md:py-2 {$libraryTab ===
@@ -345,7 +357,7 @@
                         >
                             <UserRound class="size-4" aria-hidden="true" />
                         </span>
-                        <span class="truncate">Characters</span>
+                        <span class="truncate">{$t('library.tabs.characters')}</span>
                     </button>
                     <button
                         class="group flex min-w-0 flex-col items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all md:py-2 {$libraryTab ===
@@ -363,7 +375,7 @@
                         >
                             <UserRoundPen class="size-4" aria-hidden="true" />
                         </span>
-                        <span class="truncate">Personas</span>
+                        <span class="truncate">{$t('library.tabs.personas')}</span>
                     </button>
                     <button
                         class="group flex min-w-0 flex-col items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all md:py-2 {$libraryTab ===
@@ -381,11 +393,11 @@
                         >
                             <Package class="size-4" aria-hidden="true" />
                         </span>
-                        <span class="truncate">Modules</span>
+                        <span class="truncate">{$t('library.tabs.modules')}</span>
                     </button>
                 </nav>
                 <p class="text-center text-sm text-muted-foreground">
-                    {libraryTabDescription()}
+                    {libraryTabDescription}
                 </p>
 
                 <div class="mx-auto flex w-full max-w-3xl items-center gap-2">
@@ -393,7 +405,7 @@
                         <Search
                             class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
                         />
-                        <Input bind:value={query} placeholder={searchPlaceholder()} class="pl-9" />
+                        <Input bind:value={query} placeholder={searchPlaceholder} class="pl-9" />
                     </div>
 
                     {#if $libraryTab !== 'rooms'}
@@ -401,25 +413,25 @@
                             variant="outline"
                             class="shrink-0 gap-2 px-3"
                             disabled={homeAction !== null}
-                            aria-label={`Import ${$libraryTab}`}
-                            title={`Import ${$libraryTab}`}
+                            aria-label={$t('library.import.title', { tab: $libraryTab })}
+                            title={$t('library.import.title', { tab: $libraryTab })}
                             aria-busy={homeAction === `import-${$libraryTab.slice(0, -1)}`}
                             onclick={handleLibraryImport}
                         >
                             <Upload class="size-4" />
-                            <span class="hidden sm:inline">Import</span>
+                            <span class="hidden sm:inline">{$t('library.import.button')}</span>
                         </Button>
                     {/if}
                     <Button
                         class="shrink-0 gap-2 px-3"
                         disabled={homeAction !== null}
-                        aria-label={libraryCreateLabel()}
-                        title={libraryCreateLabel()}
+                        aria-label={libraryCreateLabel}
+                        title={libraryCreateLabel}
                         aria-busy={homeAction === libraryCreateAction()}
                         onclick={handleLibraryCreate}
                     >
                         <Plus class="size-4" />
-                        <span class="hidden sm:inline">{libraryCreateLabel()}</span>
+                        <span class="hidden sm:inline">{libraryCreateLabel}</span>
                     </Button>
                 </div>
             </div>
@@ -456,10 +468,10 @@
                                         <DoorOpen class="size-6 text-muted-foreground" />
                                     </div>
                                     <h2 class="mt-4 text-lg font-semibold">
-                                        Create your first room
+                                        {$t('library.empty.roomsTitle')}
                                     </h2>
                                     <p class="mt-2 text-sm text-muted-foreground">
-                                        Rooms hold character refs, chats, and conversation context.
+                                        {$t('library.empty.roomsBody')}
                                     </p>
                                     <Button
                                         class="mt-5 gap-2"
@@ -468,7 +480,7 @@
                                         onclick={handleCreateRoom}
                                     >
                                         <Plus class="size-4" />
-                                        New Room
+                                        {$t('library.create.room')}
                                     </Button>
                                 </div>
                             </div>
@@ -478,7 +490,10 @@
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <MediaEntityCard
                                 name={room.name}
-                                meta={`${characterCount} characters / ${chatCount} chats`}
+                                meta={$t('library.meta.room', {
+                                    characters: characterCount,
+                                    chats: chatCount
+                                })}
                                 class="cursor-pointer"
                             >
                                 {#snippet visual()}
@@ -519,10 +534,10 @@
                                         <UserRound class="size-6 text-muted-foreground" />
                                     </div>
                                     <h2 class="mt-4 text-lg font-semibold">
-                                        Create your first character
+                                        {$t('library.empty.charactersTitle')}
                                     </h2>
                                     <p class="mt-2 text-sm text-muted-foreground">
-                                        Characters are global resources you can add to rooms.
+                                        {$t('library.empty.charactersBody')}
                                     </p>
                                     <Button
                                         class="mt-5 gap-2"
@@ -531,7 +546,7 @@
                                         onclick={handleCreateCharacter}
                                     >
                                         <Plus class="size-4" />
-                                        New Character
+                                        {$t('library.create.character')}
                                     </Button>
                                 </div>
                             </div>
@@ -539,7 +554,7 @@
                         {#snippet item({ entity: character })}
                             <MediaEntityCard
                                 name={character.name}
-                                meta={character.description || 'No description'}
+                                meta={character.description || $t('common.noDescription')}
                                 class="cursor-pointer"
                                 visualClass="text-xl font-semibold"
                             >
@@ -597,10 +612,10 @@
                                         <Package class="size-6 text-muted-foreground" />
                                     </div>
                                     <h2 class="mt-4 text-lg font-semibold">
-                                        Create your first module
+                                        {$t('library.empty.modulesTitle')}
                                     </h2>
                                     <p class="mt-2 text-sm text-muted-foreground">
-                                        Modules package reusable context, scripts, and display.
+                                        {$t('library.empty.modulesBody')}
                                     </p>
                                     <Button
                                         class="mt-5 gap-2"
@@ -609,7 +624,7 @@
                                         onclick={handleCreateModule}
                                     >
                                         <Plus class="size-4" />
-                                        New Module
+                                        {$t('library.create.module')}
                                     </Button>
                                 </div>
                             </div>
@@ -618,7 +633,7 @@
                             {@const enabled = $appSettings.modules.refs[mod.id]?.enabled ?? true}
                             <MediaEntityCard
                                 name={mod.name}
-                                meta={mod.description || 'No description'}
+                                meta={mod.description || $t('common.noDescription')}
                                 class="cursor-pointer {enabled ? '' : 'opacity-60'}"
                             >
                                 {#snippet visual()}
@@ -632,11 +647,11 @@
                                             ? 'text-amber-500 hover:text-amber-600'
                                             : 'text-muted-foreground hover:text-foreground'}"
                                         title={enabled
-                                            ? 'Deactivate globally'
-                                            : 'Activate globally'}
+                                            ? $t('library.module.deactivate')
+                                            : $t('library.module.activate')}
                                         aria-label={enabled
-                                            ? 'Deactivate globally'
-                                            : 'Activate globally'}
+                                            ? $t('library.module.deactivate')
+                                            : $t('library.module.activate')}
                                         disabled={homeAction !== null}
                                         aria-busy={homeAction === `toggle-module:${mod.id}`}
                                         onclick={(event) => {
@@ -682,10 +697,10 @@
                                         <UserRoundPen class="size-6 text-muted-foreground" />
                                     </div>
                                     <h2 class="mt-4 text-lg font-semibold">
-                                        Create your first persona
+                                        {$t('library.empty.personasTitle')}
                                     </h2>
                                     <p class="mt-2 text-sm text-muted-foreground">
-                                        Personas are user speakers you can attach to chats.
+                                        {$t('library.empty.personasBody')}
                                     </p>
                                     <Button
                                         class="mt-5 gap-2"
@@ -694,7 +709,7 @@
                                         onclick={handleCreatePersona}
                                     >
                                         <Plus class="size-4" />
-                                        New Persona
+                                        {$t('library.create.persona')}
                                     </Button>
                                 </div>
                             </div>
@@ -702,7 +717,7 @@
                         {#snippet item({ entity: persona })}
                             <MediaEntityCard
                                 name={persona.name}
-                                meta={persona.description || 'No description'}
+                                meta={persona.description || $t('common.noDescription')}
                                 class="cursor-pointer"
                                 visualClass="text-xl font-semibold"
                             >

@@ -2,6 +2,7 @@
     import { AlertCircle, X } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { cn } from '$lib/utils';
+    import { t } from '$lib/stores';
 
     let {
         title,
@@ -33,8 +34,8 @@
         size="icon-sm"
         class="-mr-1 -mt-1 shrink-0 hover:bg-destructive/10 hover:text-destructive"
         onclick={onDismiss}
-        aria-label={`Dismiss ${title.toLowerCase()}`}
-        title="Dismiss"
+        aria-label={$t('chat.notice.dismiss', { title })}
+        title={$t('tasks.center.dismiss')}
     >
         <X class="size-3.5" />
     </Button>

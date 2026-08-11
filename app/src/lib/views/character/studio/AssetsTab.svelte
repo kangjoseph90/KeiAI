@@ -15,7 +15,8 @@
         createCharacterFolder,
         updateCharacterFolder,
         deleteCharacterFolder,
-        moveCharacterItem
+        moveCharacterItem,
+        t
     } from '$lib/stores';
     import type { Character } from '$lib/services';
     import type { AssetRef } from '$lib/types/refs';
@@ -80,7 +81,10 @@
             });
             if (character.id === characterId) cancelRename();
         } catch (error) {
-            toast.error({ title: 'Could not rename asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.renameAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -92,10 +96,10 @@
         busyAction = 'upload';
         try {
             const files = await appDialog.openMultipleFiles({
-                title: 'Upload Character Asset',
+                title: $t('character.assets.uploadTitle'),
                 filters: [
                     {
-                        name: 'Images, audio, and video',
+                        name: $t('common.fileFilters.media'),
                         extensions: [...MEDIA_ASSET_EXTENSIONS]
                     }
                 ]
@@ -112,7 +116,10 @@
             }
             if (uploadError) throw uploadError;
         } catch (error) {
-            toast.error({ title: 'Could not upload asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.uploadAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -124,15 +131,18 @@
         busyAction = `delete:${ref.id}`;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete character asset?',
-                description: `Delete "${ref.name}"?`,
-                confirmText: 'Delete',
+                title: $t('character.assets.deleteTitle'),
+                description: $t('character.assets.deleteBody', { name: ref.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || character.id !== characterId) return;
             await deleteCharacterAsset(characterId, ref.id);
         } catch (error) {
-            toast.error({ title: 'Could not delete asset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('character.toast.deleteAsset'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -145,7 +155,7 @@
 </script>
 
 <section class="space-y-4">
-    <ListActionBar description="Images, audio, and video used by this character.">
+    <ListActionBar description={$t('character.assets.description')}>
         <Button
             size="sm"
             class="gap-1.5"
@@ -153,7 +163,8 @@
             aria-busy={busyAction === 'upload'}
             onclick={handleAdd}
         >
-            <Upload class="size-4" /> Upload
+            <Upload class="size-4" />
+            {$t('character.assets.addButton')}
         </Button>
     </ListActionBar>
     <EntityList
@@ -169,7 +180,7 @@
         onItemClick={openGallery}
     >
         {#snippet empty()}
-            <EmptyListPlaceholder message="No assets. Upload an image, audio, or video file." />
+            <EmptyListPlaceholder message={$t('character.assets.empty')} />
         {/snippet}
         {#snippet item({ entity: ref })}
             <div
@@ -229,8 +240,8 @@
                     {#if editingId === ref.id}
                         <Button
                             size="icon-sm"
-                            title="Save"
-                            aria-label={`Save ${ref.name} name`}
+                            title={$t('character.assets.save')}
+                            aria-label={$t('character.assets.saveNamed', { name: ref.name })}
                             disabled={busyAction !== null || !editName.trim()}
                             aria-busy={busyAction === `rename:${ref.id}`}
                             onclick={() => saveRename(ref)}
@@ -240,8 +251,8 @@
                         <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Cancel"
-                            aria-label={`Cancel renaming ${ref.name}`}
+                            title={$t('common.actions.cancel')}
+                            aria-label={$t('character.assets.cancelRename', { name: ref.name })}
                             disabled={busyAction !== null}
                             onclick={cancelRename}
                         >
@@ -251,8 +262,8 @@
                         <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Rename"
-                            aria-label={`Rename ${ref.name}`}
+                            title={$t('character.assets.rename')}
+                            aria-label={$t('character.assets.renameNamed', { name: ref.name })}
                             disabled={busyAction !== null}
                             onclick={() => startRename(ref)}
                         >
@@ -262,8 +273,8 @@
                             variant="ghost"
                             size="icon-sm"
                             class="text-destructive hover:text-destructive"
-                            title="Delete"
-                            aria-label={`Delete ${ref.name}`}
+                            title={$t('common.actions.delete')}
+                            aria-label={$t('character.assets.deleteNamed', { name: ref.name })}
                             disabled={busyAction !== null}
                             aria-busy={busyAction === `delete:${ref.id}`}
                             onclick={() => handleDelete(ref)}
@@ -281,5 +292,5 @@
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}
-    title={`${character.name} assets`}
+    title={$t('character.assets.galleryTitle', { name: character.name })}
 />

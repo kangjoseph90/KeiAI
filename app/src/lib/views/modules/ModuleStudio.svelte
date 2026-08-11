@@ -39,6 +39,7 @@
     import type { ModuleFileExport } from '$lib/porters/module';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     // Tab Components
     import ProfileTab from './studio/ProfileTab.svelte';
@@ -78,16 +79,16 @@
     }
 
     // Tabs navigation helper
-    const tabs = [
-        { id: 'profile', label: 'Profile', icon: UserRound },
-        { id: 'lorebooks', label: 'Lorebooks', icon: Book },
-        { id: 'scripts', label: 'Scripts', icon: Code },
-        { id: 'toggles', label: 'Toggles', icon: SlidersHorizontal },
-        { id: 'commands', label: 'Commands', icon: SquareTerminal },
-        { id: 'display', label: 'Display', icon: Monitor },
-        { id: 'assets', label: 'Assets', icon: ImageIcon },
-        { id: 'advanced', label: 'Advanced', icon: Settings2 }
-    ] as const;
+    const tabs = $derived([
+        { id: 'profile', label: $t('module.studio.tabs.profile'), icon: UserRound },
+        { id: 'lorebooks', label: $t('module.studio.tabs.lorebooks'), icon: Book },
+        { id: 'scripts', label: $t('module.studio.tabs.scripts'), icon: Code },
+        { id: 'toggles', label: $t('module.studio.tabs.toggles'), icon: SlidersHorizontal },
+        { id: 'commands', label: $t('module.studio.tabs.commands'), icon: SquareTerminal },
+        { id: 'display', label: $t('module.studio.tabs.display'), icon: Monitor },
+        { id: 'assets', label: $t('module.studio.tabs.assets'), icon: ImageIcon },
+        { id: 'advanced', label: $t('module.studio.tabs.advanced'), icon: Settings2 }
+    ] as const);
 
     $effect(() => {
         if (moduleTab) activeTab = moduleTab;
@@ -112,7 +113,7 @@
         try {
             await exportModuleFile($activeModule.id, request);
         } catch (error) {
-            toast.error({ title: 'Could not export module', description: getErrorMessage(error) });
+            toast.error({ title: $t('module.toast.export'), description: getErrorMessage(error) });
         } finally {
             exporting = null;
         }
@@ -124,16 +125,16 @@
         deleting = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete module?',
-                description: `Delete "${target.name}" and its owned resources? This cannot be undone.`,
-                confirmText: 'Delete',
+                title: $t('module.deleteTitle'),
+                description: $t('module.deleteBody', { name: target.name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || $activeModule?.id !== target.id) return;
             await deleteModule(target.id);
             backToContext();
         } catch (error) {
-            toast.error({ title: 'Could not delete module', description: getErrorMessage(error) });
+            toast.error({ title: $t('module.toast.delete'), description: getErrorMessage(error) });
         } finally {
             deleting = false;
         }
@@ -149,7 +150,7 @@
 {/snippet}
 
 <WorkspaceShell
-    workspaceName="Module Studio"
+    workspaceName={$t('module.studio.title')}
     entityName={$activeModule?.name}
     sections={tabs}
     activeSection={activeTab}
@@ -162,7 +163,7 @@
 >
     {#if !$activeModule}
         <div class="flex flex-1 items-center justify-center">
-            <p class="text-muted-foreground">Loading module data...</p>
+            <p class="text-muted-foreground">{$t('module.studio.loading')}</p>
         </div>
     {:else}
         <ScrollArea class="min-h-0 flex-1">

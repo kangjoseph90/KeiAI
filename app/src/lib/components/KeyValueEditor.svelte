@@ -3,6 +3,7 @@
     import { Button } from './ui/button';
     import { Input } from './ui/input';
     import { Label } from './ui/label';
+    import { t } from '$lib/stores';
 
     interface Props {
         disabled?: boolean;
@@ -16,13 +17,15 @@
 
     let {
         disabled = false,
-        emptyMessage = 'No variables defined.',
+        emptyMessage,
         data,
         error = '',
         onUpdateValue,
         onAdd,
         onRemove
     }: Props = $props();
+
+    const resolvedEmptyMessage = $derived(emptyMessage ?? $t('components.keyValue.empty'));
 
     let newKey = $state('');
     let newValue = $state('');
@@ -40,11 +43,11 @@
         const val = newValue;
 
         if (!key) {
-            localError = 'Name key is required.';
+            localError = $t('components.keyValue.nameRequired');
             return;
         }
         if (key in data) {
-            localError = 'Name keys must be unique.';
+            localError = $t('components.keyValue.nameUnique');
             return;
         }
 
@@ -75,7 +78,7 @@
                             {disabled}
                             class="h-7 flex-1 text-xs bg-background/50 border hover:bg-background border-input rounded px-2 focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0 focus-visible:border-primary"
                             value={String(value)}
-                            aria-label={`Value for ${key}`}
+                            aria-label={$t('components.keyValue.valueAria', { key })}
                             oninput={(event) => onUpdateValue(key, event.currentTarget.value)}
                         />
 
@@ -86,7 +89,7 @@
                             size="icon-sm"
                             class="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             onclick={() => onRemove(key)}
-                            aria-label={`Delete ${key}`}
+                            aria-label={$t('components.keyValue.deleteAria', { key })}
                         >
                             <Trash2 class="size-3.5" />
                         </Button>
@@ -95,7 +98,7 @@
             </div>
         {:else}
             <div class="py-6 text-center text-xs text-muted-foreground border-b last:border-b-0">
-                {emptyMessage}
+                {resolvedEmptyMessage}
             </div>
         {/if}
 
@@ -107,15 +110,15 @@
                 {disabled}
                 class="h-7 w-36 sm:w-40 shrink-0 font-mono text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
                 bind:value={newKey}
-                placeholder="key"
-                aria-label="New key name"
+                placeholder={$t('common.label.key')}
+                aria-label={$t('components.keyValue.newKeyName')}
             />
             <Input
                 {disabled}
                 class="h-7 flex-1 text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
                 bind:value={newValue}
-                placeholder="value"
-                aria-label="New key value"
+                placeholder={$t('common.label.value')}
+                aria-label={$t('components.keyValue.newKeyValue')}
             />
             <Button
                 type="submit"
@@ -123,7 +126,8 @@
                 class="h-7 gap-1 px-3 text-xs shrink-0 font-medium"
                 {disabled}
             >
-                <Plus class="size-3" /> Add
+                <Plus class="size-3" />
+                {$t('components.keyValue.add')}
             </Button>
         </form>
     </div>

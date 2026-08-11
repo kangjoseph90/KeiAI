@@ -9,6 +9,8 @@ export interface LanguageEntry {
     name: string;
     /** Endonym (native name). */
     nativeName: string;
+    /** Writing direction. Defaults to left-to-right. */
+    direction?: 'ltr' | 'rtl';
 }
 
 export interface ResolvedLanguagePair {

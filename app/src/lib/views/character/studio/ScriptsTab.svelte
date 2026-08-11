@@ -17,6 +17,7 @@
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
+    import { t } from '$lib/stores';
 
     interface FolderCallbacks {
         onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
@@ -91,11 +92,13 @@
         <div class="space-y-4">
             <div class="space-y-1.5">
                 <h3 class="text-sm font-semibold flex items-center gap-2">
-                    <ImageIcon class="size-4 text-muted-foreground" /> Regex Scripts
+                    <ImageIcon class="size-4 text-muted-foreground" />
+                    {$t('character.scripts.regexTitle')}
                 </h3>
-                <ListActionBar description="Transform text with regular expressions.">
+                <ListActionBar description={$t('character.scripts.regexDescription')}>
                     <Button size="sm" class="gap-1.5" onclick={handleAddScript}>
-                        <Plus class="size-4" /> Add
+                        <Plus class="size-4" />
+                        {$t('character.scripts.addButton')}
                     </Button>
                 </ListActionBar>
             </div>
@@ -109,7 +112,7 @@
                 onMoveItem={scriptFolders.onMoveItem}
             >
                 {#snippet empty()}
-                    <EmptyListPlaceholder message="No regex scripts." />
+                    <EmptyListPlaceholder message={$t('character.scripts.regexEmpty')} />
                 {/snippet}
                 {#snippet item({ entity: s })}
                     <ScriptItem
@@ -127,11 +130,13 @@
         <div class="space-y-4">
             <div class="space-y-1.5">
                 <h3 class="text-sm font-semibold flex items-center gap-2">
-                    <Code class="size-4 text-muted-foreground" /> CharJS Scripts
+                    <Code class="size-4 text-muted-foreground" />
+                    {$t('character.scripts.charjsTitle')}
                 </h3>
-                <ListActionBar description="Run character-specific JavaScript behavior.">
+                <ListActionBar description={$t('character.scripts.charjsDescription')}>
                     <Button size="sm" class="gap-1.5" onclick={handleAddCharJS}>
-                        <Plus class="size-4" /> Add
+                        <Plus class="size-4" />
+                        {$t('character.scripts.addButton')}
                     </Button>
                 </ListActionBar>
             </div>
@@ -145,7 +150,7 @@
                 onMoveItem={charjsFolders.onMoveItem}
             >
                 {#snippet empty()}
-                    <EmptyListPlaceholder message="No CharJS scripts." />
+                    <EmptyListPlaceholder message={$t('character.scripts.charjsEmpty')} />
                 {/snippet}
                 {#snippet item({ entity: js })}
                     <CharJSItem

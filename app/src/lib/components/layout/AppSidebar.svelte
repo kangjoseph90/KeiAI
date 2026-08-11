@@ -41,7 +41,8 @@
         selectRoom,
         switchLocalUser,
         updateGlobalFolder,
-        userSyncStatus
+        userSyncStatus,
+        t
     } from '$lib/stores';
     import { toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
@@ -98,16 +99,16 @@
     });
     const syncLabel = $derived(
         syncState === 'server-transition'
-            ? 'Server change in progress'
+            ? $t('shell.sidebar.sync.indicatorServerTransition')
             : syncState === 'syncing'
-              ? 'Syncing encrypted data'
+              ? $t('shell.sidebar.sync.indicatorSyncing')
               : syncState === 'network_error'
-                ? 'Sync paused: network unavailable. Activate to retry.'
+                ? $t('shell.sidebar.sync.indicatorNetwork')
                 : syncState === 'quota_error'
-                  ? 'Sync paused: remote storage quota reached. Activate to retry.'
+                  ? $t('shell.sidebar.sync.indicatorQuota')
                   : syncState === 'auth_error'
-                    ? 'Sync paused: sign-in needs attention. Activate to retry.'
-                    : 'Encrypted data is synced. Activate to sync now.'
+                    ? $t('shell.sidebar.sync.indicatorAuth')
+                    : $t('shell.sidebar.sync.indicatorIdle')
     );
 
     $effect(() => {
@@ -135,11 +136,11 @@
     });
 
     function syncStatusLabel(status: SyncStatus): string {
-        if (status.state === 'syncing') return 'Syncing';
-        if (status.state === 'network_error') return 'Network error';
-        if (status.state === 'quota_error') return 'Quota error';
-        if (status.state === 'auth_error') return 'Authentication error';
-        return 'Up to date';
+        if (status.state === 'syncing') return $t('shell.sidebar.sync.statusSyncing');
+        if (status.state === 'network_error') return $t('shell.sidebar.sync.statusNetworkError');
+        if (status.state === 'quota_error') return $t('shell.sidebar.sync.statusQuotaError');
+        if (status.state === 'auth_error') return $t('shell.sidebar.sync.statusAuthError');
+        return $t('shell.sidebar.sync.statusUpToDate');
     }
 
     function syncStatusColor(status: SyncStatus): string {
@@ -169,7 +170,10 @@
         try {
             await SyncManager.syncAll();
         } catch (error) {
-            toast.error({ title: 'Could not sync', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('shell.sidebar.toast.sync'),
+                description: getErrorMessage(error)
+            });
         } finally {
             retryingSync = false;
         }
@@ -188,7 +192,10 @@
                 onNavigate({ view: 'room', roomId, chatId: $activeChat?.id });
             }
         } catch (error) {
-            toast.error({ title: 'Could not open room', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('library.toast.openRoom'),
+                description: getErrorMessage(error)
+            });
         } finally {
             selectingRoomId = null;
         }
@@ -200,7 +207,10 @@
         try {
             await switchLocalUser(userId);
         } catch (error) {
-            toast.error({ title: 'Could not switch user', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('shell.sidebar.toast.switchUser'),
+                description: getErrorMessage(error)
+            });
         } finally {
             switchingUserId = null;
         }
@@ -212,7 +222,10 @@
         try {
             await createAndSwitchLocalUser();
         } catch (error) {
-            toast.error({ title: 'Could not create user', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('shell.sidebar.toast.createUser'),
+                description: getErrorMessage(error)
+            });
         } finally {
             creatingUser = false;
         }
@@ -245,7 +258,7 @@
     class="app-sidebar-backdrop fixed inset-0 z-30 bg-black/35 lg:hidden"
     data-open={!collapsed}
     aria-hidden={collapsed}
-    aria-label="Close navigation"
+    aria-label={$t('shell.sidebar.closeNavigation')}
     tabindex={collapsed ? -1 : 0}
     onclick={handleBackdropClick}
 ></button>
@@ -263,8 +276,8 @@
             <Button
                 variant={route.view === 'home' ? 'secondary' : 'ghost'}
                 size="icon"
-                title="Library"
-                aria-label="Library"
+                title={$t('shell.sidebar.library')}
+                aria-label={$t('shell.sidebar.library')}
                 onclick={() => onNavigate({ view: 'home' })}
             >
                 <Home class="size-4" />
@@ -275,8 +288,8 @@
             <Button
                 variant={route.view === 'multiRoom' || $isMultiRoom ? 'secondary' : 'ghost'}
                 size="icon"
-                title="Multi Rooms"
-                aria-label="Multi Rooms"
+                title={$t('shell.sidebar.multiRooms')}
+                aria-label={$t('shell.sidebar.multiRooms')}
                 onclick={() => onNavigate({ view: 'multiRoom' })}
             >
                 <UsersRound class="size-4" />
@@ -349,7 +362,7 @@
                             variant="ghost"
                             size="icon"
                             title={syncLabel}
-                            aria-label={`View sync status: ${syncLabel}`}
+                            aria-label={`${$t('shell.sidebar.sync.viewStatus')}: ${syncLabel}`}
                             aria-busy={retryingSync || syncState === 'syncing'}
                         >
                             {#if syncIconState === 'server-transition'}
@@ -371,23 +384,26 @@
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content side="right" align="end" sideOffset={10} class="w-72 p-1">
                         <DropdownMenu.Label class="px-2 py-1.5 text-xs"
-                            >Sync status</DropdownMenu.Label
+                            >{$t('shell.sidebar.sync.title')}</DropdownMenu.Label
                         >
                         {#if $serverTransitionLocked}
                             <div class="mx-1 mb-1 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs">
                                 <p class="font-medium text-amber-700 dark:text-amber-300">
-                                    Server change in progress
+                                    {$t('shell.sidebar.sync.serverTransitionTitle')}
                                 </p>
                                 <p class="mt-1 leading-4 text-muted-foreground">
-                                    Sync is paused until the server change finishes.
+                                    {$t('shell.sidebar.sync.serverTransitionBody')}
                                 </p>
                             </div>
                             <DropdownMenu.Separator />
                         {/if}
-                        {@render syncStatusRow('User', $userSyncStatus)}
-                        {@render syncStatusRow('Records', $dataSyncStatus)}
-                        {@render syncStatusRow('Assets', $assetSyncStatus)}
-                        {@render syncStatusRow('Multi-room', $multiSyncStatus)}
+                        {@render syncStatusRow($t('shell.sidebar.sync.user'), $userSyncStatus)}
+                        {@render syncStatusRow($t('shell.sidebar.sync.records'), $dataSyncStatus)}
+                        {@render syncStatusRow($t('shell.sidebar.sync.assets'), $assetSyncStatus)}
+                        {@render syncStatusRow(
+                            $t('shell.sidebar.sync.multiRoom'),
+                            $multiSyncStatus
+                        )}
                         <DropdownMenu.Separator />
                         <DropdownMenu.Item
                             class="cursor-pointer gap-2"
@@ -397,7 +413,9 @@
                             onclick={() => void handleSync()}
                         >
                             <RefreshCw class="size-4" />
-                            {retryingSync || syncState === 'syncing' ? 'Syncing...' : 'Sync now'}
+                            {retryingSync || syncState === 'syncing'
+                                ? $t('shell.sidebar.sync.syncingNow')
+                                : $t('shell.sidebar.sync.syncNow')}
                         </DropdownMenu.Item>
                     </DropdownMenu.Content>
                 </DropdownMenu.Root>
@@ -405,8 +423,8 @@
             <Button
                 variant="ghost"
                 size="icon"
-                title="Settings"
-                aria-label="Settings"
+                title={$t('shell.sidebar.settings')}
+                aria-label={$t('shell.sidebar.settings')}
                 onclick={() => onNavigate({ view: 'settings' })}
             >
                 <Settings class="size-4" />
@@ -417,8 +435,8 @@
                         variant="ghost"
                         size="icon"
                         class="overflow-hidden rounded-md"
-                        title={$activeUser?.name ?? 'Current user'}
-                        aria-label={`Current user: ${$activeUser?.name ?? 'Unknown'}`}
+                        title={$activeUser?.name ?? $t('shell.sidebar.currentUser')}
+                        aria-label={`${$t('shell.sidebar.currentUser')}: ${$activeUser?.name ?? $t('common.state.unknown')}`}
                     >
                         {#if $activeUser?.avatar}
                             <img
@@ -452,7 +470,9 @@
                             />
                             <div class="min-w-0 flex-1">
                                 <p class="truncate font-medium">{$activeUser.name}</p>
-                                <p class="truncate text-[11px] text-muted-foreground">Current</p>
+                                <p class="truncate text-[11px] text-muted-foreground">
+                                    {$t('shell.sidebar.currentUser')}
+                                </p>
                             </div>
                         </DropdownMenu.Item>
                     {/if}
@@ -493,7 +513,7 @@
                             <UserPlus class="size-3.5" />
                         </div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate font-medium">New user</p>
+                            <p class="truncate font-medium">{$t('shell.sidebar.newUser')}</p>
                         </div>
                     </DropdownMenu.Item>
                 </DropdownMenu.Content>
@@ -510,8 +530,8 @@
                 variant="outline"
                 size="icon-lg"
                 class="absolute left-full top-1.5 z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
-                title="Hide room panel"
-                aria-label="Hide room panel"
+                title={$t('shell.sidebar.hideRoomPanel')}
+                aria-label={$t('shell.sidebar.hideRoomPanel')}
                 onclick={onToggle}
             >
                 <ChevronLeft class="size-4" />
@@ -522,8 +542,8 @@
                 variant="outline"
                 size="icon-lg"
                 class="absolute left-full top-1.5 z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent max-lg:hidden"
-                title="Show room panel"
-                aria-label="Show room panel"
+                title={$t('shell.sidebar.showRoomPanel')}
+                aria-label={$t('shell.sidebar.showRoomPanel')}
                 onclick={onToggle}
             >
                 <ChevronRight class="size-4" />
@@ -537,8 +557,8 @@
         variant="outline"
         size="icon-lg"
         class="fixed left-(--safe-area-left) top-[calc(var(--safe-area-top)+0.375rem)] z-50 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
-        title={hasPanel ? 'Show room panel' : 'Show sidebar'}
-        aria-label={hasPanel ? 'Show room panel' : 'Show sidebar'}
+        title={hasPanel ? $t('shell.sidebar.showRoomPanel') : $t('shell.sidebar.showSidebar')}
+        aria-label={hasPanel ? $t('shell.sidebar.showRoomPanel') : $t('shell.sidebar.showSidebar')}
         onclick={onToggle}
     >
         <ChevronRight class="size-4" />

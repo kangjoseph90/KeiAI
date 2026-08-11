@@ -2,6 +2,7 @@
     import { Loader2, Square, X } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import TaskErrorNotice from './TaskErrorNotice.svelte';
+    import { t } from '$lib/stores';
 
     let {
         phase,
@@ -53,7 +54,7 @@
         {#if phase === 'recording'}
             <div
                 class="flex h-9 min-w-0 flex-1 items-center justify-end gap-0.5 overflow-hidden"
-                aria-label="Recording audio"
+                aria-label={$t('chat.recording.region')}
             >
                 {#each levels as level, index (`${index}-${levels.length}`)}
                     <span

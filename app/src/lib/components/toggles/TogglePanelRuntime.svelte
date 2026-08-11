@@ -7,6 +7,7 @@
     import type { ToggleItem, ToggleOwner, TogglePanel } from '$lib/types/toggle';
     import { toast } from '$lib/ui';
     import { listItems } from '$lib/utils/ordering';
+    import { t } from '$lib/stores';
 
     interface Props {
         panel: TogglePanel;
@@ -23,7 +24,7 @@
             await setToggleValue(owner, itemId, value);
         } catch (error) {
             toast.error({
-                title: 'Could not update toggle',
+                title: $t('components.toggles.updateOneFailed'),
                 description: getErrorMessage(error)
             });
         } finally {

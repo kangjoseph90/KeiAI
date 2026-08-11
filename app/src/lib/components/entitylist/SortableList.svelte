@@ -6,6 +6,7 @@
     import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     interface Props {
         entities: T[];
@@ -138,7 +139,7 @@
             await dropOnTarget(target.item);
         } catch (error) {
             toast.error({
-                title: 'Could not reorder item',
+                title: $t('components.sortableList.reorderFailed'),
                 description: getErrorMessage(error)
             });
         } finally {

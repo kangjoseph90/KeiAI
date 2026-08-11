@@ -4,6 +4,7 @@
     import { Label } from '$lib/components/ui/label';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import type { ExportCharacterFileRequest } from '$lib/managers';
+    import { t } from '$lib/stores';
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
 
@@ -28,29 +29,29 @@
         const list: FormatOption[] = [
             {
                 id: 'ccv3-png',
-                label: 'Character Card V3 (PNG)',
-                description: 'Portable character card with embedded metadata.',
+                label: $t('character.export.v3PngLabel'),
+                description: $t('character.export.v3PngDescription'),
                 request: { kind: 'ccv3', format: 'png' }
             },
             {
                 id: 'ccv3-charx',
-                label: 'Character Card V3 (CharX)',
-                description: 'Archive format for character data and related assets.',
+                label: $t('character.export.v3CharxLabel'),
+                description: $t('character.export.v3CharxDescription'),
                 request: { kind: 'ccv3', format: 'charx' }
             }
         ];
         if (showLightExport) {
             list.push({
                 id: 'keichar-light',
-                label: 'Kei Light (.keichar)',
-                description: 'Compact KeiAI archive that references synchronized assets.',
+                label: $t('character.export.keiLightLabel'),
+                description: $t('character.export.keiLightDescription'),
                 request: { kind: 'keichar', assetMode: 'light' }
             });
         }
         list.push({
             id: 'keichar-baked',
-            label: 'Kei Baked (.keichar)',
-            description: 'Self-contained KeiAI archive with assets included.',
+            label: $t('character.export.keiBakedLabel'),
+            description: $t('character.export.keiBakedDescription'),
             request: { kind: 'keichar', assetMode: 'baked' }
         });
         return list;
@@ -69,9 +70,11 @@
 
 <section class="space-y-4">
     <div>
-        <h3 class="text-lg font-semibold tracking-tight text-foreground">Export Character</h3>
+        <h3 class="text-lg font-semibold tracking-tight text-foreground">
+            {$t('character.export.title')}
+        </h3>
         <p class="text-sm text-muted-foreground">
-            Export character card or archive with embedded metadata.
+            {$t('character.export.description')}
         </p>
     </div>
     <div class="flex flex-col gap-2">
@@ -91,7 +94,8 @@
                 disabled={exporting !== null}
                 onclick={handleExportClick}
             >
-                <Download class="size-4" /> Export
+                <Download class="size-4" />
+                {$t('character.export.button')}
             </Button>
         </div>
         {#if activeOption?.description}

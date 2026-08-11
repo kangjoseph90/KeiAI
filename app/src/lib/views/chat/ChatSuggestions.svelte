@@ -8,7 +8,8 @@
         dismissChatDraftSuggestion,
         inputTranslationTasks,
         setChatDraftText,
-        suggestionTasks
+        suggestionTasks,
+        t
     } from '$lib/stores';
     import {
         dismissInputTranslation,
@@ -63,7 +64,9 @@
         {@const isTranslation = isInputTranslation(suggestionId)}
         {#if errored}
             <TaskErrorNotice
-                title={isTranslation ? 'Input translation failed' : 'Suggestion failed'}
+                title={isTranslation
+                    ? $t('chat.suggestions.translationFailed')
+                    : $t('chat.suggestions.suggestionFailed')}
                 message={task?.errorMessage ?? ''}
                 onDismiss={() => {
                     if (!text.trim()) {
@@ -80,7 +83,9 @@
                     <div class="flex min-w-0 flex-1 items-center self-stretch">
                         {#if generating && !text.trim()}
                             <span class="py-0.5 text-foreground/70">
-                                {isTranslation ? 'Translating…' : 'Suggesting…'}
+                                {isTranslation
+                                    ? $t('chat.suggestions.translating')
+                                    : $t('chat.suggestions.suggesting')}
                             </span>
                         {:else}
                             <AutoResizeTextarea
@@ -96,8 +101,8 @@
                             variant="ghost"
                             size="icon-sm"
                             class="shrink-0 self-end rounded-full text-muted-foreground"
-                            title="Stop"
-                            aria-label="Stop"
+                            title={$t('chat.suggestions.stop')}
+                            aria-label={$t('chat.suggestions.stop')}
                             onclick={() => stopTask(suggestionId)}
                         >
                             <Loader2 class="size-4 animate-spin" />
@@ -108,8 +113,8 @@
                                 variant="ghost"
                                 size="icon-sm"
                                 class="rounded-full text-muted-foreground"
-                                title="Apply to draft"
-                                aria-label="Apply to draft"
+                                title={$t('chat.suggestions.apply')}
+                                aria-label={$t('chat.suggestions.apply')}
                                 onclick={() =>
                                     applyToDraft(chatId, suggestionId, () =>
                                         setChatDraftText(chatId, text)
@@ -122,8 +127,8 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     class="rounded-full text-muted-foreground"
-                                    title="Add to draft"
-                                    aria-label="Add to draft"
+                                    title={$t('chat.suggestions.addToDraft')}
+                                    aria-label={$t('chat.suggestions.addToDraft')}
                                     onclick={() =>
                                         applyToDraft(chatId, suggestionId, () =>
                                             appendChatDraftText(chatId, text)
@@ -136,8 +141,8 @@
                                 variant="ghost"
                                 size="icon-sm"
                                 class="rounded-full text-muted-foreground"
-                                title="Dismiss"
-                                aria-label="Dismiss"
+                                title={$t('chat.suggestions.dismiss')}
+                                aria-label={$t('chat.suggestions.dismiss')}
                                 onclick={() => dismiss(chatId, suggestionId)}
                             >
                                 <X class="size-4" />

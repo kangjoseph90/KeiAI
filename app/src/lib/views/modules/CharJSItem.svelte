@@ -9,6 +9,7 @@
     import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from 'lucide-svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     let {
         item,
@@ -39,7 +40,10 @@
         try {
             await onUpdate(item.id, changes);
         } catch (error) {
-            toast.error({ title: 'CharJS update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('module.charjsItem.toast.update'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -50,16 +54,16 @@
         busy = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete CharJS entry?',
-                description: `Delete "${item.name}"?`,
-                confirmText: 'Delete',
+                title: $t('module.charjsItem.deleteTitle'),
+                description: $t('module.charjsItem.deleteBody', { name: item.name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed) return;
             await onDelete(item.id);
         } catch (error) {
             toast.error({
-                title: 'Could not delete CharJS entry',
+                title: $t('module.charjsItem.toast.delete'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -80,7 +84,9 @@
             type="button"
             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
-            aria-label={expanded ? 'Collapse CharJS entry' : 'Expand CharJS entry'}
+            aria-label={expanded
+                ? $t('module.charjsItem.collapseAria')
+                : $t('module.charjsItem.expandAria')}
         >
             {#if expanded}
                 <ChevronDown class="size-3.5" />
@@ -92,7 +98,7 @@
         <Input
             disabled={busy}
             value={item.name}
-            aria-label="CharJS name"
+            aria-label={$t('module.charjsItem.nameAria')}
             class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
@@ -101,8 +107,10 @@
             size="icon-sm"
             variant="ghost"
             class="shrink-0 text-muted-foreground"
-            title={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
-            aria-label={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
+            title={item.enabled ? $t('module.charjsItem.disable') : $t('module.charjsItem.enable')}
+            aria-label={item.enabled
+                ? $t('module.charjsItem.disable')
+                : $t('module.charjsItem.enable')}
             disabled={busy}
             onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
@@ -116,8 +124,8 @@
             size="icon-sm"
             variant="ghost"
             class="shrink-0 text-muted-foreground hover:text-destructive"
-            title="Delete CharJS entry"
-            aria-label="Delete CharJS entry"
+            title={$t('module.charjsItem.deleteAria')}
+            aria-label={$t('module.charjsItem.deleteAria')}
             disabled={busy}
             onclick={handleDelete}
         >
@@ -127,12 +135,12 @@
 
     {#snippet details()}
         <div class="space-y-1.5">
-            <Label class="text-xs">Code</Label>
+            <Label class="text-xs">{$t('module.charjsItem.codeLabel')}</Label>
             <Textarea
                 disabled={busy}
                 class="min-h-48 resize-y bg-background font-mono text-sm leading-relaxed"
                 value={item.code}
-                placeholder="// Write CharJS behavior here..."
+                placeholder={$t('module.charjsItem.codePlaceholder')}
                 onchange={(e) => handleUpdate({ code: e.currentTarget.value })}
             />
         </div>

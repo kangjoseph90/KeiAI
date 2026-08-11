@@ -11,6 +11,7 @@
     import WorkflowAgentTab from './WorkflowAgentTab.svelte';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     type EditorTab = 'graph' | 'agent';
 
@@ -21,7 +22,12 @@
         onPatch: (patch: WorkflowPatch) => void | Promise<void>;
     }
 
-    let { open = $bindable(), workflow, title = 'Workflow Editor', onPatch }: Props = $props();
+    let {
+        open = $bindable(),
+        workflow,
+        title = $t('workflow.editor.title'),
+        onPatch
+    }: Props = $props();
 
     let draftWorkflow = $state.raw<WorkflowDefinition>({ nodes: {} });
     let selectedNodeId = $state<string | null>(null);
@@ -55,8 +61,8 @@
             patchQueue.length = 0;
             resetDraft();
             toast.error({
-                title: 'Workflow update failed',
-                description: getErrorMessage(error, 'The workflow change could not be saved')
+                title: $t('workflow.toast.updateFailed'),
+                description: getErrorMessage(error, $t('workflow.toast.updateFailedDescription'))
             });
         } finally {
             saving = false;
@@ -112,18 +118,18 @@
             <div
                 class="flex shrink-0 items-center rounded-lg border bg-muted/40 p-0.5"
                 role="tablist"
-                aria-label="Workflow editor view"
+                aria-label={$t('workflow.editor.viewAria')}
             >
                 <button
                     bind:this={graphTabButton}
                     type="button"
                     role="tab"
                     id="workflow-graph-tab"
-                    aria-label="Graph view"
+                    aria-label={$t('workflow.editor.graphAria')}
                     aria-selected={activeTab === 'graph'}
                     aria-controls="workflow-graph-panel"
                     tabindex={activeTab === 'graph' ? 0 : -1}
-                    title="Graph view"
+                    title={$t('workflow.editor.graphTitle')}
                     class="flex size-8 items-center justify-center rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring {activeTab ===
                     'graph'
                         ? 'bg-sky-500/15 text-sky-600 shadow-xs dark:text-sky-300'
@@ -138,11 +144,11 @@
                     type="button"
                     role="tab"
                     id="workflow-agent-tab"
-                    aria-label="Agent view"
+                    aria-label={$t('workflow.editor.agentAria')}
                     aria-selected={activeTab === 'agent'}
                     aria-controls="workflow-agent-panel"
                     tabindex={activeTab === 'agent' ? 0 : -1}
-                    title="Agent view"
+                    title={$t('workflow.editor.agentTitle')}
                     class="flex size-8 items-center justify-center rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring {activeTab ===
                     'agent'
                         ? 'bg-violet-500/15 text-violet-600 shadow-xs dark:text-violet-300'

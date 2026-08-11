@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Download } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import { t } from '$lib/stores';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import type { ModuleFileExport } from '$lib/porters/module';
 
@@ -27,29 +28,29 @@
         const list: FormatOption[] = [
             {
                 id: 'risu-charx',
-                label: 'Risu CHARX (.charx)',
-                description: 'Current RisuAI module format with embedded assets.',
+                label: $t('module.export.risuCharxLabel'),
+                description: $t('module.export.risuCharxDescription'),
                 request: { kind: 'risu', format: 'charx' }
             },
             {
                 id: 'risu-legacy',
-                label: 'Legacy Risu Module (.risum)',
-                description: 'Legacy RisuAI module archive for older clients.',
+                label: $t('module.export.legacyRisuLabel'),
+                description: $t('module.export.legacyRisuDescription'),
                 request: { kind: 'risu', format: 'risum' }
             }
         ];
         if (showLightExport) {
             list.push({
                 id: 'keimodule-light',
-                label: 'Kei Light (.keimodule)',
-                description: 'Compact KeiAI archive referencing synchronized assets.',
+                label: $t('module.export.keiLightLabel'),
+                description: $t('module.export.keiLightDescription'),
                 request: { kind: 'keimodule', assetMode: 'light' }
             });
         }
         list.push({
             id: 'keimodule-baked',
-            label: 'Kei Baked (.keimodule)',
-            description: 'Self-contained KeiAI archive with assets included.',
+            label: $t('module.export.keiBakedLabel'),
+            description: $t('module.export.keiBakedDescription'),
             request: { kind: 'keimodule', assetMode: 'baked' }
         });
         return list;
@@ -68,9 +69,11 @@
 
 <section class="space-y-4">
     <div>
-        <h3 class="text-lg font-semibold tracking-tight text-foreground">Export Module</h3>
+        <h3 class="text-lg font-semibold tracking-tight text-foreground">
+            {$t('module.export.title')}
+        </h3>
         <p class="text-sm text-muted-foreground">
-            Export module data or archive with embedded assets.
+            {$t('module.export.description')}
         </p>
     </div>
     <div class="flex flex-col gap-2">
@@ -90,7 +93,8 @@
                 disabled={exporting !== null}
                 onclick={handleExportClick}
             >
-                <Download class="size-4" /> Export
+                <Download class="size-4" />
+                {$t('module.export.button')}
             </Button>
         </div>
         {#if activeOption?.description}

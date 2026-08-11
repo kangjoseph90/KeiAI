@@ -6,6 +6,7 @@
     import * as Dialog from '.';
     import { cn, type WithoutChildrenOrChild } from '$lib/utils';
     import type { ComponentProps } from 'svelte';
+    import { t } from '$lib/stores';
 
     let {
         ref = $bindable(null),
@@ -38,7 +39,7 @@
                 class="ring-offset-background focus:ring-ring absolute inset-e-2 top-2 z-30 flex size-9 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none sm:inset-e-4 sm:top-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
             >
                 <XIcon class="size-5" />
-                <span class="sr-only">Close</span>
+                <span class="sr-only">{$t('common.actions.close')}</span>
             </DialogPrimitive.Close>
         {/if}
     </DialogPrimitive.Content>

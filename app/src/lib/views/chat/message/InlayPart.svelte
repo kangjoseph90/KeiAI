@@ -4,7 +4,7 @@
     import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
     import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
-    import { activeChat } from '$lib/stores';
+    import { activeChat, t } from '$lib/stores';
     import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 
     let {
@@ -34,7 +34,12 @@
         return ids.map((id) => {
             const ref = chat?.id === chatId ? chat.inlays.refs[id] : undefined;
             if (!ref || !chat) {
-                return { id, name: 'Media unavailable', mediaType: 'other', locator: null };
+                return {
+                    id,
+                    name: $t('chat.message.inlay.unavailable'),
+                    mediaType: 'other',
+                    locator: null
+                };
             }
             return {
                 id: ref.id,
@@ -82,7 +87,8 @@
                 <button
                     type="button"
                     class="w-full max-w-xl cursor-zoom-in overflow-hidden rounded-lg border bg-muted/30 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label={`Open ${item.name}`}
+                    title={$t('chat.message.inlay.open', { name: item.name })}
+                    aria-label={$t('chat.message.inlay.open', { name: item.name })}
                     onclick={() => openGallery(item)}
                 >
                     <AssetView
@@ -101,7 +107,8 @@
                         <button
                             type="button"
                             class="aspect-square cursor-zoom-in overflow-hidden rounded-lg border bg-muted/30 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            aria-label={`Open ${item.name}`}
+                            title={$t('chat.message.inlay.open', { name: item.name })}
+                            aria-label={$t('chat.message.inlay.open', { name: item.name })}
                             onclick={() => openGallery(item)}
                         >
                             <AssetView
@@ -150,7 +157,8 @@
                     <button
                         type="button"
                         class="size-full cursor-zoom-in text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label={`Open ${item.name}`}
+                        title={$t('chat.message.inlay.open', { name: item.name })}
+                        aria-label={$t('chat.message.inlay.open', { name: item.name })}
                         onclick={() => openGallery(item)}
                     >
                         <AssetView
@@ -179,5 +187,7 @@
     bind:open={galleryOpen}
     bind:selectedId
     items={galleryItems}
-    title={variant === 'attachment' ? 'Message attachments' : 'Inlay media'}
+    title={variant === 'attachment'
+        ? $t('chat.message.attachmentsTitle')
+        : $t('chat.message.inlayMediaTitle')}
 />

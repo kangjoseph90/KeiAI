@@ -38,7 +38,8 @@
         setChatSelectedPersona,
         moveChatItem,
         updateChatContent,
-        updateChatFolder
+        updateChatFolder,
+        t
     } from '$lib/stores';
     import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigateToPersonaStudio } from '$lib/managers';
@@ -122,7 +123,7 @@
 
     async function handleChatLorebookAdd() {
         if ($activeChat?.id !== chatId) return;
-        await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
+        await runPanelAction('add-lorebook', $t('chat.toast.addLorebook'), async () => {
             const item: Lorebook = {
                 ...defaultLorebookFields,
                 depth: 0,
@@ -137,7 +138,7 @@
     }
 
     function openPersonaSettings(personaId: string): void {
-        void runPanelAction(`open-persona:${personaId}`, 'Could not open persona', () =>
+        void runPanelAction(`open-persona:${personaId}`, $t('chat.toast.openPersona'), () =>
             navigateToPersonaStudio(personaId)
         );
     }
@@ -145,12 +146,12 @@
     async function handleInlayUpload() {
         if ($activeChat?.id !== chatId) return;
         const targetChatId = chatId;
-        await runPanelAction('upload-inlay', 'Could not upload gallery asset', async () => {
+        await runPanelAction('upload-inlay', $t('chat.toast.uploadGallery'), async () => {
             const files = await appDialog.openMultipleFiles({
-                title: 'Upload Gallery Asset',
+                title: $t('chat.runtime.gallery.uploadTitle'),
                 filters: [
                     {
-                        name: 'Images, audio, and video',
+                        name: $t('common.fileFilters.media'),
                         extensions: [...MEDIA_ASSET_EXTENSIONS]
                     }
                 ]
@@ -174,12 +175,12 @@
         const targetChatId = chatId;
         await runPanelAction(
             `delete-inlay:${assetId}`,
-            'Could not delete gallery image',
+            $t('chat.toast.deleteGalleryImage'),
             async () => {
                 const confirmed = await appConfirm({
-                    title: 'Delete gallery image?',
-                    description: `Delete "${name}"?`,
-                    confirmText: 'Delete',
+                    title: $t('chat.runtime.gallery.delete'),
+                    description: $t('library.room.deleteChatBody', { name }),
+                    confirmText: $t('common.confirm.delete'),
                     variant: 'destructive'
                 });
                 if (!confirmed || $activeChat?.id !== targetChatId) return;
@@ -190,15 +191,17 @@
 
     async function handlePersonaSelect(personaId: string) {
         if ($activeChat?.id !== chatId) return;
-        await runPanelAction(`select-persona:${personaId}`, 'Could not select persona', () =>
+        await runPanelAction(`select-persona:${personaId}`, $t('chat.toast.selectPersona'), () =>
             setChatSelectedPersona(chatId, personaId)
         );
     }
 
     async function handleSetDefaultPersona(personaId: string) {
         if ($activeChat?.id !== chatId) return;
-        await runPanelAction(`default-persona:${personaId}`, 'Could not set default persona', () =>
-            setChatDefaultPersona(chatId, personaId)
+        await runPanelAction(
+            `default-persona:${personaId}`,
+            $t('chat.toast.setDefaultPersona'),
+            () => setChatDefaultPersona(chatId, personaId)
         );
     }
 
@@ -207,12 +210,14 @@
         const persona = $chatPersonas.find((item) => item.id === personaId);
         await runPanelAction(
             `remove-persona:${personaId}`,
-            'Could not remove persona',
+            $t('chat.toast.removePersona'),
             async () => {
                 const confirmed = await appConfirm({
-                    title: 'Remove persona from chat?',
-                    description: `Remove "${persona?.name ?? 'this persona'}" from this chat?`,
-                    confirmText: 'Remove',
+                    title: $t('chat.personaPicker.title'),
+                    description: $t('chat.runtime.personas.defaultHint', {
+                        name: persona?.name ?? $t('chat.runtime.personas.default')
+                    }),
+                    confirmText: $t('common.confirm.remove'),
                     variant: 'destructive'
                 });
                 if (!confirmed || $activeChat?.id !== chatId) return;
@@ -274,9 +279,9 @@
         class="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar px-3"
     >
         <div class="min-w-0">
-            <h2 class="text-sm font-semibold">Chat</h2>
+            <h2 class="text-sm font-semibold">{$t('chat.runtime.title')}</h2>
             <p class="truncate text-[11px] text-muted-foreground">
-                {$activeChat?.title ?? 'No chat selected'}
+                {$activeChat?.title ?? $t('chat.runtime.noChat')}
             </p>
         </div>
         <Button
@@ -285,8 +290,8 @@
             class="shrink-0 {galleryVisible
                 ? 'bg-sidebar-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'}"
-            title={galleryVisible ? 'Show chat context' : 'Show gallery'}
-            aria-label={galleryVisible ? 'Show chat context' : 'Show gallery'}
+            title={galleryVisible ? $t('chat.context.show') : $t('chat.runtime.gallery.title')}
+            aria-label={galleryVisible ? $t('chat.context.show') : $t('chat.runtime.gallery.title')}
             aria-pressed={galleryVisible}
             onclick={() => (galleryVisible = !galleryVisible)}
         >
@@ -303,14 +308,15 @@
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
-                            <UserRoundPen class="size-3" /> Personas
+                            <UserRoundPen class="size-3" />
+                            {$t('chat.runtime.section.personas')}
                         </Label>
                         <Button
                             variant="ghost"
                             size="icon-sm"
                             class="text-muted-foreground hover:text-foreground"
-                            title="Add personas"
-                            aria-label="Add personas"
+                            title={$t('chat.personaPicker.title')}
+                            aria-label={$t('chat.personaPicker.title')}
                             disabled={panelAction !== null}
                             onclick={() => ($personaPickerOpen = true)}
                         >
@@ -339,9 +345,7 @@
                     >
                         {#snippet empty()}
                             <div class="col-span-full">
-                                <EmptyListPlaceholder
-                                    message="No personas attached to this chat."
-                                />
+                                <EmptyListPlaceholder message={$t('chat.runtime.personas.empty')} />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: persona })}
@@ -375,8 +379,10 @@
                                         <span
                                             role="img"
                                             class="inline-flex size-3 shrink-0 items-center justify-center text-primary"
-                                            title="Default persona"
-                                            aria-label={`${persona.name} is the default persona`}
+                                            title={$t('chat.runtime.personas.default')}
+                                            aria-label={$t('chat.runtime.personas.defaultHint', {
+                                                name: persona.name
+                                            })}
                                         >
                                             <Pin class="size-3" />
                                         </span>
@@ -416,7 +422,7 @@
 
             {#if !$activeChat}
                 <div class="p-3 py-8 text-center text-xs text-muted-foreground">
-                    Select a chat to view settings.
+                    {$t('chat.runtime.selectChat')}
                 </div>
             {:else if !galleryVisible}
                 <!-- Chat Note -->
@@ -425,13 +431,14 @@
                         for="chat-note"
                         class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
-                        <FileText class="size-3" /> Chat Note
+                        <FileText class="size-3" />
+                        {$t('chat.runtime.section.chatNote')}
                     </Label>
                     <Textarea
                         id="chat-note"
                         rows={4}
                         class="text-xs bg-background"
-                        placeholder="Context specific to this conversation..."
+                        placeholder={$t('chat.runtime.note.placeholder')}
                         value={$activeChat.chatNote}
                         oninput={(e) => updateChat({ chatNote: e.currentTarget.value })}
                     />
@@ -443,7 +450,8 @@
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
-                            <Book class="size-3" /> Chat Lorebooks
+                            <Book class="size-3" />
+                            {$t('chat.runtime.section.lorebooks')}
                         </Label>
                         <div class="flex items-center gap-2">
                             <Badge variant="outline" class="text-[10px] font-mono"
@@ -454,7 +462,7 @@
                                 size="icon-sm"
                                 disabled={panelAction !== null}
                                 aria-busy={panelAction === 'add-lorebook'}
-                                aria-label="Add chat lorebook"
+                                aria-label={$t('chat.runtime.lorebooks.add')}
                                 onclick={handleChatLorebookAdd}
                             >
                                 <Plus class="size-3.5" />
@@ -475,7 +483,7 @@
                             moveChatItem(chatId, 'lorebooks', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <EmptyListPlaceholder message="No chat lorebooks." />
+                            <EmptyListPlaceholder message={$t('chat.runtime.lorebooks.empty')} />
                         {/snippet}
                         {#snippet item({ entity: lb })}
                             <LorebookItem
@@ -494,7 +502,8 @@
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
-                            <ImageIcon class="size-3" /> Gallery
+                            <ImageIcon class="size-3" />
+                            {$t('chat.runtime.section.gallery')}
                         </Label>
                         <div class="flex items-center gap-1.5">
                             <Badge variant="outline" class="text-[10px] font-mono"
@@ -505,7 +514,7 @@
                                 size="icon-sm"
                                 disabled={panelAction !== null}
                                 aria-busy={panelAction === 'upload-inlay'}
-                                aria-label="Upload gallery asset"
+                                aria-label={$t('chat.runtime.gallery.upload')}
                                 onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
@@ -530,7 +539,7 @@
                     >
                         {#snippet empty()}
                             <div class="col-span-full">
-                                <EmptyListPlaceholder message="No media assets." />
+                                <EmptyListPlaceholder message={$t('chat.runtime.gallery.empty')} />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: ref })}
@@ -557,8 +566,10 @@
                                 <button
                                     type="button"
                                     class="touch-visible absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity after:absolute after:-inset-2 after:content-[''] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 focus-visible:opacity-100"
-                                    title="Attach to message"
-                                    aria-label={`Attach ${ref.name} to message`}
+                                    title={$t('chat.runtime.gallery.attach')}
+                                    aria-label={$t('chat.runtime.gallery.attachNamed', {
+                                        name: ref.name
+                                    })}
                                     onclick={(event) => {
                                         event.stopPropagation();
                                         if ($activeChat?.id === chatId) {
@@ -571,8 +582,10 @@
                                 <button
                                     type="button"
                                     class="touch-visible absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 shadow-sm transition-opacity after:absolute after:-inset-2 after:content-[''] hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 focus-visible:opacity-100"
-                                    title="Delete"
-                                    aria-label={`Delete ${ref.name}`}
+                                    title={$t('chat.runtime.gallery.delete')}
+                                    aria-label={$t('chat.runtime.gallery.deleteNamed', {
+                                        name: ref.name
+                                    })}
                                     disabled={panelAction !== null}
                                     aria-busy={panelAction === `delete-inlay:${ref.id}`}
                                     onclick={(event) => {
@@ -595,7 +608,7 @@
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}
-    title="Chat gallery"
+    title={$t('chat.runtime.gallery.title')}
 />
 
 <style>

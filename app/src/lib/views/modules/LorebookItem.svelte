@@ -21,6 +21,7 @@
     import type { LLMRole } from '$lib/types/models/llm';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     let {
         item,
@@ -41,11 +42,11 @@
 
     type ActivationMode = 'keyword' | 'disabled' | 'always';
 
-    const activationModeLabels: Record<ActivationMode, string> = {
-        keyword: 'Keyword',
-        disabled: 'Disabled',
-        always: 'Always active'
-    };
+    const activationModeLabels = $derived({
+        keyword: $t('module.lorebookItem.activationKeyword'),
+        disabled: $t('module.lorebookItem.activationDisabled'),
+        always: $t('module.lorebookItem.activationAlways')
+    } satisfies Record<ActivationMode, string>);
 
     function getActivationMode(): ActivationMode {
         if (item.disabled) return 'disabled';
@@ -88,7 +89,10 @@
         try {
             await onUpdate(item.id, changes);
         } catch (error) {
-            toast.error({ title: 'Lorebook update failed', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('module.lorebookItem.toast.update'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -99,16 +103,16 @@
         busy = true;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete lorebook entry?',
-                description: `Delete "${item.name}"?`,
-                confirmText: 'Delete',
+                title: $t('module.lorebookItem.deleteTitle'),
+                description: $t('module.lorebookItem.deleteBody', { name: item.name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed) return;
             await onDelete(item.id);
         } catch (error) {
             toast.error({
-                title: 'Could not delete lorebook',
+                title: $t('module.lorebookItem.toast.delete'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -129,7 +133,9 @@
             type="button"
             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onclick={() => (expanded = !expanded)}
-            aria-label={expanded ? 'Collapse entry' : 'Expand entry'}
+            aria-label={expanded
+                ? $t('module.lorebookItem.collapseAria')
+                : $t('module.lorebookItem.expandAria')}
         >
             {#if expanded}
                 <ChevronDown class="size-3.5" />
@@ -141,7 +147,7 @@
         <Input
             disabled={busy}
             value={item.name}
-            aria-label="Entry name"
+            aria-label={$t('module.lorebookItem.nameAria')}
             class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
             onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
@@ -172,8 +178,8 @@
             size="icon-sm"
             variant="ghost"
             class="shrink-0 text-muted-foreground hover:text-destructive"
-            title="Delete entry"
-            aria-label="Delete entry"
+            title={$t('module.lorebookItem.deleteAria')}
+            aria-label={$t('module.lorebookItem.deleteAria')}
             disabled={busy}
             onclick={handleDelete}
         >
@@ -183,17 +189,19 @@
 
     {#snippet details()}
         <div class="space-y-1.5">
-            <Label class="text-xs" for={`activation-mode-${item.id}`}>Activation</Label>
+            <Label class="text-xs" for={`activation-mode-${item.id}`}
+                >{$t('module.lorebookItem.activationLabel')}</Label
+            >
             <OptionSelect
                 id={`activation-mode-${item.id}`}
                 disabled={busy}
                 class="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={getActivationMode()}
-                ariaLabel="Activation mode"
+                ariaLabel={$t('module.lorebookItem.activationModeAria')}
                 options={[
-                    { value: 'keyword', label: 'Keyword' },
-                    { value: 'disabled', label: 'Disabled' },
-                    { value: 'always', label: 'Always active' }
+                    { value: 'keyword', label: $t('module.lorebookItem.activationKeyword') },
+                    { value: 'disabled', label: $t('module.lorebookItem.activationDisabled') },
+                    { value: 'always', label: $t('module.lorebookItem.activationAlways') }
                 ]}
                 onChange={(value) => handleActivationChange(value as ActivationMode)}
             />
@@ -202,23 +210,23 @@
         {#if getActivationMode() !== 'always'}
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="space-y-1.5">
-                    <Label class="text-xs">Key</Label>
+                    <Label class="text-xs">{$t('module.lorebookItem.keyLabel')}</Label>
                     <Input
                         disabled={busy}
                         class="h-8 font-mono text-sm"
                         value={item.key}
-                        placeholder="keyword1, keyword2..."
+                        placeholder={$t('module.lorebookItem.keyPlaceholder')}
                         onchange={(e) => handleUpdate({ key: e.currentTarget.value })}
                     />
                 </div>
                 {#if item.useMultipleKeys && !item.useRegex}
                     <div class="space-y-1.5">
-                        <Label class="text-xs">Second Key</Label>
+                        <Label class="text-xs">{$t('module.lorebookItem.secondKeyLabel')}</Label>
                         <Input
                             disabled={busy}
                             class="h-8 font-mono text-sm"
                             value={item.secondKey}
-                            placeholder="Must also match..."
+                            placeholder={$t('module.lorebookItem.secondKeyPlaceholder')}
                             onchange={(e) => handleUpdate({ secondKey: e.currentTarget.value })}
                         />
                     </div>
@@ -227,19 +235,19 @@
         {/if}
 
         <div class="space-y-1.5">
-            <Label class="text-xs">Content</Label>
+            <Label class="text-xs">{$t('module.lorebookItem.contentLabel')}</Label>
             <Textarea
                 disabled={busy}
                 class="text-sm min-h-25 font-sans bg-background"
                 value={item.content}
-                placeholder="Fact or lore to insert..."
+                placeholder={$t('module.lorebookItem.contentPlaceholder')}
                 onchange={(e) => handleUpdate({ content: e.currentTarget.value })}
             />
         </div>
 
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
-                <Label class="text-xs">Depth</Label>
+                <Label class="text-xs">{$t('module.lorebookItem.depthLabel')}</Label>
                 <Input
                     disabled={busy}
                     class="h-8 text-sm"
@@ -249,7 +257,7 @@
                 />
             </div>
             <div class="space-y-1.5">
-                <Label class="text-xs">Order</Label>
+                <Label class="text-xs">{$t('module.lorebookItem.orderLabel')}</Label>
                 <Input
                     disabled={busy}
                     class="h-8 text-sm"
@@ -267,7 +275,7 @@
                 class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
                 onclick={() => (advancedOpen = !advancedOpen)}
             >
-                Advanced Settings
+                {$t('module.lorebookItem.advancedToggle')}
                 {#if advancedOpen}
                     <ChevronUp class="size-3" />
                 {:else}
@@ -280,15 +288,26 @@
                     <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="space-y-1.5">
-                                <Label class="text-xs">Insertion Role</Label>
+                                <Label class="text-xs"
+                                    >{$t('module.lorebookItem.insertionRoleLabel')}</Label
+                                >
                                 <OptionSelect
                                     disabled={busy}
                                     class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     value={item.role}
                                     options={[
-                                        { value: 'system', label: 'System' },
-                                        { value: 'user', label: 'User' },
-                                        { value: 'assistant', label: 'Assistant' }
+                                        {
+                                            value: 'system',
+                                            label: $t('module.lorebookItem.roleSystem')
+                                        },
+                                        {
+                                            value: 'user',
+                                            label: $t('module.lorebookItem.roleUser')
+                                        },
+                                        {
+                                            value: 'assistant',
+                                            label: $t('module.lorebookItem.roleAssistant')
+                                        }
                                     ]}
                                     onChange={(value) =>
                                         handleUpdate({
@@ -297,7 +316,9 @@
                                 />
                             </div>
                             <div class="space-y-1.5">
-                                <Label class="text-xs">Probability (%)</Label>
+                                <Label class="text-xs"
+                                    >{$t('module.lorebookItem.probabilityLabel')}</Label
+                                >
                                 <Input
                                     disabled={busy}
                                     class="h-8 text-sm"
@@ -328,7 +349,8 @@
                                 />
                                 <Label
                                     for="scanDepthToggle"
-                                    class="text-xs font-medium cursor-pointer">Scan Depth</Label
+                                    class="text-xs font-medium cursor-pointer"
+                                    >{$t('module.lorebookItem.scanDepthLabel')}</Label
                                 >
                                 {#if item.scanDepth !== undefined}
                                     <Input
@@ -363,7 +385,7 @@
                                             });
                                         }}
                                     />
-                                    <span>Use Regex</span>
+                                    <span>{$t('module.lorebookItem.regexLabel')}</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
@@ -376,7 +398,7 @@
                                                 useMultipleKeys: e.currentTarget.checked
                                             })}
                                     />
-                                    <span>Require second key</span>
+                                    <span>{$t('module.lorebookItem.requireSecondKey')}</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
@@ -389,7 +411,7 @@
                                                 recursive: e.currentTarget.checked
                                             })}
                                     />
-                                    <span>Recursive</span>
+                                    <span>{$t('module.lorebookItem.recursive')}</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
@@ -402,7 +424,7 @@
                                                 noRecursiveSearch: e.currentTarget.checked
                                             })}
                                     />
-                                    <span>No Recursive Search</span>
+                                    <span>{$t('module.lorebookItem.noRecursiveSearch')}</span>
                                 </label>
                             </div>
                         </div>

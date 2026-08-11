@@ -26,8 +26,8 @@ export const LANGUAGES = [
     { code: 'th', name: 'Thai', nativeName: 'ไทย' },
     { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
     { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
-    { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-    { code: 'he', name: 'Hebrew', nativeName: 'עברית' }
+    { code: 'ar', name: 'Arabic', nativeName: 'العربية', direction: 'rtl' },
+    { code: 'he', name: 'Hebrew', nativeName: 'עברית', direction: 'rtl' }
 ] as const satisfies readonly LanguageEntry[];
 
 /** All known language codes, derived from the registry. */
@@ -48,6 +48,10 @@ export function getLanguageName(code: LanguageCode): string {
 export function getLanguageNativeName(code: LanguageCode): string {
     const entry = LANGUAGE_BY_CODE.get(code);
     return entry?.nativeName ?? entry?.name ?? code;
+}
+
+export function getLanguageDirection(code: LanguageCode): 'ltr' | 'rtl' {
+    return LANGUAGE_BY_CODE.get(code)?.direction ?? 'ltr';
 }
 
 export function isLanguageCode(value: unknown): value is LanguageCode {

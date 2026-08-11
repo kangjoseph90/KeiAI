@@ -33,6 +33,7 @@
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     const expandedModels = new SvelteSet<string>();
     const expandedCapabilities = new SvelteSet<string>();
@@ -63,7 +64,7 @@
             const models = Object.values($appSettings?.custom?.llm?.models ?? {});
             const modelId = `custom::${generateId()}`;
             await saveCustomLLMModel(modelId, {
-                name: 'New Custom Model',
+                name: $t('settings.customModels.newName'),
                 modelId: '',
                 baseUrl: '',
                 apiKey: '',
@@ -80,7 +81,10 @@
             });
             expandedModels.add(modelId);
         } catch (error) {
-            toast.error({ title: 'Could not add model', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.customModels.toast.add'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -92,9 +96,11 @@
         try {
             const model = $appSettings?.custom?.llm?.models?.[id];
             const confirmed = await appConfirm({
-                title: 'Delete custom model?',
-                description: `Delete "${model?.name ?? 'this custom model'}"? Presets that reference it may need to be updated.`,
-                confirmText: 'Delete',
+                title: $t('settings.customModels.deleteTitle'),
+                description: $t('settings.customModels.deleteBody', {
+                    name: model?.name ?? $t('settings.customModels.deleteFallback')
+                }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (!confirmed) return;
@@ -102,7 +108,10 @@
             expandedModels.delete(id);
             expandedCapabilities.delete(id);
         } catch (error) {
-            toast.error({ title: 'Could not delete model', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.customModels.toast.delete'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busyAction = null;
         }
@@ -113,7 +122,10 @@
         try {
             await saveCustomLLMModel(id, { sortOrder: newSortOrder });
         } catch (error) {
-            toast.error({ title: 'Could not reorder model', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.customModels.toast.reorder'),
+                description: getErrorMessage(error)
+            });
         }
     }
 
@@ -124,7 +136,10 @@
         try {
             await saveCustomLLMModel(id, changes);
         } catch (error) {
-            toast.error({ title: 'Could not update model', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.customModels.toast.update'),
+                description: getErrorMessage(error)
+            });
         }
     }
 
@@ -158,7 +173,7 @@
 </script>
 
 <div class="flex flex-col gap-4 px-2">
-    <ListActionBar description="Models from custom API endpoints.">
+    <ListActionBar description={$t('settings.customModels.description')}>
         <Button
             size="sm"
             class="gap-1.5"
@@ -166,7 +181,8 @@
             aria-busy={busyAction === 'create'}
             onclick={handleAddModel}
         >
-            <Plus class="size-4" /> Add
+            <Plus class="size-4" />
+            {$t('settings.customModels.add')}
         </Button>
     </ListActionBar>
 
@@ -175,7 +191,7 @@
         onReorder={handleReorder}
     >
         {#snippet empty()}
-            <EmptyListPlaceholder message="No custom models registered yet." />
+            <EmptyListPlaceholder message={$t('settings.customModels.empty')} />
         {/snippet}
         {#snippet item({ entity: model })}
             <EditableListItem expanded={expandedModels.has(model.id)} busy={busyAction !== null}>
@@ -191,7 +207,9 @@
                         type="button"
                         class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onclick={() => toggleExpand(model.id)}
-                        aria-label={expandedModels.has(model.id) ? 'Collapse' : 'Expand'}
+                        aria-label={expandedModels.has(model.id)
+                            ? $t('settings.customModels.collapse')
+                            : $t('settings.customModels.expand')}
                     >
                         {#if expandedModels.has(model.id)}
                             <ChevronDown class="size-3.5" />
@@ -207,7 +225,7 @@
                             updateModelSafely(model.id, {
                                 name: e.currentTarget.value
                             })}
-                        aria-label="Model name"
+                        aria-label={$t('settings.customModels.nameAria')}
                         class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
                     />
 
@@ -220,7 +238,7 @@
                         variant="ghost"
                         class="shrink-0 text-muted-foreground hover:text-destructive"
                         onclick={() => handleRemove(model.id)}
-                        aria-label="Delete model"
+                        aria-label={$t('settings.customModels.deleteAria')}
                         disabled={busyAction !== null}
                         aria-busy={busyAction === `delete:${model.id}`}
                     >
@@ -233,11 +251,11 @@
                     <div class="flex flex-col gap-3">
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
-                                <Label class="text-xs">Model ID (Internal)</Label>
+                                <Label class="text-xs">{$t('settings.customModels.idLabel')}</Label>
                                 <Input
                                     value={model.modelId}
                                     disabled={busyAction !== null}
-                                    placeholder="e.g. llama-3-8b"
+                                    placeholder={$t('settings.customModels.idPlaceholder')}
                                     class="h-8 text-xs bg-background"
                                     onchange={(e) =>
                                         updateModelSafely(model.id, {
@@ -247,12 +265,13 @@
                             </div>
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs flex items-center gap-1">
-                                    <Globe class="size-3" /> Base URL
+                                    <Globe class="size-3" />
+                                    {$t('settings.customModels.baseUrlLabel')}
                                 </Label>
                                 <Input
                                     value={model.baseUrl}
                                     disabled={busyAction !== null}
-                                    placeholder="https://api.your-provider.com/v1"
+                                    placeholder={$t('settings.customModels.baseUrlPlaceholder')}
                                     class="h-8 text-xs bg-background"
                                     onchange={(e) =>
                                         updateModelSafely(model.id, {
@@ -264,14 +283,15 @@
 
                         <div class="flex flex-col gap-1.5">
                             <Label class="text-xs flex items-center gap-1">
-                                <Key class="size-3" /> API Key (Optional)
+                                <Key class="size-3" />
+                                {$t('settings.customModels.apiKeyOptional')}
                             </Label>
                             <form onsubmit={(e) => e.preventDefault()}>
                                 <Input
                                     type="password"
                                     value={model.apiKey ?? ''}
                                     disabled={busyAction !== null}
-                                    placeholder="sk-..."
+                                    placeholder={$t('settings.customModels.apiKeyPlaceholder')}
                                     class="h-8 text-xs bg-background"
                                     autocomplete="off"
                                     onchange={(e) =>
@@ -284,7 +304,9 @@
 
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="flex flex-col gap-1.5">
-                                <Label class="text-xs">Tokenizer</Label>
+                                <Label class="text-xs"
+                                    >{$t('settings.customModels.tokenizer')}</Label
+                                >
                                 <OptionSelect
                                     id={`custom-model-tokenizer-${model.id}`}
                                     class="h-8 text-xs"
@@ -302,7 +324,8 @@
                             </div>
                             <div class="flex flex-col gap-1.5">
                                 <Label class="text-xs flex items-center gap-1">
-                                    <Settings2 class="size-3" /> Format
+                                    <Settings2 class="size-3" />
+                                    {$t('settings.customModels.format')}
                                 </Label>
                                 <OptionSelect
                                     id={`custom-model-handler-${model.id}`}
@@ -328,7 +351,7 @@
                                 class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
                                 onclick={() => toggleCapabilities(model.id)}
                             >
-                                Capabilities
+                                {$t('settings.customModels.capabilities')}
                                 {#if expandedCapabilities.has(model.id)}
                                     <ChevronUp class="size-3" />
                                 {:else}
@@ -357,7 +380,7 @@
                                                                 event.currentTarget.checked
                                                             )}
                                                     />
-                                                    {getLLMCapabilityName(capability)}
+                                                    {$t(`settings.capabilities.${capability}`)}
                                                 </label>
                                             {/each}
                                         </div>

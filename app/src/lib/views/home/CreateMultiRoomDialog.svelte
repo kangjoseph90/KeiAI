@@ -11,7 +11,7 @@
     } from '$lib/components/ui/dialog';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { createMultiRoom } from '$lib/stores';
+    import { createMultiRoom, t } from '$lib/stores';
     import { getErrorMessage } from '$lib/types/errors';
     import { toast } from '$lib/ui';
 
@@ -53,8 +53,8 @@
             resetForm();
             open = false;
             toast.success({
-                title: 'Multi room created',
-                description: 'Your encrypted shared room is ready.'
+                title: $t('library.multiRoomDialog.createdTitle'),
+                description: $t('library.multiRoomDialog.createdBody')
             });
             await onCreated?.(room.id);
         } catch (error) {
@@ -68,9 +68,9 @@
 <Dialog bind:open>
     <DialogContent class="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
-            <DialogTitle class="text-lg">Create a shared room</DialogTitle>
+            <DialogTitle class="text-lg">{$t('library.multiRoomDialog.createTitle')}</DialogTitle>
             <DialogDescription>
-                Set a name and choose who can discover this encrypted room.
+                {$t('library.multiRoomDialog.createDescription')}
             </DialogDescription>
         </DialogHeader>
 
@@ -83,18 +83,20 @@
             }}
         >
             <div class="space-y-2">
-                <Label for="create-multi-room-name">Room name</Label>
+                <Label for="create-multi-room-name">{$t('library.multiRoomDialog.roomName')}</Label>
                 <Input
                     id="create-multi-room-name"
                     bind:value={roomName}
-                    placeholder="e.g. Project planning"
+                    placeholder={$t('library.multiRoomDialog.placeholder')}
                     autocomplete="off"
                     autofocus
                 />
             </div>
 
             <fieldset class="space-y-2">
-                <legend class="text-sm font-medium">Visibility</legend>
+                <legend class="text-sm font-medium"
+                    >{$t('library.multiRoomDialog.visibility')}</legend
+                >
                 <div class="grid gap-2 sm:grid-cols-2">
                     <button
                         type="button"
@@ -107,9 +109,11 @@
                     >
                         <Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                         <span class="min-w-0">
-                            <span class="block text-sm font-medium">Private</span>
+                            <span class="block text-sm font-medium"
+                                >{$t('library.multiRoomDialog.private')}</span
+                            >
                             <span class="mt-0.5 block text-xs text-muted-foreground">
-                                Invite-only encrypted room.
+                                {$t('library.multiRoomDialog.privateDescription')}
                             </span>
                         </span>
                     </button>
@@ -124,9 +128,11 @@
                     >
                         <Globe2 class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                         <span class="min-w-0">
-                            <span class="block text-sm font-medium">Public</span>
+                            <span class="block text-sm font-medium"
+                                >{$t('library.multiRoomDialog.public')}</span
+                            >
                             <span class="mt-0.5 block text-xs text-muted-foreground">
-                                Discoverable; owners approve joins.
+                                {$t('library.multiRoomDialog.publicDescription')}
                             </span>
                         </span>
                     </button>
@@ -149,7 +155,7 @@
                     onclick={() => (open = false)}
                     disabled={creating}
                 >
-                    Cancel
+                    {$t('common.actions.cancel')}
                 </Button>
                 <Button
                     type="submit"
@@ -157,7 +163,8 @@
                     disabled={creating || !roomName.trim()}
                     aria-busy={creating}
                 >
-                    <Plus class="size-4" /> Create room
+                    <Plus class="size-4" />
+                    {$t('library.multiRoomDialog.createButton')}
                 </Button>
             </DialogFooter>
         </form>

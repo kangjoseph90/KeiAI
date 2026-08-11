@@ -5,6 +5,7 @@
     import { dismissToast, toast } from '$lib/ui/toast';
     import { Button } from '$lib/components/ui/button';
     import { buffer } from '$lib/services';
+    import { t } from '$lib/stores';
 
     const kindClass = {
         info: 'border-border bg-background text-foreground',
@@ -20,11 +21,11 @@
         buffer.subscribePersistenceState((state) => {
             if (state === 'failed' && !persistenceToastId) {
                 persistenceToastId = toast.error({
-                    title: 'Changes are not saved',
-                    description: 'Your changes are kept in memory. Retry before closing the app.',
+                    title: $t('components.toast.unsavedTitle'),
+                    description: $t('components.toast.unsavedBody'),
                     persistent: true,
                     action: {
-                        label: 'Retry save',
+                        label: $t('components.toast.retrySave'),
                         run: () => buffer.retryFailed()
                     }
                 });
@@ -80,13 +81,15 @@
                             aria-busy={runningActionId === item.id}
                             onclick={() => runAction(item)}
                         >
-                            {runningActionId === item.id ? 'Working...' : item.action.label}
+                            {runningActionId === item.id
+                                ? $t('components.toast.working')
+                                : item.action.label}
                         </Button>
                     {/if}
                 </div>
                 <button
                     class="rounded p-0.5 opacity-60 hover:opacity-100"
-                    aria-label="Dismiss notification"
+                    aria-label={$t('components.toast.dismiss')}
                     onclick={() => dismissItem(item.id)}
                 >
                     <X class="size-3.5" />

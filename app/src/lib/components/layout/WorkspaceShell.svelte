@@ -2,6 +2,7 @@
     import { ChevronLeft, ChevronRight, X, type IconProps } from 'lucide-svelte';
     import type { ComponentType, Snippet, SvelteComponent } from 'svelte';
     import { Button } from '$lib/components/ui/button';
+    import { t } from '$lib/stores';
 
     interface WorkspaceSection<Id extends string> {
         id: Id;
@@ -50,7 +51,7 @@
             class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {showDetail
                 ? 'hidden'
                 : 'flex'}"
-            aria-label={`${workspaceName} sections`}
+            aria-label={$t('shell.workspace.sectionsAria', { name: workspaceName })}
         >
             <div class="flex h-16 shrink-0 items-center gap-3 border-b pr-4 pl-6 md:hidden">
                 {#if identity}
@@ -123,7 +124,7 @@
                     size="icon"
                     class="-ml-2 md:hidden"
                     onclick={onBack}
-                    aria-label={`Back to ${workspaceName} sections`}
+                    aria-label={$t('shell.workspace.backToSections')}
                 >
                     <ChevronLeft class="size-5" />
                 </Button>

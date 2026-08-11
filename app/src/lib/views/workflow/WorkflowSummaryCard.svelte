@@ -6,6 +6,7 @@
     import { exportWorkflowFile, importWorkflowFile } from '$lib/managers';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { t } from '$lib/stores';
 
     interface Props {
         workflow: WorkflowDefinition;
@@ -118,17 +119,17 @@
             const imported = await importWorkflowFile();
             if (!imported) return;
             const confirmed = await appConfirm({
-                title: 'Replace workflow?',
-                description: 'Importing this file will replace every node and connection.',
-                confirmText: 'Import'
+                title: $t('workflow.confirm.replaceTitle'),
+                description: $t('workflow.confirm.replaceBody'),
+                confirmText: $t('common.confirm.import')
             });
             if (!confirmed) return;
             await onPatch(replaceWorkflow(workflow, imported).patch);
-            toast.success({ title: 'Workflow imported' });
+            toast.success({ title: $t('workflow.toast.imported') });
         } catch (error) {
             toast.error({
-                title: 'Workflow import failed',
-                description: getErrorMessage(error, 'The workflow file could not be imported')
+                title: $t('workflow.toast.importFailed'),
+                description: getErrorMessage(error, $t('workflow.toast.importFailedDescription'))
             });
         } finally {
             fileBusy = false;
@@ -140,11 +141,11 @@
         fileBusy = true;
         try {
             const saved = await exportWorkflowFile(workflow, workflowLabel);
-            if (saved) toast.success({ title: 'Workflow exported' });
+            if (saved) toast.success({ title: $t('workflow.toast.exported') });
         } catch (error) {
             toast.error({
-                title: 'Workflow export failed',
-                description: getErrorMessage(error, 'The workflow file could not be exported')
+                title: $t('workflow.toast.exportFailed'),
+                description: getErrorMessage(error, $t('workflow.toast.exportFailedDescription'))
             });
         } finally {
             fileBusy = false;
@@ -168,8 +169,8 @@
                     variant="ghost"
                     size="icon-sm"
                     class="size-8 text-muted-foreground hover:text-foreground"
-                    aria-label="Workflow file actions"
-                    title="Workflow file actions"
+                    aria-label={$t('workflow.file.actions')}
+                    title={$t('workflow.file.actions')}
                     disabled={fileBusy}
                 >
                     <MoreHorizontal class="size-4" />
@@ -178,11 +179,11 @@
             <DropdownMenu.Content align="end">
                 <DropdownMenu.Item onclick={importWorkflow}>
                     <Upload class="size-4" />
-                    Import workflow
+                    {$t('workflow.file.import')}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item onclick={exportWorkflow}>
                     <Download class="size-4" />
-                    Export workflow
+                    {$t('workflow.file.export')}
                 </DropdownMenu.Item>
             </DropdownMenu.Content>
         </DropdownMenu.Root>
@@ -251,9 +252,10 @@
             <h3 class="truncate text-base font-semibold text-foreground">{workflowLabel}</h3>
         </div>
         <p class="pl-10.5 text-xs font-medium text-muted-foreground/80">
-            {agentCount} agent{agentCount === 1 ? '' : 's'} · {nodeCount} node{nodeCount === 1
-                ? ''
-                : 's'}
+            {$t('workflow.summary.counts', {
+                agents: $t('workflow.summary.agentCount', { count: agentCount }),
+                nodes: $t('workflow.summary.nodeCount', { count: nodeCount })
+            })}
         </p>
     </div>
 
@@ -267,7 +269,7 @@
             onclick={onEditWorkflow}
         >
             <Workflow class="size-4" />
-            Edit workflow
+            {$t('workflow.summary.edit')}
         </Button>
 
         {#if wide}
@@ -278,8 +280,8 @@
                             variant="outline"
                             size="icon-sm"
                             class="size-8 shrink-0 shadow-2xs"
-                            aria-label="Workflow file actions"
-                            title="Workflow file actions"
+                            aria-label={$t('workflow.file.actions')}
+                            title={$t('workflow.file.actions')}
                             disabled={fileBusy}
                         >
                             <MoreHorizontal class="size-4" />
@@ -288,11 +290,11 @@
                     <DropdownMenu.Content align="end">
                         <DropdownMenu.Item onclick={importWorkflow}>
                             <Upload class="size-4" />
-                            Import workflow
+                            {$t('workflow.file.import')}
                         </DropdownMenu.Item>
                         <DropdownMenu.Item onclick={exportWorkflow}>
                             <Download class="size-4" />
-                            Export workflow
+                            {$t('workflow.file.export')}
                         </DropdownMenu.Item>
                     </DropdownMenu.Content>
                 </DropdownMenu.Root>

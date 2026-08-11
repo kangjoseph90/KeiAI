@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     getLanguage,
+    getLanguageDirection,
     getLanguageName,
     getLanguageNativeName,
     isLanguageCode,
@@ -62,5 +63,13 @@ describe('getLanguage / getLanguageName / getLanguageNativeName', () => {
     it('returns English and native names for known codes', () => {
         expect(getLanguageName('ja')).toBe('Japanese');
         expect(getLanguageNativeName('ja')).toBe('日本語');
+    });
+});
+
+describe('getLanguageDirection', () => {
+    it('returns registered right-to-left directions and defaults to left-to-right', () => {
+        expect(getLanguageDirection('ar')).toBe('rtl');
+        expect(getLanguageDirection('he')).toBe('rtl');
+        expect(getLanguageDirection('en')).toBe('ltr');
     });
 });

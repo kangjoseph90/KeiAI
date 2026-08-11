@@ -10,6 +10,7 @@
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
+    import { t } from '$lib/stores';
 
     interface Props {
         config: EntityListConfig<Lorebook>;
@@ -53,9 +54,10 @@
 </script>
 
 <section class="space-y-4">
-    <ListActionBar description="Context recalled during conversation generation.">
+    <ListActionBar description={$t('character.lorebooks.description')}>
         <Button size="sm" class="gap-1.5" onclick={handleAdd}>
-            <Plus class="size-4" /> Add
+            <Plus class="size-4" />
+            {$t('character.lorebooks.addButton')}
         </Button>
     </ListActionBar>
 
@@ -69,7 +71,7 @@
         {onMoveItem}
     >
         {#snippet empty()}
-            <EmptyListPlaceholder message="No lorebooks." />
+            <EmptyListPlaceholder message={$t('character.lorebooks.empty')} />
         {/snippet}
         {#snippet item({ entity: lb })}
             <LorebookItem

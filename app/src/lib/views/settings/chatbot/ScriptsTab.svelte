@@ -18,6 +18,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
+    import { t } from '$lib/stores';
 
     let { preset }: { preset: Preset } = $props();
     let editingScriptId = $state<string | null>(null);
@@ -36,7 +37,10 @@
             await savePresetScript(presetId, script);
             if (preset.id === presetId) editingScriptId = script.id;
         } catch (error) {
-            toast.error({ title: 'Could not add script', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.scripts.toast.add'),
+                description: getErrorMessage(error)
+            });
         } finally {
             creating = false;
         }
@@ -44,7 +48,7 @@
 </script>
 
 <div class="flex flex-col gap-4 px-2">
-    <ListActionBar description="Transform model output after generation.">
+    <ListActionBar description={$t('settings.scripts.description')}>
         <Button
             size="sm"
             class="gap-1.5"
@@ -52,7 +56,8 @@
             aria-busy={creating}
             onclick={handleAddScript}
         >
-            <Plus class="size-4" /> Add
+            <Plus class="size-4" />
+            {$t('settings.scripts.addButton')}
         </Button>
     </ListActionBar>
 
@@ -68,7 +73,7 @@
             movePresetItem(preset.id, 'scripts', itemId, newFolderId, newSortOrder)}
     >
         {#snippet empty()}
-            <EmptyListPlaceholder message="No scripts defined for this preset." />
+            <EmptyListPlaceholder message={$t('settings.scripts.empty')} />
         {/snippet}
         {#snippet item({ entity: script })}
             <ScriptItem

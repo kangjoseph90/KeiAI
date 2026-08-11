@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { initDefaultContents } from '$lib/stores/init';
+import { deviceLocale } from '$lib/stores/state';
 
 // Mock store functions
 vi.mock('$lib/stores/content/persona', () => ({
@@ -34,6 +35,7 @@ import { updateSettings } from '$lib/stores/content/settings';
 describe('Init Store', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        deviceLocale.set('en');
         vi.mocked(createPersona).mockResolvedValue({ id: 'persona-1' } as never);
         vi.mocked(createPreset).mockResolvedValue({ id: 'preset-1' } as never);
         vi.mocked(createCharacter).mockResolvedValue({ id: 'char-1' } as never);
@@ -96,10 +98,12 @@ describe('Init Store', () => {
         });
 
         it('should initialize the default task workflows', async () => {
+            deviceLocale.set('ko');
             await initDefaultContents();
 
             expect(updateSettings).toHaveBeenCalledWith(
                 expect.objectContaining({
+                    ui: { locale: 'ko' },
                     translation: {
                         workflow: expect.objectContaining({
                             nodes: expect.objectContaining({

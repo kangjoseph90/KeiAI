@@ -10,6 +10,8 @@
         "postinstall": "node scripts/download-tokens.js",
         "check": "svelte-check --tsconfig ./tsconfig.json",
         "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
+        "i18n:audit": "node scripts/i18n-audit.mjs",
+        "i18n:audit:strict": "node scripts/i18n-audit.mjs --strict",
         "lint": "prettier --check . && eslint .",
         "format": "prettier --write .",
         "test": "vitest",

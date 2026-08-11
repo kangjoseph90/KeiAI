@@ -2,6 +2,7 @@
     import { Download, Trash2 } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
+    import { t } from '$lib/stores';
 
     type ExportFormat = 'risu' | 'keipersona-light' | 'keipersona-baked';
 
@@ -38,23 +39,23 @@
         const list: FormatOption[] = [
             {
                 id: 'risu',
-                label: 'Risu PNG (.png)',
-                description: 'Persona image with portable Risu metadata.',
+                label: $t('persona.export.risuPngLabel'),
+                description: $t('persona.export.risuPngDescription'),
                 action: onExportRisu
             }
         ];
         if (showLightExport) {
             list.push({
                 id: 'keipersona-light',
-                label: 'Kei Light (.keipersona)',
-                description: 'Compact KeiAI archive that references synchronized assets.',
+                label: $t('persona.export.keiLightLabel'),
+                description: $t('persona.export.keiLightDescription'),
                 action: onExportLight
             });
         }
         list.push({
             id: 'keipersona-baked',
-            label: 'Kei Baked (.keipersona)',
-            description: 'Self-contained KeiAI archive with assets included.',
+            label: $t('persona.export.keiBakedLabel'),
+            description: $t('persona.export.keiBakedDescription'),
             action: onExportBaked
         });
         return list;
@@ -74,9 +75,11 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-4">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">Export Persona</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('persona.export.title')}
+            </h3>
             <p class="text-sm text-muted-foreground">
-                Export persona card or archive with embedded assets.
+                {$t('persona.export.description')}
             </p>
         </div>
         <div class="flex flex-col gap-2">
@@ -96,7 +99,8 @@
                     disabled={exporting !== null}
                     onclick={handleExportClick}
                 >
-                    <Download class="size-4" /> Export
+                    <Download class="size-4" />
+                    {$t('persona.export.button')}
                 </Button>
             </div>
             {#if activeOption?.description}
@@ -109,16 +113,22 @@
 
     <section class="space-y-4">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-destructive">Danger Zone</h3>
-            <p class="text-sm text-muted-foreground">Irreversible actions for this persona.</p>
+            <h3 class="text-lg font-semibold tracking-tight text-destructive">
+                {$t('persona.export.dangerZone')}
+            </h3>
+            <p class="text-sm text-muted-foreground">
+                {$t('persona.export.dangerZoneHelp')}
+            </p>
         </div>
 
         <div class="divide-y divide-border">
             <div class="flex items-center justify-between py-2">
                 <div class="space-y-0.5 pr-4">
-                    <p class="text-sm font-medium text-foreground">Delete this persona</p>
+                    <p class="text-sm font-medium text-foreground">
+                        {$t('persona.export.deleteThis')}
+                    </p>
                     <p class="text-xs text-muted-foreground">
-                        This removes the local persona and its owned assets permanently.
+                        {$t('persona.export.deleteHelp')}
                     </p>
                 </div>
                 <Button
@@ -128,7 +138,8 @@
                     aria-busy={deleting}
                     onclick={onDelete}
                 >
-                    <Trash2 class="size-4" /> Delete Persona
+                    <Trash2 class="size-4" />
+                    {$t('persona.export.deleteButton')}
                 </Button>
             </div>
         </div>

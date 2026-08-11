@@ -23,7 +23,8 @@
         createGlobalFolder,
         updateGlobalFolder,
         deleteGlobalFolder,
-        moveGlobalItem
+        moveGlobalItem,
+        t
     } from '$lib/stores';
     import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
     import type { Preset } from '$lib/services';
@@ -60,7 +61,7 @@
     }
 
     async function handleCreatePreset() {
-        await runPresetAction('create', 'Could not create preset', async () => {
+        await runPresetAction('create', $t('settings.presets.toast.create'), async () => {
             const preset = await createPreset({
                 chatWorkflow: createDefaultChatWorkflow()
             });
@@ -70,28 +71,30 @@
     }
 
     async function handleImport() {
-        await runPresetAction('import', 'Could not import preset', async () => {
+        await runPresetAction('import', $t('settings.presets.toast.import'), async () => {
             const preset = await importPresetFile({ select: true });
             if (preset) expandedPresetIds[preset.id] = true;
         });
     }
 
     async function handleSelectPreset(id: string) {
-        await runPresetAction(`select:${id}`, 'Could not select preset', () => selectPreset(id));
+        await runPresetAction(`select:${id}`, $t('settings.presets.toast.select'), () =>
+            selectPreset(id)
+        );
     }
 
     async function handleExportPreset(id: string) {
-        await runPresetAction(`export:${id}`, 'Could not export preset', () =>
+        await runPresetAction(`export:${id}`, $t('settings.presets.toast.export'), () =>
             exportPresetFile(id, { kind: 'keipreset' })
         );
     }
 
     async function handleDeletePreset(id: string, name: string) {
-        await runPresetAction(`delete:${id}`, 'Could not delete preset', async () => {
+        await runPresetAction(`delete:${id}`, $t('settings.presets.toast.delete'), async () => {
             const confirmed = await appConfirm({
-                title: 'Delete preset?',
-                description: `Delete "${name}"? This cannot be undone.`,
-                confirmText: 'Delete',
+                title: $t('settings.presets.deleteTitle'),
+                description: $t('settings.presets.deleteBody', { name }),
+                confirmText: $t('common.confirm.delete'),
                 variant: 'destructive'
             });
             if (confirmed) await deletePreset(id);
@@ -105,7 +108,10 @@
         try {
             await updatePreset(id, changes);
         } catch (error) {
-            toast.error({ title: 'Could not update preset', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('settings.presets.toast.update'),
+                description: getErrorMessage(error)
+            });
         }
     }
 
@@ -129,7 +135,7 @@
 </script>
 
 <div class="flex flex-col gap-4 px-2">
-    <ListActionBar description="Reusable model and chat configurations.">
+    <ListActionBar description={$t('settings.presets.description')}>
         <Button
             size="sm"
             variant="outline"
@@ -138,7 +144,8 @@
             aria-busy={busyAction === 'import'}
             onclick={handleImport}
         >
-            <Upload class="size-4" /> Import
+            <Upload class="size-4" />
+            {$t('settings.presets.import')}
         </Button>
         <Button
             size="sm"
@@ -147,7 +154,8 @@
             disabled={busyAction !== null}
             aria-busy={busyAction === 'create'}
         >
-            <Plus class="size-4" /> New Preset
+            <Plus class="size-4" />
+            {$t('settings.presets.new')}
         </Button>
     </ListActionBar>
 
@@ -164,7 +172,7 @@
                 moveGlobalItem('presets', itemId, newFolderId, newSortOrder)}
         >
             {#snippet empty()}
-                <EmptyListPlaceholder message="No presets created yet." />
+                <EmptyListPlaceholder message={$t('settings.presets.empty')} />
             {/snippet}
             {#snippet item({ entity: preset })}
                 <div
@@ -189,8 +197,8 @@
                                 class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 onclick={() => toggleExpanded(preset.id)}
                                 aria-label={expandedPresetIds[preset.id]
-                                    ? 'Collapse preset'
-                                    : 'Expand preset'}
+                                    ? $t('settings.presets.collapsePreset')
+                                    : $t('settings.presets.expandPreset')}
                             >
                                 {#if expandedPresetIds[preset.id]}
                                     <ChevronDown class="size-3.5" />
@@ -205,7 +213,7 @@
                                 disabled={busyAction !== null}
                                 onchange={(e) =>
                                     updatePresetSafely(preset.id, { name: e.currentTarget.value })}
-                                aria-label="Preset name"
+                                aria-label={$t('settings.presets.nameAria')}
                                 class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent text-sm leading-relaxed"
                             />
 
@@ -216,10 +224,12 @@
                                 class="shrink-0 {$activePreset?.id === preset.id
                                     ? 'text-emerald-500 hover:text-emerald-600'
                                     : 'text-muted-foreground'}"
-                                title={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
+                                title={$activePreset?.id === preset.id
+                                    ? $t('settings.presets.active')
+                                    : $t('settings.presets.usePreset')}
                                 aria-label={$activePreset?.id === preset.id
-                                    ? 'Active'
-                                    : 'Use preset'}
+                                    ? $t('settings.presets.active')
+                                    : $t('settings.presets.usePreset')}
                                 disabled={busyAction !== null}
                                 aria-busy={busyAction === `select:${preset.id}`}
                                 onclick={() => handleSelectPreset(preset.id)}
@@ -231,8 +241,8 @@
                                 size="icon-sm"
                                 variant="ghost"
                                 class="shrink-0 text-muted-foreground hover:text-foreground"
-                                title="Export Preset"
-                                aria-label="Export Preset"
+                                title={$t('settings.presets.exportTitle')}
+                                aria-label={$t('settings.presets.exportTitle')}
                                 disabled={busyAction !== null}
                                 aria-busy={busyAction === `export:${preset.id}`}
                                 onclick={() => handleExportPreset(preset.id)}
@@ -244,7 +254,7 @@
                                 size="icon-sm"
                                 variant="ghost"
                                 class="shrink-0 text-muted-foreground hover:text-destructive"
-                                aria-label="Delete preset"
+                                aria-label={$t('settings.presets.deleteAria')}
                                 disabled={busyAction !== null}
                                 aria-busy={busyAction === `delete:${preset.id}`}
                                 onclick={() => handleDeletePreset(preset.id, preset.name)}
@@ -258,10 +268,10 @@
                             <div class="flex flex-col gap-3">
                                 <!-- 1. Description -->
                                 <div class="space-y-1.5">
-                                    <Label class="text-xs">Description</Label>
+                                    <Label class="text-xs">{$t('common.label.description')}</Label>
                                     <Input
                                         class="h-8 text-xs bg-background"
-                                        placeholder="No description"
+                                        placeholder={$t('common.noDescription')}
                                         value={preset.description}
                                         disabled={busyAction !== null}
                                         onchange={(e) =>
@@ -272,9 +282,11 @@
                                 </div>
 
                                 <div class="space-y-1.5">
-                                    <Label class="text-xs">Default Variables</Label>
+                                    <Label class="text-xs"
+                                        >{$t('settings.presets.defaultVariables')}</Label
+                                    >
                                     <KeyValueEditor
-                                        emptyMessage="No initial variables defined."
+                                        emptyMessage={$t('settings.presets.noVariables')}
                                         data={preset.defaultVariables}
                                         onUpdateValue={(key, val) =>
                                             handleUpdateVariableValue(preset, key, val)}

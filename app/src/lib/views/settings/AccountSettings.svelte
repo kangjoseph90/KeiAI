@@ -8,7 +8,8 @@
         performDeleteWithRecoveryCode,
         performChangePassword,
         performLogout,
-        performPairWithCode
+        performPairWithCode,
+        t
     } from '$lib/stores';
     import { AuthService } from '$lib/services/auth';
     import { Button } from '$lib/components/ui/button';
@@ -77,44 +78,49 @@
 
     function handleCreateAccount() {
         if (password !== confirmPassword) {
-            errorMsg = 'Passwords do not match.';
+            errorMsg = $t('settings.account.validation.passwordsDoNotMatch');
             return;
         }
         void runAction(
             () => performCreateAccount(username, password, email || undefined),
-            'Account created. Save your recovery code.'
+            $t('settings.account.toast.created')
         );
     }
 
     function handlePasswordLogin() {
-        void runAction(() => performSignIn(username, password), 'Signed in successfully.');
+        void runAction(
+            () => performSignIn(username, password),
+            $t('settings.account.toast.signedIn')
+        );
     }
 
     function handleRecover() {
         if (newPassword !== confirmPassword) {
-            errorMsg = 'Passwords do not match.';
+            errorMsg = $t('settings.account.validation.passwordsDoNotMatch');
             return;
         }
         void runAction(
             () => performRecoverAndReset(recoveryCode, newPassword),
-            'Device recovered. Save your new recovery code.'
+            $t('settings.account.toast.recovered')
         );
     }
 
     function handlePairNewDevice() {
-        void runAction(() => performPairWithCode(pairingCodeInput), 'Device paired successfully.');
+        void runAction(
+            () => performPairWithCode(pairingCodeInput),
+            $t('settings.account.toast.paired')
+        );
     }
 
     function handleRecoverDelete() {
         void runAction(
             () => performDeleteWithRecoveryCode(recoveryCode),
-            'Remote account deleted. Local data remains available.',
+            $t('settings.account.toast.remoteDeleted'),
             () =>
                 appConfirm({
-                    title: 'Delete remote account?',
-                    description:
-                        'This permanently deletes the encrypted remote account. Local data on this device remains available.',
-                    confirmText: 'Delete',
+                    title: $t('settings.account.confirm.deleteRemoteTitle'),
+                    description: $t('settings.account.confirm.deleteRemoteBody'),
+                    confirmText: $t('common.confirm.delete'),
                     variant: 'destructive'
                 })
         );
@@ -123,12 +129,12 @@
     function handleChangePassword() {
         void runAction(
             () => performChangePassword(password, newPassword),
-            'Password changed. Save your new recovery code.'
+            $t('settings.account.toast.passwordChanged')
         );
     }
 
     function handleLogout() {
-        void runAction(() => performLogout(), 'Signed out on this device.');
+        void runAction(() => performLogout(), $t('settings.account.toast.signedOut'));
     }
 
     async function handleGeneratePairing() {
@@ -149,14 +155,15 @@
 <div class="space-y-8 pb-8">
     <section class="space-y-6">
         <div>
-            <h3 class="text-lg font-semibold tracking-tight text-foreground">Account Status</h3>
+            <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                {$t('settings.account.statusTitle')}
+            </h3>
             <p class="text-sm text-muted-foreground">
                 {#if $isLoggedIn}
-                    Signed in as <strong class="font-medium text-foreground"
-                        >@{$activeUsername}</strong
-                    >.
+                    {$t('settings.account.signedInAs')}
+                    <strong class="font-medium text-foreground">@{$activeUsername}</strong>.
                 {:else}
-                    Not signed in. Sign in or create an account to sync your data.
+                    {$t('settings.account.notSignedIn')}
                 {/if}
             </p>
         </div>
@@ -184,11 +191,10 @@
                 >
                     <div class="mb-2 flex items-center gap-2 font-bold">
                         <ShieldAlert class="size-5 shrink-0" />
-                        SAVE YOUR RECOVERY CODE NOW
+                        {$t('settings.account.recoveryBanner')}
                     </div>
                     <p class="mb-2">
-                        If you lose this code, this device may be the only place that can recover
-                        your data.
+                        {$t('settings.account.recoveryBannerHelp')}
                     </p>
                     <div
                         class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all dark:border-amber-900 dark:bg-amber-950/50"
@@ -209,7 +215,7 @@
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (authView = 'signup')}
                         >
-                            Sign Up
+                            {$t('settings.account.tabSignUp')}
                         </button>
                         <button
                             type="button"
@@ -219,7 +225,7 @@
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (authView = 'login')}
                         >
-                            Log In
+                            {$t('settings.account.tabLogIn')}
                         </button>
                     </div>
 
@@ -233,23 +239,27 @@
                         >
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="space-y-1.5">
-                                    <Label for="account-signup-username">Username</Label>
+                                    <Label for="account-signup-username"
+                                        >{$t('settings.account.methodUsername')}</Label
+                                    >
                                     <Input
                                         id="account-signup-username"
                                         bind:value={username}
                                         type="text"
-                                        placeholder="your-name"
+                                        placeholder={$t('settings.account.placeholderUsername')}
                                         disabled={loading}
                                         autocomplete="username"
                                     />
                                 </div>
                                 <div class="space-y-1.5">
-                                    <Label for="account-signup-email">Email (optional)</Label>
+                                    <Label for="account-signup-email"
+                                        >{$t('settings.account.labelEmailOptional')}</Label
+                                    >
                                     <Input
                                         id="account-signup-email"
                                         bind:value={email}
                                         type="email"
-                                        placeholder="updates@example.com"
+                                        placeholder={$t('settings.account.placeholderEmail')}
                                         disabled={loading}
                                         autocomplete="email"
                                     />
@@ -257,32 +267,37 @@
                             </div>
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="space-y-1.5">
-                                    <Label for="account-signup-password">Password</Label>
+                                    <Label for="account-signup-password"
+                                        >{$t('settings.account.labelPassword')}</Label
+                                    >
                                     <Input
                                         id="account-signup-password"
                                         bind:value={password}
                                         type="password"
-                                        placeholder="Password"
+                                        placeholder={$t('settings.account.placeholderPassword')}
                                         disabled={loading}
                                         autocomplete="new-password"
                                     />
                                 </div>
                                 <div class="space-y-1.5">
                                     <Label for="account-signup-confirm-password"
-                                        >Confirm Password</Label
+                                        >{$t('settings.account.labelConfirmPassword')}</Label
                                     >
                                     <Input
                                         id="account-signup-confirm-password"
                                         bind:value={confirmPassword}
                                         type="password"
-                                        placeholder="Confirm password"
+                                        placeholder={$t(
+                                            'settings.account.placeholderConfirmPassword'
+                                        )}
                                         disabled={loading}
                                         autocomplete="new-password"
                                     />
                                 </div>
                             </div>
                             <Button type="submit" disabled={loading}>
-                                <UserPlus class="mr-2 size-4" /> Create Account
+                                <UserPlus class="mr-2 size-4" />
+                                {$t('settings.account.buttonCreateAccount')}
                             </Button>
                         </form>
                     {:else}
@@ -292,21 +307,24 @@
                                 size="sm"
                                 onclick={() => (loginMethod = 'password')}
                             >
-                                <LogIn class="mr-2 size-4" /> Username
+                                <LogIn class="mr-2 size-4" />
+                                {$t('settings.account.methodUsername')}
                             </Button>
                             <Button
                                 variant={loginMethod === 'recovery' ? 'secondary' : 'outline'}
                                 size="sm"
                                 onclick={() => (loginMethod = 'recovery')}
                             >
-                                <Key class="mr-2 size-4" /> Recovery Code
+                                <Key class="mr-2 size-4" />
+                                {$t('settings.account.methodRecovery')}
                             </Button>
                             <Button
                                 variant={loginMethod === 'pairing' ? 'secondary' : 'outline'}
                                 size="sm"
                                 onclick={() => (loginMethod = 'pairing')}
                             >
-                                <QrCode class="mr-2 size-4" /> Pairing Code
+                                <QrCode class="mr-2 size-4" />
+                                {$t('settings.account.methodPairing')}
                             </Button>
                         </div>
 
@@ -320,30 +338,35 @@
                             >
                                 <div class="grid gap-4 sm:grid-cols-2">
                                     <div class="space-y-1.5">
-                                        <Label for="account-login-username">Username</Label>
+                                        <Label for="account-login-username"
+                                            >{$t('settings.account.methodUsername')}</Label
+                                        >
                                         <Input
                                             id="account-login-username"
                                             bind:value={username}
                                             type="text"
-                                            placeholder="your-name"
+                                            placeholder={$t('settings.account.placeholderUsername')}
                                             disabled={loading}
                                             autocomplete="username"
                                         />
                                     </div>
                                     <div class="space-y-1.5">
-                                        <Label for="account-login-password">Password</Label>
+                                        <Label for="account-login-password"
+                                            >{$t('settings.account.labelPassword')}</Label
+                                        >
                                         <Input
                                             id="account-login-password"
                                             bind:value={password}
                                             type="password"
-                                            placeholder="Password"
+                                            placeholder={$t('settings.account.placeholderPassword')}
                                             disabled={loading}
                                             autocomplete="current-password"
                                         />
                                     </div>
                                 </div>
                                 <Button type="submit" disabled={loading}>
-                                    <Link class="mr-2 size-4" /> Log In
+                                    <Link class="mr-2 size-4" />
+                                    {$t('settings.account.buttonLogIn')}
                                 </Button>
                             </form>
                         {:else if loginMethod === 'recovery'}
@@ -355,12 +378,14 @@
                                 class="space-y-4"
                             >
                                 <div class="space-y-1.5">
-                                    <Label for="account-recovery-code">Recovery Code</Label>
+                                    <Label for="account-recovery-code"
+                                        >{$t('settings.account.labelRecoveryCode')}</Label
+                                    >
                                     <Input
                                         id="account-recovery-code"
                                         bind:value={recoveryCode}
                                         type="text"
-                                        placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                                        placeholder={$t('settings.account.placeholderRecoveryCode')}
                                         disabled={loading}
                                         autocomplete="off"
                                     />
@@ -368,26 +393,30 @@
                                 <div class="grid gap-4 sm:grid-cols-2">
                                     <div class="space-y-1.5">
                                         <Label for="account-recovery-new-password"
-                                            >New Password</Label
+                                            >{$t('settings.account.labelNewPassword')}</Label
                                         >
                                         <Input
                                             id="account-recovery-new-password"
                                             bind:value={newPassword}
                                             type="password"
-                                            placeholder="New password"
+                                            placeholder={$t(
+                                                'settings.account.placeholderNewPassword'
+                                            )}
                                             disabled={loading}
                                             autocomplete="new-password"
                                         />
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label for="account-recovery-confirm-password"
-                                            >Confirm Password</Label
+                                            >{$t('settings.account.labelConfirmPassword')}</Label
                                         >
                                         <Input
                                             id="account-recovery-confirm-password"
                                             bind:value={confirmPassword}
                                             type="password"
-                                            placeholder="Confirm password"
+                                            placeholder={$t(
+                                                'settings.account.placeholderConfirmPassword'
+                                            )}
                                             disabled={loading}
                                             autocomplete="new-password"
                                         />
@@ -395,7 +424,8 @@
                                 </div>
                                 <div class="flex flex-wrap gap-2">
                                     <Button type="submit" disabled={loading}>
-                                        <Key class="mr-2 size-4" /> Recover Account
+                                        <Key class="mr-2 size-4" />
+                                        {$t('settings.account.buttonRecover')}
                                     </Button>
                                     <Button
                                         type="button"
@@ -404,24 +434,27 @@
                                         disabled={loading}
                                         onclick={() => (loginMethod = 'delete_remote')}
                                     >
-                                        Force Delete Remote Backup
+                                        {$t('settings.account.buttonForceDelete')}
                                     </Button>
                                 </div>
                             </form>
                         {:else if loginMethod === 'pairing'}
                             <div class="space-y-4">
                                 <div class="space-y-1.5">
-                                    <Label for="account-pairing-code">Pairing Code</Label>
+                                    <Label for="account-pairing-code"
+                                        >{$t('settings.account.labelPairingCode')}</Label
+                                    >
                                     <Input
                                         id="account-pairing-code"
                                         bind:value={pairingCodeInput}
                                         type="text"
-                                        placeholder="XXXXXXXX"
+                                        placeholder={$t('settings.account.placeholderPairingCode')}
                                         disabled={loading}
                                     />
                                 </div>
                                 <Button disabled={loading} onclick={handlePairNewDevice}>
-                                    <QrCode class="mr-2 size-4" /> Pair Device
+                                    <QrCode class="mr-2 size-4" />
+                                    {$t('settings.account.buttonPairDevice')}
                                 </Button>
                             </div>
                         {:else}
@@ -431,15 +464,18 @@
                                 <h4
                                     class="font-bold flex items-center gap-2 text-destructive text-sm"
                                 >
-                                    <AlertTriangle class="size-4" /> Delete Remote Account
+                                    <AlertTriangle class="size-4" />
+                                    {$t('settings.account.deleteRemoteTitle')}
                                 </h4>
                                 <div class="space-y-1.5">
-                                    <Label for="account-delete-recovery-code">Recovery Code</Label>
+                                    <Label for="account-delete-recovery-code"
+                                        >{$t('settings.account.labelRecoveryCode')}</Label
+                                    >
                                     <Input
                                         id="account-delete-recovery-code"
                                         bind:value={recoveryCode}
                                         type="text"
-                                        placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                                        placeholder={$t('settings.account.placeholderRecoveryCode')}
                                         disabled={loading}
                                     />
                                 </div>
@@ -449,14 +485,14 @@
                                         disabled={loading}
                                         onclick={handleRecoverDelete}
                                     >
-                                        Delete Remote Account
+                                        {$t('settings.account.buttonDeleteRemote')}
                                     </Button>
                                     <Button
                                         variant="ghost"
                                         disabled={loading}
                                         onclick={() => (loginMethod = 'recovery')}
                                     >
-                                        Cancel
+                                        {$t('common.actions.cancel')}
                                     </Button>
                                 </div>
                             </div>
@@ -474,7 +510,7 @@
                                 : 'text-muted-foreground hover:text-foreground'}"
                             onclick={() => (accountView = 'security')}
                         >
-                            Security
+                            {$t('settings.account.tabSecurity')}
                         </button>
                         <button
                             type="button"
@@ -487,7 +523,7 @@
                                 generatedPairingCode = '';
                             }}
                         >
-                            Pair Device
+                            {$t('settings.account.tabPairDevice')}
                         </button>
                     </div>
 
@@ -501,7 +537,9 @@
                         >
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="space-y-1.5">
-                                    <Label for="account-current-password">Current Password</Label>
+                                    <Label for="account-current-password"
+                                        >{$t('settings.account.labelCurrentPassword')}</Label
+                                    >
                                     <Input
                                         id="account-current-password"
                                         bind:value={password}
@@ -511,7 +549,9 @@
                                     />
                                 </div>
                                 <div class="space-y-1.5">
-                                    <Label for="account-new-password">New Password</Label>
+                                    <Label for="account-new-password"
+                                        >{$t('settings.account.labelNewPassword')}</Label
+                                    >
                                     <Input
                                         id="account-new-password"
                                         bind:value={newPassword}
@@ -522,21 +562,22 @@
                                 </div>
                             </div>
                             <Button type="submit" variant="outline" disabled={loading}>
-                                Change Password
+                                {$t('settings.account.buttonChangePassword')}
                             </Button>
                         </form>
                     {:else if accountView === 'devices'}
                         <div class="space-y-4">
                             <div>
                                 <Button disabled={loading} onclick={handleGeneratePairing}>
-                                    Generate Pairing Code
+                                    {$t('settings.account.buttonGeneratePairing')}
                                 </Button>
                             </div>
                             {#if generatedPairingCode}
                                 <div
                                     class="rounded-md border border-input bg-muted/20 p-4 text-center"
                                 >
-                                    <Label class="text-xs text-muted-foreground">Pairing Code</Label
+                                    <Label class="text-xs text-muted-foreground"
+                                        >{$t('settings.account.labelPairingCode')}</Label
                                     >
                                     <div
                                         class="mt-2 text-2xl font-mono tracking-widest font-bold text-foreground"
@@ -550,7 +591,8 @@
 
                     <div class="border-t border-border pt-6">
                         <Button variant="secondary" disabled={loading} onclick={handleLogout}>
-                            <LogOut class="mr-2 size-4" /> Sign Out
+                            <LogOut class="mr-2 size-4" />
+                            {$t('settings.account.buttonSignOut')}
                         </Button>
                     </div>
                 </section>

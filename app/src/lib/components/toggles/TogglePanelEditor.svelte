@@ -28,6 +28,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { generateId } from '$lib/utils/id';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
+    import { t } from '$lib/stores';
 
     type ToggleItemType = 'checkbox' | 'select' | 'text' | 'textarea' | 'caption' | 'divider';
 
@@ -60,7 +61,7 @@
                 id,
                 kind: 'control',
                 key: 'toggle',
-                label: 'New Toggle',
+                label: $t('components.toggles.newToggle'),
                 sortOrder: generateSortOrder(panel.refs, panel.folders),
                 control: { type: 'checkbox', value: false }
             })
@@ -73,9 +74,9 @@
 
     async function remove(item: ToggleItem): Promise<void> {
         const confirmed = await appConfirm({
-            title: 'Delete toggle item?',
-            description: 'This removes the definition. Stored values are ignored.',
-            confirmText: 'Delete',
+            title: $t('components.toggles.deleteTitle'),
+            description: $t('components.toggles.deleteBody'),
+            confirmText: $t('common.actions.delete'),
             variant: 'destructive'
         });
         if (confirmed) await run(() => onDeleteItem(item.id));
@@ -115,7 +116,7 @@
                     label,
                     control: {
                         type: 'select',
-                        options: [{ id: optionId, label: 'Option' }],
+                        options: [{ id: optionId, label: $t('components.toggles.optionDefault') }],
                         selectedOptionId: optionId
                     }
                 };
@@ -196,7 +197,7 @@
         if (item.control.type !== 'select') return;
         saveSelectOptions(item, [
             ...item.control.options,
-            { id: generateId(), label: 'New Option' }
+            { id: generateId(), label: $t('components.toggles.newOption') }
         ]);
     }
 
@@ -224,7 +225,10 @@
         try {
             await action();
         } catch (error) {
-            toast.error({ title: 'Could not update toggles', description: getErrorMessage(error) });
+            toast.error({
+                title: $t('components.toggles.updateFailed'),
+                description: getErrorMessage(error)
+            });
         } finally {
             busy = false;
         }
@@ -232,9 +236,10 @@
 </script>
 
 <div class="flex flex-col gap-4 px-2">
-    <ListActionBar description="Controls shown in the room panel. Folders become nested groups.">
+    <ListActionBar description={$t('components.toggles.description')}>
         <Button size="sm" class="gap-1.5" disabled={busy} onclick={addToggle}>
-            <Plus class="size-4" /> Add
+            <Plus class="size-4" />
+            {$t('components.toggles.add')}
         </Button>
     </ListActionBar>
 
@@ -248,7 +253,9 @@
         {onDeleteFolder}
         {onMoveItem}
     >
-        {#snippet empty()}<EmptyListPlaceholder message="No custom toggles." />{/snippet}
+        {#snippet empty()}
+            <EmptyListPlaceholder message={$t('components.toggles.empty')} />
+        {/snippet}
         {#snippet item({ entity }: { entity: ToggleItem })}
             <EditableListItem
                 expanded={entity.kind === 'control' &&
@@ -271,7 +278,7 @@
                                 class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {typeIconClass(
                                     itemType(entity)
                                 )}"
-                                aria-label="Change toggle type"
+                                aria-label={$t('components.toggles.changeType')}
                                 disabled={busy}
                             >
                                 {#if itemType(entity) === 'checkbox'}
@@ -292,27 +299,27 @@
                         <DropdownMenu.Content align="start">
                             <DropdownMenu.Item onclick={() => changeType(entity, 'checkbox')}>
                                 <SquareCheck class="mr-2 size-4 text-emerald-500" />
-                                <span>Checkbox</span>
+                                <span>{$t('components.toggles.checkbox')}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item onclick={() => changeType(entity, 'select')}>
                                 <List class="mr-2 size-4 text-sky-500" />
-                                <span>Select</span>
+                                <span>{$t('components.toggles.select')}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item onclick={() => changeType(entity, 'text')}>
                                 <Type class="mr-2 size-4 text-violet-500" />
-                                <span>Text</span>
+                                <span>{$t('components.toggles.text')}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item onclick={() => changeType(entity, 'textarea')}>
                                 <AlignLeft class="mr-2 size-4 text-indigo-500" />
-                                <span>Textarea</span>
+                                <span>{$t('components.toggles.textarea')}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item onclick={() => changeType(entity, 'caption')}>
                                 <MessageSquareText class="mr-2 size-4 text-amber-500" />
-                                <span>Caption</span>
+                                <span>{$t('components.toggles.caption')}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item onclick={() => changeType(entity, 'divider')}>
                                 <Minus class="mr-2 size-4 text-muted-foreground" />
-                                <span>Divider</span>
+                                <span>{$t('components.toggles.divider')}</span>
                             </DropdownMenu.Item>
                         </DropdownMenu.Content>
                     </DropdownMenu.Root>
@@ -324,7 +331,7 @@
                             disabled={busy}
                             onchange={(event) =>
                                 save({ ...entity, key: event.currentTarget.value })}
-                            placeholder="key"
+                            placeholder={$t('components.toggles.keyPlaceholder')}
                         />
                         <input
                             class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium shadow-none outline-none"
@@ -332,7 +339,7 @@
                             disabled={busy}
                             onchange={(event) =>
                                 save({ ...entity, label: event.currentTarget.value })}
-                            placeholder="label"
+                            placeholder={$t('components.toggles.labelPlaceholder')}
                         />
                     {:else}
                         <input
@@ -345,7 +352,9 @@
                                         ? { ...entity, text: event.currentTarget.value }
                                         : { ...entity, label: event.currentTarget.value }
                                 )}
-                            placeholder={entity.kind === 'text' ? 'caption' : 'divider label'}
+                            placeholder={entity.kind === 'text'
+                                ? $t('components.toggles.captionPlaceholder')
+                                : $t('components.toggles.dividerPlaceholder')}
                         />
                     {/if}
 
@@ -358,10 +367,9 @@
                             onclick={() => toggleSelectEditor(entity.id)}
                             aria-expanded={expandedSelects.has(entity.id)}
                         >
-                            {entity.control.options.length} option{entity.control.options.length ===
-                            1
-                                ? ''
-                                : 's'}
+                            {$t('components.toggles.optionsCount', {
+                                count: entity.control.options.length
+                            })}
                         </Button>
                     {/if}
                     <Button
@@ -370,7 +378,7 @@
                         class="shrink-0 text-muted-foreground hover:text-destructive"
                         disabled={busy}
                         onclick={() => remove(entity)}
-                        aria-label="Delete toggle"
+                        aria-label={$t('components.toggles.deleteToggle')}
                     >
                         <Trash2 class="size-3.5" />
                     </Button>
@@ -379,7 +387,9 @@
                 {#snippet details()}
                     {#if entity.kind === 'control' && entity.control.type === 'select'}
                         <div class="flex flex-col gap-2">
-                            <p class="text-xs font-medium text-muted-foreground">Options</p>
+                            <p class="text-xs font-medium text-muted-foreground">
+                                {$t('components.toggles.options')}
+                            </p>
                             {#each entity.control.options as option (option.id)}
                                 <div class="flex items-center gap-2">
                                     <input
@@ -392,7 +402,7 @@
                                                 option.id,
                                                 event.currentTarget.value
                                             )}
-                                        aria-label="Option label"
+                                        aria-label={$t('components.toggles.optionLabelAria')}
                                     />
                                     <Button
                                         variant="ghost"
@@ -400,7 +410,7 @@
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         disabled={busy || entity.control.options.length <= 1}
                                         onclick={() => removeSelectOption(entity, option.id)}
-                                        aria-label="Delete option"
+                                        aria-label={$t('components.toggles.deleteOption')}
                                     >
                                         <Trash2 class="size-4" />
                                     </Button>
@@ -413,7 +423,8 @@
                                 disabled={busy}
                                 onclick={() => addSelectOption(entity)}
                             >
-                                <Plus class="size-4" /> Add option
+                                <Plus class="size-4" />
+                                {$t('components.toggles.addOption')}
                             </Button>
                         </div>
                     {/if}

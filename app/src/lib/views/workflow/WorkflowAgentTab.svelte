@@ -39,6 +39,7 @@
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import { exportAgentFile, importAgentFile } from '$lib/managers';
+    import { t } from '$lib/stores';
     import {
         createAgentInput,
         createBlock,
@@ -153,7 +154,7 @@
         );
         return onEdit(
             createBlock(workflow, agent.id, {
-                name: 'New Block',
+                name: $t('workflow.agent.newBlock'),
                 type: 'message',
                 role: 'system',
                 content: '',
@@ -186,9 +187,9 @@
         deletingBlockId = block.id;
         try {
             const confirmed = await appConfirm({
-                title: 'Delete prompt block?',
-                description: `Delete "${block.name}" from this prompt?`,
-                confirmText: 'Delete',
+                title: $t('workflow.agent.deleteBlockTitle'),
+                description: $t('workflow.agent.deleteBlockBody', { name: block.name }),
+                confirmText: $t('common.actions.delete'),
                 variant: 'destructive'
             });
             if (!confirmed || agent?.id !== agentId) return;
@@ -206,17 +207,19 @@
             const configuration = await importAgentFile();
             if (!configuration || agent?.id !== agentId) return;
             const confirmed = await appConfirm({
-                title: 'Replace agent configuration?',
-                description:
-                    "Importing this file will replace this Agent's settings, prompt, and input slots. Input-slot connections will be disconnected.",
-                confirmText: 'Import'
+                title: $t('workflow.agent.replaceTitle'),
+                description: $t('workflow.agent.replaceBody'),
+                confirmText: $t('common.actions.import')
             });
             if (!confirmed || agent?.id !== agentId) return;
             await onEdit(replaceAgentConfiguration(workflow, agentId, configuration));
         } catch (error) {
             toast.error({
-                title: 'Agent import failed',
-                description: getErrorMessage(error, 'The agent file could not be imported')
+                title: $t('workflow.agent.toast.importFailed'),
+                description: getErrorMessage(
+                    error,
+                    $t('workflow.agent.toast.importFailedDescription')
+                )
             });
         } finally {
             transferringAgent = false;
@@ -228,11 +231,14 @@
         transferringAgent = true;
         try {
             const saved = await exportAgentFile(agent);
-            if (saved) toast.success({ title: 'Agent exported' });
+            if (saved) toast.success({ title: $t('workflow.agent.toast.exported') });
         } catch (error) {
             toast.error({
-                title: 'Agent export failed',
-                description: getErrorMessage(error, 'The agent file could not be exported')
+                title: $t('workflow.agent.toast.exportFailed'),
+                description: getErrorMessage(
+                    error,
+                    $t('workflow.agent.toast.exportFailedDescription')
+                )
             });
         } finally {
             transferringAgent = false;
@@ -255,7 +261,7 @@
                             </div>
                             <OptionSelect
                                 id="workflow-agent"
-                                ariaLabel="Agent"
+                                ariaLabel={$t('workflow.agent.agentAria')}
                                 class="h-8 min-w-0 rounded-md border bg-background px-2.5 text-xs text-foreground shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                 value={agent.id}
                                 options={agents.map((item) => ({
@@ -268,9 +274,11 @@
 
                         <div
                             class="flex h-8 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs"
-                            title="LLM Type"
+                            title={$t('workflow.agent.llmType')}
                         >
-                            <span class="text-[10px] uppercase text-muted-foreground/70">LLM</span>
+                            <span class="text-[10px] uppercase text-muted-foreground/70"
+                                >{$t('workflow.agent.llm')}</span
+                            >
                             <span class="max-w-28 truncate text-foreground">{agent.llmType}</span>
                         </div>
                     </div>
@@ -282,8 +290,8 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     class="size-8"
-                                    title="Agent file actions"
-                                    aria-label="Agent file actions"
+                                    title={$t('workflow.agent.fileActions')}
+                                    aria-label={$t('workflow.agent.fileActions')}
                                     disabled={transferringAgent}
                                 >
                                     <MoreHorizontal class="size-4" />
@@ -292,11 +300,11 @@
                             <DropdownMenu.Content align="end">
                                 <DropdownMenu.Item onclick={importAgent}>
                                     <Upload class="size-4" />
-                                    Import into this agent
+                                    {$t('workflow.agent.importInto')}
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item onclick={exportAgent}>
                                     <Download class="size-4" />
-                                    Export this agent
+                                    {$t('workflow.agent.exportThis')}
                                 </DropdownMenu.Item>
                             </DropdownMenu.Content>
                         </DropdownMenu.Root>
@@ -306,8 +314,10 @@
                             size="icon-sm"
                             class="size-8"
                             onclick={() => (agentSettingsExpanded = !agentSettingsExpanded)}
-                            title={agentSettingsExpanded ? 'Collapse config' : 'Expand config'}
-                            aria-label="Toggle agent settings"
+                            title={agentSettingsExpanded
+                                ? $t('workflow.agent.collapseConfig')
+                                : $t('workflow.agent.expandConfig')}
+                            aria-label={$t('workflow.agent.toggleSettings')}
                         >
                             <SlidersHorizontal class="size-4" />
                         </Button>
@@ -321,7 +331,7 @@
                     >
                         <div class="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                LLM Type
+                                {$t('workflow.agent.llmType')}
                                 <input
                                     class="h-7 rounded-md border bg-background px-2 text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                     value={agent.llmType}
@@ -332,7 +342,7 @@
                                 />
                             </label>
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                Max Context
+                                {$t('workflow.agent.maxContext')}
                                 <input
                                     type="number"
                                     class="h-7 rounded-md border bg-background px-2 text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
@@ -342,7 +352,7 @@
                                 />
                             </label>
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                Max Response
+                                {$t('workflow.agent.maxResponse')}
                                 <input
                                     type="number"
                                     class="h-7 rounded-md border bg-background px-2 text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
@@ -352,7 +362,7 @@
                                 />
                             </label>
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                Lorebook Ratio
+                                {$t('workflow.agent.lorebookRatio')}
                                 <input
                                     type="number"
                                     step="0.05"
@@ -363,7 +373,7 @@
                                 />
                             </label>
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                Memory Ratio
+                                {$t('workflow.agent.memoryRatio')}
                                 <input
                                     type="number"
                                     step="0.05"
@@ -374,7 +384,7 @@
                                 />
                             </label>
                             <label class="flex flex-col gap-1 text-muted-foreground">
-                                Lorebook Scan Depth
+                                {$t('workflow.agent.scanDepth')}
                                 <input
                                     type="number"
                                     class="h-7 rounded-md border bg-background px-2 text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
@@ -391,7 +401,7 @@
                         <!-- Tools Section -->
                         <div class="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
                             <span class="text-xs font-normal text-muted-foreground"
-                                >Agent Tools</span
+                                >{$t('workflow.agent.tools')}</span
                             >
                             <div class="flex flex-wrap gap-x-5 gap-y-2">
                                 {#each agentTools as tool (tool.id)}
@@ -417,14 +427,17 @@
             <!-- 2. Input Slots Section (Unwrapped, clean inline section) -->
             <div class="flex flex-col gap-2.5 px-1 py-1">
                 <div class="flex items-center justify-between">
-                    <span class="text-sm font-semibold text-foreground/90">Input Slots</span>
+                    <span class="text-sm font-semibold text-foreground/90"
+                        >{$t('workflow.agent.inputSlots')}</span
+                    >
                     <Button
                         size="sm"
                         variant="outline"
                         class="h-8 gap-1.5 text-xs font-medium"
                         onclick={addInputSlot}
                     >
-                        <Plus class="size-3.5" /> Add input
+                        <Plus class="size-3.5" />
+                        {$t('workflow.agent.addInput')}
                     </Button>
                 </div>
 
@@ -445,7 +458,9 @@
                                     type="button"
                                     class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                     onclick={() => copyInputSlotMacro(inputId, slotName)}
-                                    title={`Copy {{slot::${slotName}}} macro`}
+                                    title={$t('workflow.agent.copyMacro', {
+                                        macro: `{{slot::${slotName}}}`
+                                    })}
                                 >
                                     {#if copied}
                                         <Check class="size-3 text-emerald-500" />
@@ -457,7 +472,7 @@
                                     type="button"
                                     class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
                                     onclick={() => deleteInputSlot(inputId)}
-                                    title="Delete slot"
+                                    title={$t('workflow.agent.deleteSlot')}
                                 >
                                     <X class="size-3" />
                                 </button>
@@ -465,16 +480,19 @@
                         {/each}
                     </div>
                 {:else}
-                    <EmptyListPlaceholder message="No input slots." />
+                    <EmptyListPlaceholder message={$t('workflow.agent.noSlots')} />
                 {/if}
             </div>
 
             <!-- 3. Prompt Section -->
             <section class="flex min-h-0 flex-1 flex-col gap-3 pt-1">
                 <div class="flex items-center justify-between px-1">
-                    <span class="text-sm font-semibold text-foreground/90">Prompt</span>
+                    <span class="text-sm font-semibold text-foreground/90"
+                        >{$t('workflow.agent.prompt')}</span
+                    >
                     <Button size="sm" class="h-8 gap-1.5 text-xs font-medium" onclick={addBlock}>
-                        <Plus class="size-3.5" /> Add block
+                        <Plus class="size-3.5" />
+                        {$t('workflow.agent.addBlock')}
                     </Button>
                 </div>
 
@@ -501,8 +519,8 @@
                                         class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                         onclick={() => toggleBlock(block.id)}
                                         aria-label={expandedBlocks.has(block.id)
-                                            ? 'Collapse block'
-                                            : 'Expand block'}
+                                            ? $t('workflow.agent.collapseBlock')
+                                            : $t('workflow.agent.expandBlock')}
                                     >
                                         {#if expandedBlocks.has(block.id)}
                                             <ChevronDown class="size-3.5" />
@@ -514,7 +532,7 @@
                                     <DropdownMenu.Root>
                                         <DropdownMenu.Trigger
                                             class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                                            title="Change block type"
+                                            title={$t('workflow.agent.changeBlockType')}
                                         >
                                             {#if block.type === 'message'}
                                                 <MessageSquareText class="size-3.5" />
@@ -531,27 +549,27 @@
                                                 <MessageSquareText
                                                     class="mr-2 size-4 text-violet-500"
                                                 />
-                                                <span>Message Block</span>
+                                                <span>{$t('workflow.agent.blockMessage')}</span>
                                             </DropdownMenu.Item>
                                             <DropdownMenu.Item
                                                 onclick={() => changeBlockType(block.id, 'history')}
                                             >
                                                 <MessagesSquare class="mr-2 size-4 text-sky-500" />
-                                                <span>Chat History</span>
+                                                <span>{$t('workflow.agent.blockHistory')}</span>
                                             </DropdownMenu.Item>
                                             <DropdownMenu.Item
                                                 onclick={() =>
                                                     changeBlockType(block.id, 'lorebook')}
                                             >
                                                 <BookOpen class="mr-2 size-4 text-amber-500" />
-                                                <span>Lorebook</span>
+                                                <span>{$t('workflow.agent.blockLorebook')}</span>
                                             </DropdownMenu.Item>
                                         </DropdownMenu.Content>
                                     </DropdownMenu.Root>
 
                                     <Input
                                         value={block.name}
-                                        aria-label="Block name"
+                                        aria-label={$t('workflow.agent.blockName')}
                                         class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 dark:bg-transparent"
                                         oninput={(e) =>
                                             applyBlockEdit(block.id, {
@@ -567,10 +585,12 @@
                                                 applyBlockEdit(block.id, {
                                                     enabled: !block.enabled
                                                 })}
-                                            title={block.enabled ? 'Disable block' : 'Enable block'}
+                                            title={block.enabled
+                                                ? $t('workflow.agent.disableBlock')
+                                                : $t('workflow.agent.enableBlock')}
                                             aria-label={block.enabled
-                                                ? 'Disable block'
-                                                : 'Enable block'}
+                                                ? $t('workflow.agent.disableBlock')
+                                                : $t('workflow.agent.enableBlock')}
                                         >
                                             {#if block.enabled}
                                                 <Eye class="size-3.5" />
@@ -582,8 +602,8 @@
                                             type="button"
                                             class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
                                             onclick={() => removeBlock(block)}
-                                            title="Delete block"
-                                            aria-label="Delete block"
+                                            title={$t('workflow.agent.deleteBlock')}
+                                            aria-label={$t('workflow.agent.deleteBlock')}
                                         >
                                             <Trash2 class="size-3.5" />
                                         </button>
@@ -595,17 +615,29 @@
                                         {#if block.type === 'message'}
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <div class="flex flex-col gap-1.5">
-                                                    <Label class="text-xs">Role</Label>
+                                                    <Label class="text-xs"
+                                                        >{$t('workflow.agent.role')}</Label
+                                                    >
                                                     <OptionSelect
                                                         id={`workflow-block-${block.id}-role`}
                                                         class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                                         value={block.role ?? 'system'}
                                                         options={[
-                                                            { value: 'system', label: 'System' },
-                                                            { value: 'user', label: 'User' },
+                                                            {
+                                                                value: 'system',
+                                                                label: $t(
+                                                                    'workflow.agent.roleSystem'
+                                                                )
+                                                            },
+                                                            {
+                                                                value: 'user',
+                                                                label: $t('workflow.agent.roleUser')
+                                                            },
                                                             {
                                                                 value: 'assistant',
-                                                                label: 'Assistant'
+                                                                label: $t(
+                                                                    'workflow.agent.roleAssistant'
+                                                                )
                                                             }
                                                         ]}
                                                         onChange={(value) =>
@@ -617,10 +649,14 @@
                                             </div>
 
                                             <div class="flex flex-col gap-1.5">
-                                                <Label class="text-xs">Content</Label>
+                                                <Label class="text-xs"
+                                                    >{$t('workflow.agent.content')}</Label
+                                                >
                                                 <Textarea
                                                     value={block.content ?? ''}
-                                                    placeholder="Write prompt text. Macros are supported."
+                                                    placeholder={$t(
+                                                        'workflow.agent.contentPlaceholder'
+                                                    )}
                                                     rows={6}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
@@ -632,14 +668,14 @@
                                         {:else if block.type === 'history'}
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <WorkflowStringField
-                                                    label="Start"
+                                                    label={$t('workflow.agent.start')}
                                                     value={block.start}
                                                     inputmode="numeric"
                                                     onchange={(value) =>
                                                         applyBlockEdit(block.id, { start: value })}
                                                 />
                                                 <WorkflowStringField
-                                                    label="End"
+                                                    label={$t('workflow.agent.end')}
                                                     value={block.end}
                                                     inputmode="numeric"
                                                     onchange={(value) =>
@@ -647,7 +683,9 @@
                                                 />
                                             </div>
                                             <div class="flex flex-col gap-1.5">
-                                                <Label class="text-xs">History Mode</Label>
+                                                <Label class="text-xs"
+                                                    >{$t('workflow.agent.historyMode')}</Label
+                                                >
                                                 <OptionSelect
                                                     id={`workflow-block-${block.id}-history-mode`}
                                                     class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
@@ -655,13 +693,22 @@
                                                     options={[
                                                         {
                                                             value: 'visible',
-                                                            label: 'Visible parts'
+                                                            label: $t(
+                                                                'workflow.agent.historyVisibleParts'
+                                                            )
                                                         },
                                                         {
                                                             value: 'last_text',
-                                                            label: 'Last text part'
+                                                            label: $t(
+                                                                'workflow.agent.historyLastText'
+                                                            )
                                                         },
-                                                        { value: 'full_trace', label: 'Full trace' }
+                                                        {
+                                                            value: 'full_trace',
+                                                            label: $t(
+                                                                'workflow.agent.historyFullTrace'
+                                                            )
+                                                        }
                                                     ]}
                                                     onChange={(value) =>
                                                         applyBlockEdit(block.id, {
@@ -676,15 +723,18 @@
                                                 <Label
                                                     class="text-xs flex items-center justify-between"
                                                 >
-                                                    <span>Message format</span>
+                                                    <span>{$t('workflow.agent.messageFormat')}</span
+                                                    >
                                                     <span
                                                         class="text-[10px] text-muted-foreground font-normal"
-                                                        >Optional</span
+                                                        >{$t('common.state.optional')}</span
                                                     >
                                                 </Label>
                                                 <Textarea
                                                     value={block.format ?? ''}
-                                                    placeholder="Custom format"
+                                                    placeholder={$t(
+                                                        'workflow.agent.formatPlaceholder'
+                                                    )}
                                                     rows={5}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
@@ -697,7 +747,7 @@
                                         {:else if block.type === 'lorebook'}
                                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 <WorkflowNumberField
-                                                    label="Min Depth"
+                                                    label={$t('workflow.agent.minDepth')}
                                                     value={block.minDepth}
                                                     onchange={(value) =>
                                                         applyBlockEdit(block.id, {
@@ -705,7 +755,7 @@
                                                         })}
                                                 />
                                                 <WorkflowNumberField
-                                                    label="Max Depth"
+                                                    label={$t('workflow.agent.maxDepth')}
                                                     value={block.maxDepth}
                                                     onchange={(value) =>
                                                         applyBlockEdit(block.id, {
@@ -723,21 +773,23 @@
                                                         applyBlockEdit(block.id, {
                                                             reverseOrder: e.currentTarget.checked
                                                         })}
-                                                />Reverse insertion order</label
+                                                />{$t('workflow.agent.reverseInsertion')}</label
                                             >
                                             <div class="flex flex-col gap-1.5">
                                                 <Label
                                                     class="text-xs flex items-center justify-between"
                                                 >
-                                                    <span>Entry format</span>
+                                                    <span>{$t('workflow.agent.entryFormat')}</span>
                                                     <span
                                                         class="text-[10px] text-muted-foreground font-normal"
-                                                        >Optional</span
+                                                        >{$t('common.state.optional')}</span
                                                     >
                                                 </Label>
                                                 <Textarea
                                                     value={block.format ?? ''}
-                                                    placeholder="Custom format"
+                                                    placeholder={$t(
+                                                        'workflow.agent.formatPlaceholder'
+                                                    )}
                                                     rows={5}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
@@ -754,13 +806,13 @@
                         {/snippet}
 
                         {#snippet empty()}
-                            <EmptyListPlaceholder message="No prompt blocks." />
+                            <EmptyListPlaceholder message={$t('workflow.agent.emptyBlocks')} />
                         {/snippet}
                     </SortableList>
                 </div>
             </section>
         {:else}
-            <EmptyListPlaceholder message="This workflow has no Agent node." />
+            <EmptyListPlaceholder message={$t('workflow.agent.empty')} />
         {/if}
     </div>
 </div>

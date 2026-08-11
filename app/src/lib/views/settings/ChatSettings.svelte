@@ -10,7 +10,8 @@
         movePresetItem,
         savePresetCommand,
         updatePresetFolder,
-        updatePreset
+        updatePreset,
+        t
     } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
@@ -23,12 +24,12 @@
     let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
 
-    const tabs: Array<{ id: Tab; label: string }> = [
-        { id: 'workflow', label: 'Workflow' },
-        { id: 'scripts', label: 'Scripts' },
-        { id: 'toggles', label: 'Toggles' },
-        { id: 'presets', label: 'Presets' }
-    ];
+    const tabs = $derived([
+        { id: 'workflow' as const, label: $t('settings.chat.tabs.workflow') },
+        { id: 'scripts' as const, label: $t('settings.chat.tabs.scripts') },
+        { id: 'toggles' as const, label: $t('settings.chat.tabs.toggles') },
+        { id: 'presets' as const, label: $t('settings.chat.tabs.presets') }
+    ]);
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
@@ -50,8 +51,10 @@
     {#if !$activePreset && activeTab !== 'presets'}
         <div class="flex flex-1 items-center justify-center p-12 text-center">
             <div class="flex flex-col gap-4">
-                <p class="text-muted-foreground">No active preset selected.</p>
-                <Button onclick={() => (activeTab = 'presets')}>Go to Presets</Button>
+                <p class="text-muted-foreground">{$t('settings.chat.noPreset')}</p>
+                <Button onclick={() => (activeTab = 'presets')}
+                    >{$t('settings.chat.goToPresets')}</Button
+                >
             </div>
         </div>
     {:else if activeTab === 'presets'}
@@ -66,10 +69,10 @@
                 <section class="space-y-3">
                     <div>
                         <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                            Chat workflow
+                            {$t('settings.chat.workflowTitle')}
                         </h3>
                         <p class="text-sm text-muted-foreground">
-                            Configure the workflow used to generate chat responses.
+                            {$t('settings.chat.workflowDescription')}
                         </p>
                     </div>
                     <WorkflowSummaryCard
@@ -78,12 +81,14 @@
                         onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
                         onPatch={(patch) =>
                             updatePreset($activePreset!.id, { chatWorkflow: patch })}
-                        workflowLabel="Chat Workflow"
+                        workflowLabel={$t('settings.chat.workflowLabel')}
                     />
                 </section>
                 <div class="border-t border-border"></div>
                 <section>
-                    <h3 class="text-lg font-semibold tracking-tight text-foreground">Commands</h3>
+                    <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                        {$t('settings.chat.commandsTitle')}
+                    </h3>
                     <CommandsSection
                         panel={$activePreset!.commands}
                         onSave={(command) => savePresetCommand($activePreset!.id, command)}
@@ -129,7 +134,7 @@
     <WorkflowEditorModal
         bind:open={chatWorkflowEditorOpen}
         workflow={$activePreset.chatWorkflow}
-        title="Chat Workflow"
+        title={$t('settings.chat.workflowTitle')}
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
     />
 {/if}

@@ -7,7 +7,7 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import SuggestedInput from '$lib/components/SuggestedInput.svelte';
-    import { appSettings, updateSettings } from '$lib/stores';
+    import { appSettings, updateSettings, t } from '$lib/stores';
     import type { AppSettings } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import {
@@ -104,36 +104,105 @@
         path: [ProviderSettingsKey, string] | [ProviderSettingsKey, string, string];
     }
 
-    const FEATURES: Array<{ id: Feature; label: string; description: string }> = [
-        {
-            id: 'imagegen',
-            label: 'Image Generation',
-            description: 'Generate and edit images in workflows.'
-        },
-        { id: 'tts', label: 'TTS', description: 'Turn text into spoken audio.' },
-        { id: 'stt', label: 'STT', description: 'Transcribe spoken audio into text.' },
-        {
-            id: 'embedding',
-            label: 'Embedding',
-            description: 'Create vector representations for semantic retrieval.'
-        },
-        {
-            id: 'reranker',
-            label: 'Reranker',
-            description: 'Reorder retrieved results by relevance.'
-        }
-    ];
-
     const SERVICE_GROUPS: Array<{
         id: ServiceGroup;
-        label: string;
         features: readonly Feature[];
         workflow?: WorkflowFeature;
     }> = [
-        { id: 'image', label: 'Image', features: ['imagegen'], workflow: 'imagegen' },
-        { id: 'audio', label: 'Audio', features: ['tts', 'stt'], workflow: 'tts' },
-        { id: 'retrieval', label: 'Retrieval', features: ['embedding', 'reranker'] }
+        { id: 'image', features: ['imagegen'], workflow: 'imagegen' },
+        { id: 'audio', features: ['tts', 'stt'], workflow: 'tts' },
+        { id: 'retrieval', features: ['embedding', 'reranker'] }
     ];
+
+    function featureLabel(feature: Feature): string {
+        switch (feature) {
+            case 'imagegen':
+                return $t('settings.services.imageGeneration');
+            case 'tts':
+                return $t('settings.services.tts');
+            case 'stt':
+                return $t('settings.services.stt');
+            case 'embedding':
+                return $t('settings.services.embedding');
+            case 'reranker':
+                return $t('settings.services.reranker');
+        }
+    }
+
+    function featureDescription(feature: Feature): string {
+        switch (feature) {
+            case 'imagegen':
+                return $t('settings.services.imageGenerationDescription');
+            case 'tts':
+                return $t('settings.services.ttsDescription');
+            case 'stt':
+                return $t('settings.services.sttDescription');
+            case 'embedding':
+                return $t('settings.services.embeddingDescription');
+            case 'reranker':
+                return $t('settings.services.rerankerDescription');
+        }
+    }
+
+    function groupLabel(group: ServiceGroup): string {
+        switch (group) {
+            case 'image':
+                return $t('settings.services.groupImage');
+            case 'audio':
+                return $t('settings.services.groupAudio');
+            case 'retrieval':
+                return $t('settings.services.groupRetrieval');
+        }
+    }
+
+    function translateFieldLabel(label: string): string {
+        switch (label) {
+            case 'Model':
+                return $t('common.label.model');
+            case 'API Key':
+                return $t('settings.services.apiKey');
+            case 'Width':
+                return $t('settings.services.field.width');
+            case 'Height':
+                return $t('settings.services.field.height');
+            case 'Sampler':
+                return $t('settings.services.field.sampler');
+            case 'Noise Schedule':
+                return $t('settings.services.field.noiseSchedule');
+            case 'Steps':
+                return $t('settings.services.field.steps');
+            case 'Prompt Guidance':
+                return $t('settings.services.field.promptGuidance');
+            case 'CFG Rescale':
+                return $t('settings.services.field.cfgRescale');
+            case 'Vibe Information Extracted':
+                return $t('settings.services.field.vibeExtracted');
+            case 'Vibe Strength':
+                return $t('settings.services.field.vibeStrength');
+            case 'Reference Strength':
+                return $t('settings.services.field.referenceStrength');
+            case 'Reference Fidelity':
+                return $t('settings.services.field.referenceFidelity');
+            case 'Server URL':
+                return $t('settings.services.field.serverUrl');
+            case 'API Workflow':
+                return $t('settings.services.field.apiWorkflow');
+            case 'Timeout (seconds)':
+                return $t('settings.services.field.timeoutSeconds');
+            case 'Voice':
+                return $t('settings.services.field.voice');
+            case 'Voice ID':
+                return $t('settings.services.field.voiceId');
+            case 'Version':
+                return $t('settings.services.field.vVersion');
+            case 'Language Code':
+                return $t('settings.services.field.languageCode');
+            case 'Base URL':
+                return $t('settings.services.field.baseUrl');
+            default:
+                return label;
+        }
+    }
 
     const IMAGEGEN_PROVIDERS: ImageGenProvider[] = [
         'openai',
@@ -225,7 +294,7 @@
                 })
                 .catch((error: unknown) => {
                     toast.error({
-                        title: 'OpenRouter model list failed',
+                        title: $t('settings.services.toast.openRouterFailed'),
                         description: getErrorMessage(error)
                     });
                 });
@@ -323,9 +392,9 @@
                 : '';
         return {
             id: `${provider}-api-key`,
-            label: 'API Key',
+            label: $t('settings.services.apiKey'),
             value,
-            placeholder: `Enter ${provider} API key`,
+            placeholder: $t('settings.services.apiKeyPlaceholder', { provider }),
             secret: true,
             path: [provider, 'apiKey']
         };
@@ -365,9 +434,12 @@
             key === 'modelId' ? getRecommendedModelIds(provider, section as Feature) : undefined;
         return {
             id: `${provider}-${section}-${key}`,
-            label,
+            label: translateFieldLabel(label),
             value,
-            placeholder,
+            placeholder:
+                placeholder === 'Model ID'
+                    ? $t('settings.services.modelIdPlaceholder')
+                    : placeholder,
             suggestions,
             path: [provider, section, key]
         };
@@ -555,7 +627,7 @@
                                     settings.comfyui.imagegen.baseUrl,
                                     'http://127.0.0.1:8188'
                                 ),
-                                help: 'The browser build requires ComfyUI to allow CORS. The desktop build connects directly.'
+                                help: $t('settings.services.help.comfyCors')
                             },
                             {
                                 ...configField(
@@ -564,10 +636,10 @@
                                     'workflow',
                                     'API Workflow',
                                     settings.comfyui.imagegen.workflow,
-                                    'Paste a ComfyUI workflow exported with Save (API Format)'
+                                    $t('settings.services.placeholder.comfyApiWorkflow')
                                 ),
                                 multiline: true,
-                                help: 'Use {{prompt}}, {{negative_prompt}}, {{reference_image}}, {{reference_image_2}}, {{style_image}}, and {{style_image_2}} in string inputs.'
+                                help: $t('settings.services.help.comfyWorkflow')
                             },
                             numberConfigField(
                                 'comfyui',
@@ -907,9 +979,9 @@
                         return [
                             {
                                 id: 'custom-embedding-api-key',
-                                label: 'API Key',
+                                label: $t('settings.services.apiKey'),
                                 value: settings.custom.embedding.apiKey ?? '',
-                                placeholder: 'Optional API key',
+                                placeholder: $t('settings.services.placeholder.optionalApiKey'),
                                 secret: true,
                                 path: ['custom', 'embedding', 'apiKey']
                             },
@@ -1011,7 +1083,7 @@
             await updateSettings(changes);
         } catch (error) {
             toast.error({
-                title: 'Setting update failed',
+                title: $t('settings.updateFailed'),
                 description: getErrorMessage(error)
             });
         } finally {
@@ -1068,7 +1140,6 @@
 </script>
 
 {#snippet featureSettings(selectedFeature: Feature)}
-    {@const featureConfig = FEATURES.find((item) => item.id === selectedFeature) ?? FEATURES[0]}
     {@const selectedProvider = getActiveProvider($appSettings, selectedFeature)}
     {@const selectedFields = getSettingsFields($appSettings, selectedFeature)}
     {@const selectedModelField = selectedFields.find((field) => field.path[2] === 'modelId')}
@@ -1078,14 +1149,16 @@
     <section class="space-y-4">
         <div>
             <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                {featureConfig.label}
+                {featureLabel(selectedFeature)}
             </h3>
-            <p class="text-sm text-muted-foreground">{featureConfig.description}</p>
+            <p class="text-sm text-muted-foreground">{featureDescription(selectedFeature)}</p>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-busy={saving}>
             <div class="flex flex-col gap-1.5 {hasSelectedModel ? '' : 'sm:col-span-2'}">
-                <Label for={`${selectedFeature}-service-provider`}>Provider</Label>
+                <Label for={`${selectedFeature}-service-provider`}
+                    >{$t('common.label.provider')}</Label
+                >
                 <OptionSelect
                     id={`${selectedFeature}-service-provider`}
                     value={selectedProvider}
@@ -1101,7 +1174,8 @@
 
             {#if selectedProvider === 'plugin'}
                 <div class="flex flex-col gap-1.5">
-                    <Label for={`${selectedFeature}-plugin-model`}>Model</Label>
+                    <Label for={`${selectedFeature}-plugin-model`}>{$t('common.label.model')}</Label
+                    >
                     <OptionSelect
                         id={`${selectedFeature}-plugin-model`}
                         value={$appSettings?.plugin[selectedFeature].modelId ?? ''}
@@ -1162,7 +1236,9 @@
                 >
                     <Label for={fieldId}>
                         {field.secret
-                            ? `${getProviderName(selectedFeature, selectedProvider)} API Key`
+                            ? $t('settings.services.apiKeySuffix', {
+                                  provider: getProviderName(selectedFeature, selectedProvider)
+                              })
                             : field.label}
                     </Label>
                     {#if field.secret}
@@ -1171,7 +1247,7 @@
                                 id={fieldId}
                                 type={showSecrets ? 'text' : 'password'}
                                 value={field.value}
-                                placeholder="Enter API Key"
+                                placeholder={$t('settings.services.enterApiKey')}
                                 disabled={saving}
                                 class="font-mono text-sm"
                                 autocomplete="off"
@@ -1182,7 +1258,9 @@
                                 variant="ghost"
                                 size="sm"
                                 onclick={() => (showSecrets = !showSecrets)}
-                                aria-label={showSecrets ? 'Hide API key' : 'Show API key'}
+                                aria-label={showSecrets
+                                    ? $t('settings.services.hideKey')
+                                    : $t('settings.services.showKey')}
                             >
                                 {#if showSecrets}
                                     <EyeOff class="size-4" />
@@ -1244,7 +1322,7 @@
                     : 'text-muted-foreground hover:text-foreground'}"
                 onclick={() => (activeGroup = item.id)}
             >
-                {item.label}
+                {groupLabel(item.id)}
             </button>
         {/each}
     </div>
@@ -1270,13 +1348,13 @@
                         <div>
                             <h3 class="text-lg font-semibold tracking-tight text-foreground">
                                 {workflowFeature === 'imagegen'
-                                    ? 'Image Generation Workflow'
-                                    : 'TTS Workflow'}
+                                    ? $t('settings.services.workflow.imageTitle')
+                                    : $t('settings.services.workflow.ttsTitle')}
                             </h3>
                             <p class="text-sm text-muted-foreground">
                                 {workflowFeature === 'imagegen'
-                                    ? 'Customize the node pipeline used for generating images.'
-                                    : 'Customize the node pipeline used for speech synthesis.'}
+                                    ? $t('settings.services.workflow.imageDescription')
+                                    : $t('settings.services.workflow.ttsDescription')}
                             </p>
                         </div>
 
@@ -1286,8 +1364,8 @@
                             onEditWorkflow={() => editWorkflow(workflowFeature)}
                             onPatch={(patch) => updateWorkflow(workflowFeature, patch)}
                             workflowLabel={workflowFeature === 'imagegen'
-                                ? 'Image Generation Workflow'
-                                : 'TTS Workflow'}
+                                ? $t('settings.services.workflow.imageTitle')
+                                : $t('settings.services.workflow.ttsTitle')}
                         />
                     </section>
                 {/if}
@@ -1300,7 +1378,9 @@
     <WorkflowEditorModal
         bind:open={workflowEditorOpen}
         workflow={editedWorkflow}
-        title={workflowEditorFeature === 'imagegen' ? 'Image Generation Workflow' : 'TTS Workflow'}
+        title={workflowEditorFeature === 'imagegen'
+            ? $t('settings.services.workflow.imageTitle')
+            : $t('settings.services.workflow.ttsTitle')}
         onPatch={(patch) => updateWorkflow(workflowEditorFeature, patch)}
     />
 {/if}

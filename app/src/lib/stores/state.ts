@@ -48,9 +48,11 @@ import type { AssetReadLocator } from '$lib/services/asset';
 import type { DataScopeType, TableName } from '$lib/adapters/db';
 import type { ConnectionChangeProgress } from '$lib/services';
 import type { ThemePreference } from './theme';
+import { createTranslator, isUiLocale, type UiLocale } from '$lib/language';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
+export const deviceLocale = writable<UiLocale>('en');
 export const themePreference = writable<ThemePreference>('system');
 export const activeUser = writable<User | null>(null);
 export const localUsers = writable<User[]>([]);
@@ -63,6 +65,17 @@ export const multiSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const serverTransitionLocked = writable(false);
 export const serverTransitionProgress = writable<ConnectionChangeProgress | null>(null);
+
+export const appLocale = derived([appSettings, deviceLocale], ([settings, fallback]) =>
+    isUiLocale(settings?.ui.locale) ? settings.ui.locale : fallback
+);
+const pseudoLocaleEnabled =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('pseudoLocale');
+export const t = derived(appLocale, (locale) =>
+    createTranslator(locale, { pseudo: pseudoLocaleEnabled })
+);
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
