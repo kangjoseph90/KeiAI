@@ -193,5 +193,3 @@ export class WebStorageAdapter implements IStorageAdapter {
         return this.fallback.getSize(path);
     }
 }
-
-export const webStorage = new WebStorageAdapter();

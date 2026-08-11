@@ -416,5 +416,3 @@ export class TauriMultiAdapter implements IMultiAdapter {
         }
     }
 }
-
-export const tauriMulti = new TauriMultiAdapter();

@@ -572,5 +572,3 @@ function scrubSecureSnapshot(snapshot: SecureKeySnapshot | null): void {
     snapshot?.identityPublic?.fill(0);
     snapshot?.identityPrivate?.fill(0);
 }
-
-export const tauriUser = new TauriUserAdapter();

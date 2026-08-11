@@ -30,5 +30,3 @@ export class WebNotificationAdapter implements INotificationAdapter {
         return result === 'granted';
     }
 }
-
-export const webNotification = new WebNotificationAdapter();

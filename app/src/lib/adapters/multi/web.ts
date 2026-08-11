@@ -221,5 +221,3 @@ export class WebMultiAdapter implements IMultiAdapter {
         }
     }
 }
-
-export const webMulti = new WebMultiAdapter();

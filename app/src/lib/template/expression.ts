@@ -130,15 +130,6 @@ export async function evaluateExpression(
     return calculateRPNAsync(toRPN(tokenizeTemplate(template)), resolveNode);
 }
 
-/** Evaluate a standalone expression string. */
-export function evaluate(text: string): ExprValue {
-    return calculateRPNSync(toRPN(tokenizeText(text)));
-}
-
-export function calcString(text: string): ExprValue {
-    return evaluate(text);
-}
-
 export function stringifyValue(value: ExprValue): string {
     if (value === null) return 'null';
     if (typeof value === 'boolean') return value ? '1' : '0';
@@ -173,10 +164,6 @@ function tokenizeTemplate(template: Template): Token[] {
     }
 
     return tokens;
-}
-
-function tokenizeText(text: string): Token[] {
-    return tokenizeTextPart(text, true).tokens;
 }
 
 function tokenizeTextPart(
@@ -409,24 +396,6 @@ async function calculateRPNAsync(tokens: Token[], resolveNode: ResolveNode): Pro
         if (token.type === 'node') {
             stack.push(await resolveNode(token.node));
             continue;
-        }
-
-        applyOperator(token, stack);
-    }
-
-    return stack.pop() ?? 0;
-}
-
-function calculateRPNSync(tokens: Token[]): ExprValue {
-    const stack: ExprValue[] = [];
-    for (const token of tokens) {
-        if (token.type === 'literal') {
-            stack.push(token.value);
-            continue;
-        }
-
-        if (token.type === 'node') {
-            throw new Error('Unexpected template node in standalone expression');
         }
 
         applyOperator(token, stack);

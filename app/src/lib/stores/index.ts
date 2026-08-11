@@ -43,13 +43,9 @@ export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
 export const activeModule = readonly(StoreState.activeModule);
-export const activeModuleId = readonly(StoreState.activeModuleId);
 export const activeCharacter = readonly(StoreState.activeCharacter);
-export const activeCharacterId = readonly(StoreState.activeCharacterId);
 export const activePersona = readonly(StoreState.activePersona);
-export const activePersonaId = readonly(StoreState.activePersonaId);
 export const activeRoom = readonly(StoreState.activeRoom);
-export const activeRoomId = readonly(StoreState.activeRoomId);
 export const isMultiRoom = readonly(StoreState.isMultiRoom);
 export const roomCharacters = readonly(StoreState.roomCharacters);
 export const multiRoomCharacters = readonly(StoreState.multiRoomCharacters);
@@ -59,7 +55,6 @@ export const activeChat = readonly(StoreState.activeChat);
 export const activeChatId = readonly(StoreState.activeChatId);
 export const chatSelections = readonly(StoreState.chatSelections);
 export const chatPersonas = readonly(StoreState.chatPersonas);
-export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
 export const commandTasks = readonly(StoreState.commandTasks);
 export const translationTasks = readonly(StoreState.translationTasks);
@@ -78,19 +73,12 @@ export {
     appLocale,
     t,
     activePreset,
-    hasActiveModule,
-    hasActiveRoom,
-    hasActiveCharacter,
-    hasActivePersona,
-    hasActiveChat,
     isChatRunning,
     hasActiveRecording,
     displayMessages,
     isLoggedIn,
-    userEmail,
     userId,
-    username,
-    isCustomServer
+    username
 } from './state';
 
 export type {

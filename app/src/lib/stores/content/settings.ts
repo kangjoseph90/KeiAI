@@ -69,10 +69,6 @@ export async function saveGlobalFile(item: FileItem): Promise<void> {
     await updateSettings({ files: { refs: { [item.id]: item } } });
 }
 
-export async function deleteGlobalFile(fileId: string): Promise<void> {
-    await updateSettings({ files: { refs: { [fileId]: undefined } } });
-}
-
 export async function createGlobalFolder(
     folderType: GlobalFolderType,
     name: string,

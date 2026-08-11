@@ -177,18 +177,6 @@ export async function updateRoom(roomId: string, changes: DeepPartial<RoomFields
     }
 }
 
-export async function updateRoomContent(
-    roomId: string,
-    changes: DeepPartial<RoomContent>
-): Promise<void> {
-    const updated = await RoomService.update(roomId, changes);
-    if (multiRooms.get(roomId) || (get(isMultiRoom) && get(activeRoomId) === roomId)) {
-        multiRooms.set(roomId, updated);
-    } else {
-        rooms.set(roomId, updated);
-    }
-}
-
 export async function deleteRoom(roomId: string): Promise<void> {
     if (multiRooms.get(roomId)) {
         throw new AppError('INVALID_INPUT', `Cannot delete multi room with deleteRoom: ${roomId}`);
@@ -261,10 +249,6 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
 
 export async function saveRoomFile(roomId: string, item: FileItem): Promise<void> {
     await updateRoom(roomId, { files: { refs: { [item.id]: item } } });
-}
-
-export async function deleteRoomFile(roomId: string, fileId: string): Promise<void> {
-    await updateRoom(roomId, { files: { refs: { [fileId]: undefined } } });
 }
 
 export type RoomFolderType = 'chats' | 'characters' | 'files';

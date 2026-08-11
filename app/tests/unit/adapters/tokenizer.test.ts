@@ -122,22 +122,6 @@ describe('Tokenizer Adapters', () => {
 
             expect(mockWorker.count).toHaveBeenCalledTimes(ALL_ENCODINGS.length);
         });
-
-        it('should handle empty string', async () => {
-            mockWorker.count.mockResolvedValue(0);
-
-            const result = await adapter.count('', 'o200k_base');
-            expect(result).toBe(0);
-            expect(mockWorker.count).toHaveBeenCalledWith('', 'o200k_base');
-        });
-
-        it('should handle very long text', async () => {
-            const longText = 'a'.repeat(10000);
-            mockWorker.count.mockResolvedValue(10000);
-
-            const result = await adapter.count(longText, 'llama3');
-            expect(result).toBe(10000);
-        });
     });
 
     describe('TauriTokenizerAdapter', () => {

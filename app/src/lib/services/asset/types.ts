@@ -17,15 +17,6 @@ export type AssetReadLocator = AssetLocator & {
     height?: number;
 };
 
-// Compression Result
-export interface CompressAndHashResult {
-    blob: Blob;
-    hash: string;
-    encKey: string;
-    width: number;
-    height: number;
-}
-
 // Constants
 const MEBIBYTE = 1024 * 1024;
 

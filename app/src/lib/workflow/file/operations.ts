@@ -53,16 +53,6 @@ export async function writeWorkflowFile(
     return { created: !existing, file };
 }
 
-export async function workflowFileExists(
-    namespace: FileNamespace,
-    path: string,
-    ctx?: RuntimeContext
-): Promise<boolean> {
-    const normalizedPath = normalizeWorkflowFilePath(path);
-    const target = await resolveFileNamespace(namespace, ctx);
-    return listItems(target.files).some((item) => item.path === normalizedPath);
-}
-
 export function normalizeWorkflowFilePath(path: string): string {
     const normalized = path.trim();
     if (!normalized) throw new AppError('INVALID_INPUT', 'File path is required');

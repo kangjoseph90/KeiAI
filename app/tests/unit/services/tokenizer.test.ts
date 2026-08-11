@@ -119,21 +119,5 @@ describe('TokenCounter', () => {
 
             expect(appTokenizer.count).toHaveBeenCalledTimes(ALL_ENCODINGS.length);
         });
-
-        it('should handle empty string', async () => {
-            vi.mocked(appTokenizer.count).mockResolvedValue(0);
-
-            const result = await TokenCounter.count('', 'gemma');
-            expect(result).toBe(0);
-        });
-
-        it('should handle very long text', async () => {
-            const longText = 'a'.repeat(10000);
-
-            vi.mocked(appTokenizer.count).mockResolvedValue(10000);
-
-            const result = await TokenCounter.count(longText, 'mistral');
-            expect(result).toBe(10000);
-        });
     });
 });

@@ -26,9 +26,6 @@ export const RECOVERY_CODE_LENGTH = 24;
 /** Recovery code front half length (encryption portion Z) */
 export const RECOVERY_FRONT_LENGTH = 12;
 
-/** Recovery code back half length (auth token portion) */
-export const RECOVERY_BACK_LENGTH = 12;
-
 /** RSA modulus length for identity key pairs used to wrap room keys */
 export const IDENTITY_RSA_MODULUS_BITS = 4096;
 

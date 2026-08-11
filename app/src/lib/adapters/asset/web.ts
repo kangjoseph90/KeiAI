@@ -209,5 +209,3 @@ export class WebAssetAdapter implements IAssetAdapter {
         return assetDB.transaction('rw', assetDB.assetRegistry, callback);
     }
 }
-
-export const webAsset = new WebAssetAdapter();

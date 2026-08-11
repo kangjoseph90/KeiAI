@@ -13,7 +13,6 @@ import {
     importCharacterPackage as importCharacterPackagePorter,
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
-import type { DataScopeType } from '$lib/adapters/db';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -31,12 +30,6 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import type { AssetFields } from '$lib/types/asset';
 
 let characterSelectionVersion = 0;
-
-export interface ImportCharacterPackageOptions {
-    scopeType?: DataScopeType;
-    allowLightAssets?: boolean;
-    select?: boolean;
-}
 
 /**
  * Returns character from store cache first, then from DB if needed.

@@ -351,10 +351,6 @@ export async function saveChatFile(chatId: string, item: FileItem): Promise<void
     await updateChat(chatId, { files: { refs: { [item.id]: item } } });
 }
 
-export async function deleteChatFile(chatId: string, fileId: string): Promise<void> {
-    await updateChat(chatId, { files: { refs: { [fileId]: undefined } } });
-}
-
 // ─── Chat Persona Ref CRUD ─────────────────────────────────────
 
 export async function addChatPersona(chatId: string, personaId: string): Promise<void> {

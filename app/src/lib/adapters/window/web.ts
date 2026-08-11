@@ -39,5 +39,3 @@ export class WebWindowAdapter implements IWindowAdapter {
         logger.warn('setAlwaysOnTop is not supported on the web.');
     }
 }
-
-export const webWindow = new WebWindowAdapter();

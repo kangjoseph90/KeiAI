@@ -331,5 +331,3 @@ export class TauriAssetAdapter implements IAssetAdapter {
         }
     }
 }
-
-export const tauriAsset = new TauriAssetAdapter();

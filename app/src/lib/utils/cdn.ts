@@ -31,19 +31,3 @@ export async function cdnFetch(path: string): Promise<ArrayBuffer> {
 
     return await response.arrayBuffer();
 }
-
-/**
- * Manually evict a specific resource from the cache.
- */
-export async function cdnEvict(path: string): Promise<boolean> {
-    const url = buildUrl(KEI_CDN_URL, path);
-    const cache = await caches.open(CACHE_NAME);
-    return await cache.delete(url);
-}
-
-/**
- * Completely clear the CDN cache.
- */
-export async function cdnClear(): Promise<boolean> {
-    return await caches.delete(CACHE_NAME);
-}

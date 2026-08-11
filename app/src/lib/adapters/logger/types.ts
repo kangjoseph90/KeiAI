@@ -7,8 +7,6 @@ export interface Logger {
     error(...args: unknown[]): void;
 }
 
-export type LoggerFactory = (namespace?: string) => Logger;
-
 export interface ILoggerAdapter {
     createLogger(namespace?: string): Logger;
 }

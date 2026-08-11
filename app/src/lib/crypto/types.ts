@@ -8,24 +8,6 @@
 /** Convenience alias */
 export type Bytes = Uint8Array<ArrayBuffer>;
 
-/** Data sent to server during registration */
-export interface RegistrationPayload {
-    salt: Bytes;
-    loginKey: Bytes; // X — server stores this for auth
-    encryptedMasterKey: Bytes; // M(Y) — master key encrypted with Y
-    encryptedMasterKeyIV: Bytes; // IV used for M(Y)
-    encryptedRecoveryMasterKey: Bytes; // M(Z) — master key encrypted with recovery key front half
-    encryptedRecoveryMasterKeyIV: Bytes; // IV used for M(Z)
-    recoveryAuthTokenHash: Bytes; // SHA-256 hash of recovery key back half
-}
-
-/** Data returned from server during login */
-export interface LoginBundle {
-    salt: Bytes;
-    encryptedMasterKey: Bytes; // M(Y)
-    encryptedMasterKeyIV: Bytes;
-}
-
 /** Data returned from server during recovery */
 export interface RecoveryBundle {
     userId: string;
@@ -49,20 +31,8 @@ export interface RecoveryCodeParts {
     backHalf: string; // last 12 chars — hashed for server auth
 }
 
-/** Result of the account linking (registration) flow */
-export interface LinkAccountResult {
-    payload: RegistrationPayload;
-    recoveryCode: string; // 24-char code, user must save offline
-}
-
 /** KDF output: login key X and encryption key Y */
 export interface DerivedKeys {
     loginKey: Bytes; // X (first 256 bits)
     encryptionKey: Bytes; // Y (last 256 bits)
-}
-
-/** User identity key pair for asymmetric encryption (Room Key exchange in multi-room) */
-export interface IdentityKeyPair {
-    publicKey: CryptoKey; // RSA-OAEP public key (extractable, stored as JWK on server)
-    privateKey: CryptoKey; // RSA-OAEP private key (extractable in the local identity model)
 }

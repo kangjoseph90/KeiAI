@@ -82,13 +82,8 @@ export const isLoggedIn = derived(
     [activeUser, pbConnected],
     ([user, connected]) => Boolean(user?.username) && connected
 );
-export const userEmail = derived(activeUser, (u) => u?.email ?? null);
 export const username = derived(activeUser, (u) => u?.username ?? null);
 export const userId = derived(activeUser, (u) => u?.id ?? null);
-export const isCustomServer = derived(
-    activeUser,
-    (user) => user?.connections.server.mode === 'custom'
-);
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = new EntityStore<Character>();
@@ -116,8 +111,6 @@ export const activeRoom = derived(
     [activeRoomId, rooms, multiRooms, isMultiRoom],
     ([id, , , multi]) => (id ? ((multi ? multiRooms.get(id) : rooms.get(id)) ?? null) : null)
 );
-export const hasActiveRoom = derived(activeRoomId, (id) => !!id);
-
 export const multiRoomCharacters = new EntityStore<Character>();
 export const multiRoomPersonas = new EntityStore<Persona>();
 
@@ -144,8 +137,6 @@ export const activeChatId = writable<string | null>(null);
 export const activeChat = derived([activeChatId, roomChats], ([id]) =>
     id ? (roomChats.get(id) ?? null) : null
 );
-export const hasActiveChat = derived(activeChatId, (id) => !!id);
-
 export const chatSelections = writable<{
     characterId?: string;
     personaId?: string;
@@ -179,22 +170,16 @@ export const activeCharacter = derived(
     [activeCharacterId, characters, multiRoomCharacters],
     ([id]) => (id ? (characters.get(id) ?? multiRoomCharacters.get(id) ?? null) : null)
 );
-export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
-
 // ─── Persona Studio Context─────────────────────────────────────────
 export const activePersonaId = writable<string | null>(null);
 export const activePersona = derived([activePersonaId, personas, multiRoomPersonas], ([id]) =>
     id ? (personas.get(id) ?? multiRoomPersonas.get(id) ?? null) : null
 );
-export const hasActivePersona = derived(activePersonaId, (id) => !!id);
-
 // ─── Module Editing Context ──────────────────────────────────────────
 export const activeModuleId = writable<string | null>(null);
 export const activeModule = derived([activeModuleId, modules], ([id]) =>
     id ? (modules.get(id) ?? null) : null
 );
-export const hasActiveModule = derived(activeModuleId, (id) => !!id);
-
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**
  * chatTasks: keyed by chatId.

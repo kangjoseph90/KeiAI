@@ -69,18 +69,6 @@ export const WORKFLOW_NODE_CATEGORY_ORDER: WorkflowNodeCategory[] = [
     'result'
 ];
 
-export const WORKFLOW_NODE_CATEGORY_LABELS = {
-    agent: 'Agent',
-    history: 'History',
-    string: 'String',
-    number: 'Number',
-    boolean: 'Boolean',
-    variable: 'Variable',
-    flow: 'Flow',
-    file: 'File',
-    result: 'Result'
-} satisfies Record<WorkflowNodeCategory, string>;
-
 export interface WorkflowPortDefinition {
     name: string;
     type: WorkflowPortType;
@@ -103,7 +91,7 @@ const RESULT_STRING_OUTPUT = { 0: { name: 'result', type: 'string' } } as const;
 const RESULT_BOOLEAN_OUTPUT = { 0: { name: 'result', type: 'boolean' } } as const;
 const STREAM_INPUT = { name: 'Stream', type: 'boolean', required: false } as const;
 
-export const STRING_NODE_DEFINITION: WorkflowNodeDefinition<StringNode> = {
+const STRING_NODE_DEFINITION: WorkflowNodeDefinition<StringNode> = {
     class: 'String',
     label: 'String',
     category: 'string',
@@ -120,7 +108,7 @@ export const STRING_NODE_DEFINITION: WorkflowNodeDefinition<StringNode> = {
     })
 };
 
-export const NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<NumberNode> = {
+const NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<NumberNode> = {
     class: 'Number',
     label: 'Number',
     category: 'number',
@@ -137,7 +125,7 @@ export const NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<NumberNode> = {
     })
 };
 
-export const BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNode> = {
+const BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNode> = {
     class: 'Boolean',
     label: 'Boolean',
     category: 'boolean',
@@ -154,7 +142,7 @@ export const BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNode> = {
     })
 };
 
-export const TEMPLATE_NODE_DEFINITION: WorkflowNodeDefinition<TemplateNode> = {
+const TEMPLATE_NODE_DEFINITION: WorkflowNodeDefinition<TemplateNode> = {
     class: 'Template',
     label: 'Template',
     category: 'string',
@@ -173,7 +161,7 @@ export const TEMPLATE_NODE_DEFINITION: WorkflowNodeDefinition<TemplateNode> = {
     })
 };
 
-export const GET_TOGGLE_NODE_DEFINITION: WorkflowNodeDefinition<GetToggleNode> = {
+const GET_TOGGLE_NODE_DEFINITION: WorkflowNodeDefinition<GetToggleNode> = {
     class: 'GetToggle',
     label: 'Get Toggle',
     category: 'variable',
@@ -189,7 +177,7 @@ export const GET_TOGGLE_NODE_DEFINITION: WorkflowNodeDefinition<GetToggleNode> =
     })
 };
 
-export const GET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<GetChatVarNode> = {
+const GET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<GetChatVarNode> = {
     class: 'GetChatVar',
     label: 'Get Chat Var',
     category: 'variable',
@@ -205,7 +193,7 @@ export const GET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<GetChatVarNode
     })
 };
 
-export const SET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetChatVarNode> = {
+const SET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetChatVarNode> = {
     class: 'SetChatVar',
     label: 'Set Chat Var',
     category: 'variable',
@@ -225,7 +213,7 @@ export const SET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetChatVarNode
     })
 };
 
-export const TO_BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<ToBooleanNode> = {
+const TO_BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<ToBooleanNode> = {
     class: 'ToBoolean',
     label: 'To Boolean',
     category: 'boolean',
@@ -244,7 +232,7 @@ export const TO_BOOLEAN_NODE_DEFINITION: WorkflowNodeDefinition<ToBooleanNode> =
     })
 };
 
-export const TO_NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<ToNumberNode> = {
+const TO_NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<ToNumberNode> = {
     class: 'ToNumber',
     label: 'To Number',
     category: 'number',
@@ -263,7 +251,7 @@ export const TO_NUMBER_NODE_DEFINITION: WorkflowNodeDefinition<ToNumberNode> = {
     })
 };
 
-export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
+const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
     class: 'Catch',
     label: 'Catch',
     category: 'flow',
@@ -285,7 +273,7 @@ export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
     })
 };
 
-export const THROWIF_NODE_DEFINITION: WorkflowNodeDefinition<ThrowIfNode> = {
+const THROWIF_NODE_DEFINITION: WorkflowNodeDefinition<ThrowIfNode> = {
     class: 'ThrowIf',
     label: 'Throw If',
     category: 'flow',
@@ -304,7 +292,7 @@ export const THROWIF_NODE_DEFINITION: WorkflowNodeDefinition<ThrowIfNode> = {
     })
 };
 
-export const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = {
+const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = {
     class: 'Concat',
     label: 'String Concat',
     category: 'string',
@@ -325,7 +313,7 @@ export const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = 
     })
 };
 
-export const STRING_LENGTH_NODE_DEFINITION: WorkflowNodeDefinition<StringLengthNode> = {
+const STRING_LENGTH_NODE_DEFINITION: WorkflowNodeDefinition<StringLengthNode> = {
     class: 'StringLength',
     label: 'String Length',
     category: 'string',
@@ -344,7 +332,7 @@ export const STRING_LENGTH_NODE_DEFINITION: WorkflowNodeDefinition<StringLengthN
     })
 };
 
-export const STRING_INCLUDES_NODE_DEFINITION: WorkflowNodeDefinition<StringIncludesNode> = {
+const STRING_INCLUDES_NODE_DEFINITION: WorkflowNodeDefinition<StringIncludesNode> = {
     class: 'StringIncludes',
     label: 'String Includes',
     category: 'string',
@@ -365,7 +353,7 @@ export const STRING_INCLUDES_NODE_DEFINITION: WorkflowNodeDefinition<StringInclu
     })
 };
 
-export const STRING_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<StringReplaceNode> = {
+const STRING_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<StringReplaceNode> = {
     class: 'StringReplace',
     label: 'String Replace',
     category: 'string',
@@ -386,30 +374,29 @@ export const STRING_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<StringReplac
     })
 };
 
-export const STRING_REGEX_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<StringRegexReplaceNode> =
-    {
+const STRING_REGEX_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<StringRegexReplaceNode> = {
+    class: 'StringRegexReplace',
+    label: 'String Regex Replace',
+    category: 'string',
+    inputs: {
+        text: { name: 'Text', type: 'string', required: false },
+        regex: { name: 'Regex', type: 'string', required: false },
+        replace: { name: 'Replace', type: 'string', required: false },
+        stream: STREAM_INPUT
+    },
+    outputs: RESULT_STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'String Regex Replace',
         class: 'StringRegexReplace',
-        label: 'String Regex Replace',
-        category: 'string',
-        inputs: {
-            text: { name: 'Text', type: 'string', required: false },
-            regex: { name: 'Regex', type: 'string', required: false },
-            replace: { name: 'Replace', type: 'string', required: false },
-            stream: STREAM_INPUT
-        },
-        outputs: RESULT_STRING_OUTPUT,
-        createDefault: (id) => ({
-            id,
-            name: 'String Regex Replace',
-            class: 'StringRegexReplace',
-            position: { x: 0, y: 0 },
-            flags: 'g',
-            inputs: { text: null, regex: null, replace: null, stream: null },
-            inputValues: { text: '', regex: '', replace: '', stream: false }
-        })
-    };
+        position: { x: 0, y: 0 },
+        flags: 'g',
+        inputs: { text: null, regex: null, replace: null, stream: null },
+        inputValues: { text: '', regex: '', replace: '', stream: false }
+    })
+};
 
-export const FILTER_AGENT_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<FilterAgentPartsNode> = {
+const FILTER_AGENT_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<FilterAgentPartsNode> = {
     class: 'FilterAgentParts',
     label: 'Filter Agent Parts',
     category: 'agent',
@@ -432,47 +419,45 @@ export const FILTER_AGENT_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<FilterAg
     })
 };
 
-export const SELECT_VISIBLE_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<SelectVisiblePartsNode> =
-    {
+const SELECT_VISIBLE_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<SelectVisiblePartsNode> = {
+    class: 'SelectVisibleParts',
+    label: 'Select Visible Parts',
+    category: 'agent',
+    inputs: {
+        content: { name: 'Content', type: 'string', required: false },
+        stream: STREAM_INPUT
+    },
+    outputs: RESULT_STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Select Visible Parts',
         class: 'SelectVisibleParts',
-        label: 'Select Visible Parts',
-        category: 'agent',
-        inputs: {
-            content: { name: 'Content', type: 'string', required: false },
-            stream: STREAM_INPUT
-        },
-        outputs: RESULT_STRING_OUTPUT,
-        createDefault: (id) => ({
-            id,
-            name: 'Select Visible Parts',
-            class: 'SelectVisibleParts',
-            position: { x: 0, y: 0 },
-            inputs: { content: null, stream: null },
-            inputValues: { content: '', stream: false }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { content: null, stream: null },
+        inputValues: { content: '', stream: false }
+    })
+};
 
-export const SELECT_LAST_TEXT_PART_NODE_DEFINITION: WorkflowNodeDefinition<SelectLastTextPartNode> =
-    {
+const SELECT_LAST_TEXT_PART_NODE_DEFINITION: WorkflowNodeDefinition<SelectLastTextPartNode> = {
+    class: 'SelectLastTextPart',
+    label: 'Select Last Text Part',
+    category: 'agent',
+    inputs: {
+        content: { name: 'Content', type: 'string', required: false },
+        stream: STREAM_INPUT
+    },
+    outputs: RESULT_STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Select Last Text Part',
         class: 'SelectLastTextPart',
-        label: 'Select Last Text Part',
-        category: 'agent',
-        inputs: {
-            content: { name: 'Content', type: 'string', required: false },
-            stream: STREAM_INPUT
-        },
-        outputs: RESULT_STRING_OUTPUT,
-        createDefault: (id) => ({
-            id,
-            name: 'Select Last Text Part',
-            class: 'SelectLastTextPart',
-            position: { x: 0, y: 0 },
-            inputs: { content: null, stream: null },
-            inputValues: { content: '', stream: false }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { content: null, stream: null },
+        inputValues: { content: '', stream: false }
+    })
+};
 
-export const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGenerationNode> = {
+const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGenerationNode> = {
     class: 'ImageGeneration',
     label: 'Image Generation',
     category: 'agent',
@@ -511,7 +496,7 @@ export const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGener
     })
 };
 
-export const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
+const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
     class: 'TTS',
     label: 'Text to Speech',
     category: 'agent',
@@ -529,7 +514,7 @@ export const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
     })
 };
 
-export const STT_NODE_DEFINITION: WorkflowNodeDefinition<STTNode> = {
+const STT_NODE_DEFINITION: WorkflowNodeDefinition<STTNode> = {
     class: 'STT',
     label: 'Speech to Text',
     category: 'agent',
@@ -547,7 +532,7 @@ export const STT_NODE_DEFINITION: WorkflowNodeDefinition<STTNode> = {
     })
 };
 
-export const GET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<GetHistoryNode> = {
+const GET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<GetHistoryNode> = {
     class: 'GetHistory',
     label: 'Get History',
     category: 'history',
@@ -565,7 +550,7 @@ export const GET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<GetHistoryNode>
     })
 };
 
-export const SET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<SetHistoryNode> = {
+const SET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<SetHistoryNode> = {
     class: 'SetHistory',
     label: 'Set History',
     category: 'history',
@@ -585,97 +570,93 @@ export const SET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<SetHistoryNode>
     })
 };
 
-export const GET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetImageAttachmentsNode> =
-    {
+const GET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetImageAttachmentsNode> = {
+    class: 'GetImageAttachments',
+    label: 'Get Image Attachments',
+    category: 'history',
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true }
+    },
+    outputs: STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Get Image Attachments',
         class: 'GetImageAttachments',
-        label: 'Get Image Attachments',
-        category: 'history',
-        inputs: {
-            index: { name: 'Index', type: 'number', required: true }
-        },
-        outputs: STRING_OUTPUT,
-        createDefault: (id) => ({
-            id,
-            name: 'Get Image Attachments',
-            class: 'GetImageAttachments',
-            position: { x: 0, y: 0 },
-            inputs: { index: null },
-            inputValues: { index: -1 }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { index: null },
+        inputValues: { index: -1 }
+    })
+};
 
-export const SET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetImageAttachmentsNode> =
-    {
+const SET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetImageAttachmentsNode> = {
+    class: 'SetImageAttachments',
+    label: 'Set Image Attachments',
+    category: 'history',
+    isSink: true,
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true },
+        content: {
+            name: 'Content',
+            type: 'string',
+            required: true,
+            allowLiteral: false
+        }
+    },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Set Image Attachments',
         class: 'SetImageAttachments',
-        label: 'Set Image Attachments',
-        category: 'history',
-        isSink: true,
-        inputs: {
-            index: { name: 'Index', type: 'number', required: true },
-            content: {
-                name: 'Content',
-                type: 'string',
-                required: true,
-                allowLiteral: false
-            }
-        },
-        outputs: {},
-        createDefault: (id) => ({
-            id,
-            name: 'Set Image Attachments',
-            class: 'SetImageAttachments',
-            position: { x: 0, y: 0 },
-            inputs: { index: null, content: null },
-            inputValues: { index: -1 }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { index: null, content: null },
+        inputValues: { index: -1 }
+    })
+};
 
-export const GET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetAudioAttachmentsNode> =
-    {
+const GET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetAudioAttachmentsNode> = {
+    class: 'GetAudioAttachments',
+    label: 'Get Audio Attachments',
+    category: 'history',
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true }
+    },
+    outputs: STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Get Audio Attachments',
         class: 'GetAudioAttachments',
-        label: 'Get Audio Attachments',
-        category: 'history',
-        inputs: {
-            index: { name: 'Index', type: 'number', required: true }
-        },
-        outputs: STRING_OUTPUT,
-        createDefault: (id) => ({
-            id,
-            name: 'Get Audio Attachments',
-            class: 'GetAudioAttachments',
-            position: { x: 0, y: 0 },
-            inputs: { index: null },
-            inputValues: { index: -1 }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { index: null },
+        inputValues: { index: -1 }
+    })
+};
 
-export const SET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetAudioAttachmentsNode> =
-    {
+const SET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetAudioAttachmentsNode> = {
+    class: 'SetAudioAttachments',
+    label: 'Set Audio Attachments',
+    category: 'history',
+    isSink: true,
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true },
+        content: {
+            name: 'Content',
+            type: 'string',
+            required: true,
+            allowLiteral: false
+        }
+    },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Set Audio Attachments',
         class: 'SetAudioAttachments',
-        label: 'Set Audio Attachments',
-        category: 'history',
-        isSink: true,
-        inputs: {
-            index: { name: 'Index', type: 'number', required: true },
-            content: {
-                name: 'Content',
-                type: 'string',
-                required: true,
-                allowLiteral: false
-            }
-        },
-        outputs: {},
-        createDefault: (id) => ({
-            id,
-            name: 'Set Audio Attachments',
-            class: 'SetAudioAttachments',
-            position: { x: 0, y: 0 },
-            inputs: { index: null, content: null },
-            inputValues: { index: -1 }
-        })
-    };
+        position: { x: 0, y: 0 },
+        inputs: { index: null, content: null },
+        inputValues: { index: -1 }
+    })
+};
 
-export const GET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<GetTranslationNode> = {
+const GET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<GetTranslationNode> = {
     class: 'GetTranslation',
     label: 'Get Translation',
     category: 'history',
@@ -693,7 +674,7 @@ export const GET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<GetTranslat
     })
 };
 
-export const SET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<SetTranslationNode> = {
+const SET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<SetTranslationNode> = {
     class: 'SetTranslation',
     label: 'Set Translation',
     category: 'history',
@@ -713,7 +694,7 @@ export const SET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<SetTranslat
     })
 };
 
-export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
+const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
     category: 'number',
@@ -734,7 +715,7 @@ export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode>
     })
 };
 
-export const NUMBER_COMPARE_NODE_DEFINITION: WorkflowNodeDefinition<NumberCompareNode> = {
+const NUMBER_COMPARE_NODE_DEFINITION: WorkflowNodeDefinition<NumberCompareNode> = {
     class: 'NumberCompare',
     label: 'Number Compare',
     category: 'number',
@@ -755,7 +736,7 @@ export const NUMBER_COMPARE_NODE_DEFINITION: WorkflowNodeDefinition<NumberCompar
     })
 };
 
-export const BOOLEAN_LOGIC_NODE_DEFINITION: WorkflowNodeDefinition<BooleanLogicNode> = {
+const BOOLEAN_LOGIC_NODE_DEFINITION: WorkflowNodeDefinition<BooleanLogicNode> = {
     class: 'BooleanLogic',
     label: 'Boolean Logic',
     category: 'boolean',
@@ -776,7 +757,7 @@ export const BOOLEAN_LOGIC_NODE_DEFINITION: WorkflowNodeDefinition<BooleanLogicN
     })
 };
 
-export const BOOLEAN_NOT_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNotNode> = {
+const BOOLEAN_NOT_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNotNode> = {
     class: 'BooleanNot',
     label: 'Boolean Not',
     category: 'boolean',
@@ -795,7 +776,7 @@ export const BOOLEAN_NOT_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNotNode>
     })
 };
 
-export const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
+const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
     class: 'Gate',
     label: 'Gate',
     category: 'flow',
@@ -814,7 +795,7 @@ export const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
     })
 };
 
-export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
+const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
     class: 'Ungate',
     label: 'Ungate',
     category: 'flow',
@@ -836,7 +817,7 @@ export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
     })
 };
 
-export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
+const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     class: 'Output',
     label: 'Output',
     category: 'result',
@@ -853,7 +834,7 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     })
 };
 
-export const LOG_NODE_DEFINITION: WorkflowNodeDefinition<LogNode> = {
+const LOG_NODE_DEFINITION: WorkflowNodeDefinition<LogNode> = {
     class: 'Log',
     label: 'Log',
     category: 'result',
@@ -870,7 +851,7 @@ export const LOG_NODE_DEFINITION: WorkflowNodeDefinition<LogNode> = {
     })
 };
 
-export const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
+const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
     class: 'Sink',
     label: 'Sink',
     category: 'result',
@@ -887,7 +868,7 @@ export const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
     })
 };
 
-export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
+const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
     class: 'FileRead',
     label: 'File Read',
     category: 'file',
@@ -904,7 +885,7 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
     })
 };
 
-export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> = {
+const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> = {
     class: 'FileWrite',
     label: 'File Write',
     category: 'file',
@@ -925,7 +906,7 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
     })
 };
 
-export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
+const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
     class: 'Agent',
     label: 'Agent',
     category: 'agent',

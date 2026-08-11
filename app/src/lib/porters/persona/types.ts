@@ -1,5 +1,5 @@
 import type { PersonaFields } from '$lib/services';
-import type { KeiAssetPayload, SerializedKeiAssetPayload } from '../types';
+import type { KeiAssetPayload } from '../types';
 
 export interface KeiPersonaPackageV1 {
     version: 1;
@@ -10,11 +10,3 @@ export interface KeiPersonaPackageV1 {
 }
 
 export type KeiPersonaPayload = PersonaFields;
-
-export interface SerializedKeiPersonaPackageV1 extends Omit<
-    KeiPersonaPackageV1,
-    'assets' | 'avatar'
-> {
-    assets: Record<string, SerializedKeiAssetPayload>;
-    avatar?: SerializedKeiAssetPayload;
-}

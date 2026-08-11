@@ -25,13 +25,6 @@ describe('kdf', () => {
             expect(salt.length).toBe(SALT_BYTES);
         });
 
-        it('should generate different salts each time', () => {
-            const salt1 = generateSalt();
-            const salt2 = generateSalt();
-
-            expect(salt1).not.toEqual(salt2);
-        });
-
         it('should generate cryptographically random salts', () => {
             // Generate 100 salts and check they're all different
             const salts = new Set<string>();

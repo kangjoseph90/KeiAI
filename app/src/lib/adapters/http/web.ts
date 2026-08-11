@@ -61,5 +61,3 @@ export class WebHttpAdapter extends BaseHttpAdapter {
         }, options?.retry);
     }
 }
-
-export const webHttp = new WebHttpAdapter();

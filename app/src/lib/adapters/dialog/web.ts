@@ -95,5 +95,3 @@ export class WebDialogAdapter implements IDialogAdapter {
 function acceptString(filters?: FileDialogOptions['filters']): string {
     return filters?.flatMap((filter) => filter.extensions.map((ext) => `.${ext}`)).join(',') ?? '';
 }
-
-export const webDialog = new WebDialogAdapter();

@@ -186,22 +186,6 @@ export async function getChatDefaultVariables(chatId: string): Promise<Record<st
     return variables;
 }
 
-export async function setChatVariables(
-    chatId: string,
-    variables: Record<string, string>
-): Promise<void> {
-    const lastMessage = await getLastMessage(chatId);
-    if (!lastMessage) return;
-
-    await updateMessage(lastMessage.id, {
-        swipes: {
-            [lastMessage.activeSwipeId]: {
-                variables
-            }
-        }
-    });
-}
-
 // ─── Fork ──────────────────────────────────────────
 
 /**

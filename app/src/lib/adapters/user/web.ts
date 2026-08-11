@@ -89,5 +89,3 @@ export class WebUserAdapter implements IUserAdapter {
         return Promise.resolve(null);
     }
 }
-
-export const webUser = new WebUserAdapter();

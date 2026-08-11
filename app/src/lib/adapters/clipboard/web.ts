@@ -77,5 +77,3 @@ export class WebClipboardAdapter implements IClipboardAdapter {
         }
     }
 }
-
-export const webClipboard = new WebClipboardAdapter();

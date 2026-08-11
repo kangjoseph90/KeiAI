@@ -67,14 +67,6 @@ export async function loadMultiRoomMetas(): Promise<void> {
     multiRoomMetas.setAll(await MultiRoomService.listIndexes());
 }
 
-export async function getMultiRoomMeta(roomId: string): Promise<MultiRoom> {
-    const cached = multiRoomMetas.get(roomId);
-    if (cached) return cached;
-    const meta = await MultiRoomService.getIndex(roomId);
-    multiRoomMetas.set(meta.id, meta);
-    return meta;
-}
-
 export async function updateMultiRoomIndex(
     roomId: string,
     changes: UpdateMultiRoomIndexParams

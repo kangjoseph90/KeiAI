@@ -112,10 +112,6 @@ export async function importMasterKey(
     ]);
 }
 
-export async function exportMasterKeyRaw(masterKey: CryptoKey): Promise<Bytes> {
-    return new Uint8Array((await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer);
-}
-
 /**
  * Unwrap master key and return raw bytes instead of CryptoKey.
  * Used by auth flows that need raw bytes for local DB storage.
