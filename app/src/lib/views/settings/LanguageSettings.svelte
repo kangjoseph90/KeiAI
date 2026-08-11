@@ -152,10 +152,10 @@
             </div>
 
             <WorkflowSummaryCard
+                wide
                 workflow={$appSettings.translation.workflow}
                 onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
                 workflowLabel="Translation workflow"
-                editWorkflowLabel="Edit translation workflow"
             />
         </section>
     {/if}

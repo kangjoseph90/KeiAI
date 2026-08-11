@@ -49,6 +49,7 @@ const module: Module = {
     messageCSS: '',
     defaultVariables: {},
     toggles: emptyList(),
+    commands: emptyList(),
     allowLowLevel: false,
     lorebooks: emptyList(),
     scripts: emptyList(),
@@ -79,6 +80,7 @@ const preset: Preset = {
     chatWorkflow: { nodes: {} },
     defaultVariables: {},
     toggles: emptyList(),
+    commands: emptyList(),
     scripts: emptyList()
 };
 

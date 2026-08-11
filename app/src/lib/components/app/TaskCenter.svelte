@@ -28,6 +28,8 @@
         finishDictation,
         finishRecordAudio,
         stopChat,
+        dismissCommand,
+        stopCommand,
         stopImageGeneration,
         stopTitle,
         stopTranslation,
@@ -159,6 +161,9 @@
             case 'chat':
                 stopChat(task.chatId);
                 break;
+            case 'command':
+                stopCommand(task.taskKey);
+                break;
             case 'dictation':
                 cancelDictation(task.chatId);
                 break;
@@ -184,6 +189,9 @@
         switch (task.kind) {
             case 'chat':
                 dismissChat(task.chatId);
+                break;
+            case 'command':
+                dismissCommand(task.taskKey);
                 break;
             case 'dictation':
                 dismissDictation(task.chatId);

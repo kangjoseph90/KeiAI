@@ -88,6 +88,7 @@ describe('PresetService', () => {
             lorebookScanDepth: 5,
             memoryRatio: 0.2
         }),
+        commands: { refs: {}, folders: {} },
         defaultVariables: {},
         toggles: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} }
@@ -183,6 +184,41 @@ describe('PresetService', () => {
             expect(agent.promptBlocks.history).toMatchObject({
                 historyMode: 'visible'
             });
+        });
+
+        it('hydrates and normalizes preset-owned command workflows', async () => {
+            vi.mocked(buffer.get).mockResolvedValue({
+                ...mockRecord,
+                data: {
+                    ...mockFields,
+                    commands: {
+                        refs: {
+                            compact: {
+                                id: 'compact',
+                                sortOrder: 'a0',
+                                name: 'compact',
+                                workflow: {
+                                    nodes: {
+                                        output: {
+                                            id: 'output',
+                                            name: 'Output',
+                                            class: 'Output',
+                                            position: { x: 0, y: 0 },
+                                            inputs: {},
+                                            inputValues: {}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        folders: {}
+                    }
+                } as unknown as Record<string, unknown>
+            });
+
+            const command = (await PresetService.get('preset-123'))?.commands.refs.compact;
+            expect(command).toMatchObject({ description: '' });
+            expect(command?.workflow.nodes.output).toMatchObject({ collapsed: false });
         });
 
         it('should return null if record is missing', async () => {

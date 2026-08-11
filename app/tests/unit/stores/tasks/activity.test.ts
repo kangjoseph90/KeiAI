@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import {
     chatTasks,
+    commandTasks,
     collectedTasks,
     dictationTasks,
     imageGenerationTasks,
+    inputTranslationTasks,
+    suggestionTasks,
+    titleTasks,
     translationTasks,
     ttsTasks,
     recordAudioTasks
@@ -20,12 +24,22 @@ const metadata = {
 };
 
 beforeEach(() => {
+    vi.useFakeTimers();
     chatTasks.set(new Map());
+    commandTasks.set(new Map());
     dictationTasks.set(new Map());
     recordAudioTasks.set(new Map());
     imageGenerationTasks.set(new Map());
+    inputTranslationTasks.set(new Map());
+    suggestionTasks.set(new Map());
+    titleTasks.set(new Map());
     translationTasks.set(new Map());
     ttsTasks.set(new Map());
+});
+
+afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
 });
 
 describe('task collector', () => {
@@ -140,11 +154,42 @@ describe('task collector', () => {
 
         consumeCompletedTasks('chat-1');
 
+        expect(get(dictationTasks).has('chat-1')).toBe(true);
+        vi.runOnlyPendingTimers();
+
         expect(get(dictationTasks).has('chat-1')).toBe(false);
         expect(get(dictationTasks).has('chat-2')).toBe(true);
         expect(get(recordAudioTasks).has('chat-1')).toBe(false);
         expect(get(chatTasks).has('chat-1')).toBe(true);
         expect(get(translationTasks).has('message-2')).toBe(true);
+    });
+
+    it('delays completed command consumption through the common path', () => {
+        commandTasks.set(
+            new Map([
+                [
+                    'chat-1',
+                    {
+                        ...metadata,
+                        status: 'completed',
+                        commandId: 'command-1',
+                        commandName: 'compact'
+                    }
+                ]
+            ])
+        );
+
+        expect(get(collectedTasks)).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ kind: 'command', status: 'completed' })
+            ])
+        );
+
+        consumeCompletedTasks('chat-1');
+        consumeCompletedTasks('chat-1');
+        expect(get(commandTasks).has('chat-1')).toBe(true);
+        vi.runOnlyPendingTimers();
+        expect(get(commandTasks).has('chat-1')).toBe(false);
     });
 
     it('derives chat indicator precedence as error, running, then completed', () => {

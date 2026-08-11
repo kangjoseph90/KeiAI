@@ -21,6 +21,7 @@ import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { AssetFields } from '$lib/types/asset';
 import type { ToggleItem } from '$lib/types/toggle';
+import type { ChatCommand } from '$lib/types/command';
 
 let moduleSelectionVersion = 0;
 
@@ -157,6 +158,14 @@ export async function deleteModuleToggleItem(moduleId: string, itemId: string): 
     await updateModule(moduleId, { toggles: { refs: { [itemId]: undefined } } });
 }
 
+export async function saveModuleCommand(moduleId: string, command: ChatCommand): Promise<void> {
+    await updateModule(moduleId, { commands: { refs: { [command.id]: command } } });
+}
+
+export async function deleteModuleCommand(moduleId: string, commandId: string): Promise<void> {
+    await updateModule(moduleId, { commands: { refs: { [commandId]: undefined } } });
+}
+
 export async function deleteModule(moduleId: string): Promise<void> {
     const settings = await getAppSettings();
 
@@ -238,7 +247,13 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 
 // ─── Module-owned Folder & Item Management ──────────────────────
 
-export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs' | 'assets' | 'toggles';
+export type ModuleFolderType =
+    | 'lorebooks'
+    | 'scripts'
+    | 'charjs'
+    | 'assets'
+    | 'toggles'
+    | 'commands';
 
 export async function createModuleFolder(
     moduleId: string,

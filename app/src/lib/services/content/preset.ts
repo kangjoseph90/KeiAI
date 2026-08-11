@@ -17,6 +17,7 @@ import type { WorkflowDefinition } from '$lib/workflow/types';
 import { normalizeWorkflow } from '$lib/workflow/normalization';
 import type { TogglePanel } from '$lib/types/toggle';
 import { defaultScriptFields, hydrateOwnedItems, type Script } from './resource';
+import { defaultChatCommandFields, type ChatCommandPanel } from '$lib/types/command';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ export interface PresetFields {
     models: Partial<Record<LLMType, LLMModelConfig>>;
     parameters: Partial<Record<LLMType, LLMParameters>>;
     chatWorkflow: WorkflowDefinition;
+    commands: ChatCommandPanel;
     defaultVariables: Record<string, string>;
     toggles: TogglePanel;
     scripts: EntityListConfig<Script>;
@@ -51,6 +53,7 @@ export const defaultPresetFields: PresetFields = {
         }
     },
     chatWorkflow: { nodes: {} },
+    commands: { refs: {}, folders: {} },
     defaultVariables: {},
     toggles: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} }
@@ -61,6 +64,10 @@ export const defaultPresetFields: PresetFields = {
 function parseFields(record: PresetRecord): PresetFields {
     const fields = deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
     fields.chatWorkflow = normalizeWorkflow(fields.chatWorkflow);
+    fields.commands.refs = hydrateOwnedItems(fields.commands.refs, defaultChatCommandFields);
+    for (const command of Object.values(fields.commands.refs)) {
+        command.workflow = normalizeWorkflow(command.workflow);
+    }
     fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
     return fields;
 }

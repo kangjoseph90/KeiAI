@@ -18,6 +18,7 @@ export async function importPresetPackage(pkg: KeiPresetPackageV1): Promise<stri
         models: structuredClone(pkg.preset.models),
         parameters: structuredClone(pkg.preset.parameters),
         chatWorkflow: structuredClone(pkg.preset.chatWorkflow),
+        commands: structuredClone(pkg.preset.commands),
         defaultVariables: { ...pkg.preset.defaultVariables },
         toggles: structuredClone(pkg.preset.toggles),
         scripts: importEntityList(pkg.preset.scripts)

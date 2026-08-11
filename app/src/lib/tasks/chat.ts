@@ -41,6 +41,7 @@ import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 import type { RuntimeContext } from '$lib/types/context';
 import { emitEvent } from '$lib/events';
+import { getCommandTask } from '$lib/stores/tasks/command';
 
 export interface RunChatOptions {
     /** If set, this run is a reroll — write to this message's swipes instead of creating a new message */
@@ -55,19 +56,16 @@ export async function runChat(
     personaId: string,
     opts: RunChatOptions = {}
 ): Promise<void> {
-    const existing = getChatTask(chatId);
-    if (existing?.status === 'generating') {
-        logger.warn(`Chat ${chatId} is already running.`);
-        return;
-    }
+    assertCanStartChat(chatId);
 
     const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
-
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
     if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
+    assertCanStartChat(chatId);
 
     const room = await getRoom(chat.roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+    assertCanStartChat(chatId);
 
     const characterRef = room.characters.refs[characterId];
     if (!characterRef) {
@@ -85,6 +83,7 @@ export async function runChat(
               role: 'assistant'
           });
     if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+    assertCanStartChat(chatId);
 
     const controller = new AbortController();
     createChatTask(chatId, targetMessage.id, controller, {
@@ -198,4 +197,13 @@ export function stopChat(chatId: string): void {
 
 export function dismissChat(chatId: string): void {
     clearChatTask(chatId);
+}
+
+function assertCanStartChat(chatId: string): void {
+    if (
+        getChatTask(chatId)?.status === 'generating' ||
+        getCommandTask(chatId)?.status === 'generating'
+    ) {
+        throw new AppError('INVALID_INPUT', `Another chat task is already running: ${chatId}`);
+    }
 }

@@ -24,6 +24,10 @@ vi.mock('$lib/stores/tasks/chat', () => ({
     notifyChatTaskError: vi.fn()
 }));
 
+vi.mock('$lib/stores/tasks/command', () => ({
+    getCommandTask: vi.fn()
+}));
+
 vi.mock('$lib/stores/content/message', () => ({
     createMessage: vi.fn().mockResolvedValue(undefined),
     updateMessage: vi.fn().mockResolvedValue(undefined),
@@ -243,6 +247,7 @@ import {
     notifyChatTaskComplete,
     notifyChatTaskError
 } from '$lib/stores/tasks/chat';
+import { getCommandTask } from '$lib/stores/tasks/command';
 import {
     createMessage,
     getLastMessage,
@@ -295,6 +300,7 @@ describe('Chat Pipeline', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(getChatTask).mockReturnValue(null);
+        vi.mocked(getCommandTask).mockReturnValue(null);
         vi.mocked(buildPrompt).mockResolvedValue([
             { role: 'user', content: [{ type: 'text', text: 'test' }] }
         ]);
@@ -490,10 +496,42 @@ describe('Chat Pipeline', () => {
         // Simulate existing task
         vi.mocked(getChatTask).mockReturnValue(makeMockTask());
 
-        // Attempt run while one is active
-        await runChat(mockChatId, 'char-1', 'persona-1');
+        await expect(runChat(mockChatId, 'char-1', 'persona-1')).rejects.toThrow(
+            'Another chat task is already running'
+        );
 
         // Should not have created a new task
+        expect(createChatTask).not.toHaveBeenCalled();
+    });
+
+    it('should not start while a command is generating', async () => {
+        vi.mocked(getCommandTask).mockReturnValue({
+            roomId: 'room-1',
+            chatId: mockChatId,
+            chatTitle: 'Chat 1',
+            title: '/compact',
+            startedAt: 1,
+            status: 'generating',
+            commandId: 'command-1',
+            commandName: 'compact'
+        });
+
+        await expect(runChat(mockChatId, 'char-1', 'persona-1')).rejects.toThrow(
+            'Another chat task is already running'
+        );
+
+        expect(getChat).not.toHaveBeenCalled();
+        expect(createChatTask).not.toHaveBeenCalled();
+    });
+
+    it('should recheck the chat slot after asynchronous preflight', async () => {
+        vi.mocked(getChatTask).mockReturnValueOnce(null).mockReturnValue(makeMockTask());
+
+        await expect(runChat(mockChatId, 'char-1', 'persona-1')).rejects.toThrow(
+            'Another chat task is already running'
+        );
+
+        expect(getRoom).not.toHaveBeenCalled();
         expect(createChatTask).not.toHaveBeenCalled();
     });
 

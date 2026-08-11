@@ -33,6 +33,7 @@ export async function importModulePackage(
             messageCSS: pkg.module.messageCSS ?? '',
             defaultVariables: { ...(pkg.module.defaultVariables ?? {}) },
             toggles: structuredClone(pkg.module.toggles),
+            commands: structuredClone(pkg.module.commands),
             allowLowLevel: pkg.module.allowLowLevel,
             lorebooks: importEntityList(pkg.module.lorebooks),
             scripts: importEntityList(pkg.module.scripts),

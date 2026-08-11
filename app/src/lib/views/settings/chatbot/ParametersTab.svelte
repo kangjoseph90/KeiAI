@@ -3,7 +3,7 @@
     import { slide } from 'svelte/transition';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { appSettings, updatePreset } from '$lib/stores';
+    import { appSettings, modules, selectActiveModules, updatePreset } from '$lib/stores';
     import {
         type LLMParameter,
         type LLMParameters,
@@ -16,6 +16,7 @@
     import { getWorkflowLLMTypes } from '$lib/workflow/agent/llm';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { listItems } from '$lib/utils/ordering';
 
     interface Props {
         preset: Preset;
@@ -35,6 +36,11 @@
 
     let llmTypes = $derived.by(() => {
         const definitions: Record<string, LLMTypeDefinition> = {};
+        const activeModules = selectActiveModules($appSettings, $modules);
+        const commandWorkflows = [
+            ...listItems(preset.commands).map((cmd) => cmd.workflow),
+            ...activeModules.flatMap((mod) => listItems(mod.commands).map((cmd) => cmd.workflow))
+        ];
         const allTypes = [
             ...pluginManager.getInstances().flatMap((inst) => [...inst.llmTypes.values()]),
             ...[
@@ -43,7 +49,8 @@
                 $appSettings?.imageGeneration.workflow,
                 $appSettings?.tts.workflow,
                 $appSettings?.suggestion.workflow,
-                $appSettings?.titleGeneration.workflow
+                $appSettings?.titleGeneration.workflow,
+                ...commandWorkflows
             ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 

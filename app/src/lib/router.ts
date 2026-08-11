@@ -33,6 +33,7 @@ export type ModuleStudioTab =
     | 'lorebooks'
     | 'scripts'
     | 'toggles'
+    | 'commands'
     | 'display'
     | 'assets'
     | 'advanced';
@@ -127,6 +128,8 @@ function parseHash(hash: string): RouteState {
             moduleTab === 'profile' ||
             moduleTab === 'lorebooks' ||
             moduleTab === 'scripts' ||
+            moduleTab === 'toggles' ||
+            moduleTab === 'commands' ||
             moduleTab === 'display' ||
             moduleTab === 'assets' ||
             moduleTab === 'advanced'

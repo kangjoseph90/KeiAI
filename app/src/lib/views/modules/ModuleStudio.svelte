@@ -5,6 +5,7 @@
         Image as ImageIcon,
         Monitor,
         Package,
+        SquareTerminal,
         Settings2,
         SlidersHorizontal,
         UserRound
@@ -47,6 +48,7 @@
     import AssetsTab from './studio/AssetsTab.svelte';
     import AdvancedTab from './studio/AdvancedTab.svelte';
     import TogglesTab from './studio/TogglesTab.svelte';
+    import CommandsTab from './studio/CommandsTab.svelte';
 
     interface Props {
         moduleId: string;
@@ -81,6 +83,7 @@
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
         { id: 'toggles', label: 'Toggles', icon: SlidersHorizontal },
+        { id: 'commands', label: 'Commands', icon: SquareTerminal },
         { id: 'display', label: 'Display', icon: Monitor },
         { id: 'assets', label: 'Assets', icon: ImageIcon },
         { id: 'advanced', label: 'Advanced', icon: Settings2 }
@@ -264,6 +267,8 @@
                     />
                 {:else if activeTab === 'toggles'}
                     <TogglesTab module={$activeModule} />
+                {:else if activeTab === 'commands'}
+                    <CommandsTab module={$activeModule} />
                 {:else if activeTab === 'display'}
                     <DisplayTab
                         module={$activeModule}

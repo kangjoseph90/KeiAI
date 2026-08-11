@@ -4,8 +4,6 @@ import type { KeiAssetPayload } from '../types';
 export interface KeiModulePackageV1 {
     version: 1;
     kind: 'keiai.module';
-    module: KeiModulePayload;
+    module: ModuleFields;
     assets: Record<string, KeiAssetPayload>;
 }
-
-export type KeiModulePayload = ModuleFields;

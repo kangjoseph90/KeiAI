@@ -120,6 +120,10 @@ export class WorkflowRuntime {
         }
 
         await Promise.all(rootRuns);
+        const rootError = rootNodeIds
+            .map((nodeId) => this.#runtimes.get(nodeId)?.terminal)
+            .find((event) => event?.status === 'error');
+        if (rootError?.status === 'error') throw rootError.error;
         if (this.#latestRuntimeOutput.status === 'error') throw this.#latestRuntimeOutput.error;
     }
 

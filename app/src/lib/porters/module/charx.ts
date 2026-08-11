@@ -62,6 +62,7 @@ function characterPackageToModulePackage(
             messageCSS: pkg.character.messageCSS,
             defaultVariables: { ...pkg.character.defaultVariables },
             toggles: { refs: {}, folders: {} },
+            commands: { refs: {}, folders: {} },
             allowLowLevel: pkg.character.allowLowLevel,
             lorebooks: pkg.character.lorebooks,
             scripts: pkg.character.scripts,

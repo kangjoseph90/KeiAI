@@ -25,6 +25,8 @@ import {
     type Script,
     type CharJS
 } from './resource';
+import { normalizeWorkflow } from '$lib/workflow/normalization';
+import { defaultChatCommandFields, type ChatCommandPanel } from '$lib/types/command';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export interface ModuleContent {
     messageCSS: string;
     defaultVariables: Record<string, string>;
     toggles: TogglePanel;
+    commands: ChatCommandPanel;
     lorebooks: EntityListConfig<Lorebook>;
     scripts: EntityListConfig<Script>;
     charjs: EntityListConfig<CharJS>;
@@ -60,6 +63,7 @@ const defaultModuleFields: ModuleFields = {
     messageCSS: '',
     defaultVariables: {},
     toggles: { refs: {}, folders: {} },
+    commands: { refs: {}, folders: {} },
     allowLowLevel: false,
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
@@ -74,6 +78,10 @@ function parseFields(record: ModuleRecord): ModuleFields {
     fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
     fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
     fields.charjs.refs = hydrateOwnedItems(fields.charjs.refs, defaultCharJSFields);
+    fields.commands.refs = hydrateOwnedItems(fields.commands.refs, defaultChatCommandFields);
+    for (const command of Object.values(fields.commands.refs)) {
+        command.workflow = normalizeWorkflow(command.workflow);
+    }
     return fields;
 }
 

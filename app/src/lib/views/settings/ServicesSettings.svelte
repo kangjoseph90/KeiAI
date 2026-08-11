@@ -1281,14 +1281,12 @@
                         </div>
 
                         <WorkflowSummaryCard
+                            wide
                             {workflow}
                             onEditWorkflow={() => editWorkflow(workflowFeature)}
                             workflowLabel={workflowFeature === 'imagegen'
                                 ? 'Image generation workflow'
                                 : 'TTS workflow'}
-                            editWorkflowLabel={workflowFeature === 'imagegen'
-                                ? 'Edit image generation workflow'
-                                : 'Edit TTS workflow'}
                         />
                     </section>
                 {/if}

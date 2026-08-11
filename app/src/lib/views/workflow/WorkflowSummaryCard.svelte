@@ -7,14 +7,16 @@
         workflow: WorkflowDefinition;
         onEditWorkflow: () => void;
         workflowLabel?: string;
-        editWorkflowLabel?: string;
+        fullWidth?: boolean;
+        wide?: boolean;
     }
 
     let {
         workflow,
         onEditWorkflow,
         workflowLabel = 'Workflow',
-        editWorkflowLabel = 'Edit workflow'
+        fullWidth = false,
+        wide = false
     }: Props = $props();
 
     // Compute normalized minimap positions for SVG view
@@ -104,7 +106,11 @@
 </script>
 
 <div
-    class="group relative flex w-80 flex-col justify-between overflow-hidden rounded-2xl border bg-card p-5 shadow-xs transition-all hover:border-primary/40 hover:shadow-md"
+    class="group relative flex {fullWidth || wide
+        ? 'w-full min-w-0'
+        : 'w-80'} flex-col justify-between overflow-hidden rounded-2xl border bg-card p-5 shadow-xs transition-all hover:border-primary/40 hover:shadow-md {wide
+        ? 'sm:flex-row sm:items-center sm:gap-6'
+        : ''}"
 >
     <!-- Background xyflow style minimap silhouette container (full fill, blurred, soft opacity) -->
     <div
@@ -159,7 +165,7 @@
     </div>
 
     <!-- Header / Title area -->
-    <div class="relative z-10 flex flex-col gap-1.5">
+    <div class="relative z-10 flex min-w-0 flex-col gap-1.5 {wide ? 'sm:flex-1' : ''}">
         <div class="flex items-center gap-2.5">
             <div
                 class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
@@ -176,10 +182,16 @@
     </div>
 
     <!-- Edit Action Button Overlay -->
-    <div class="relative z-10 pt-6">
-        <Button size="sm" class="w-full gap-2 font-medium shadow-xs" onclick={onEditWorkflow}>
+    <div class="relative z-10 pt-6 {wide ? 'sm:shrink-0 sm:pt-0' : ''}">
+        <Button
+            size="sm"
+            class="w-full gap-2 whitespace-nowrap font-medium shadow-xs {wide
+                ? 'sm:w-auto sm:min-w-32'
+                : ''}"
+            onclick={onEditWorkflow}
+        >
             <Workflow class="size-4" />
-            {editWorkflowLabel}
+            Edit workflow
         </Button>
     </div>
 </div>

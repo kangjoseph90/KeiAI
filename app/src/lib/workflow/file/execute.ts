@@ -43,6 +43,8 @@ export async function executeFileWriteNode({
     ]);
     throwIfAborted(signal);
 
+    if (pathResult.status === 'error') throw pathResult.error;
+    if (contentResult.status === 'error') throw contentResult.error;
     if (pathResult.status !== 'value') return;
     if (contentResult.status !== 'value') return;
 

@@ -1240,6 +1240,35 @@ describe('WorkflowRuntime', () => {
             'Broken Output Path failed: Cannot divide by zero: broken'
         );
     });
+
+    it('rejects run() when an upstream node fails on an outputless sink path', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                guard: {
+                    id: 'guard',
+                    name: 'Background Guard',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: true, value: 'blocked' }
+                },
+                sink: {
+                    id: 'sink',
+                    name: 'Sink',
+                    class: 'Sink',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    inputs: { content: { sourceNode: 'guard', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectEvents(new WorkflowRuntime(workflow).run())).rejects.toThrow(
+            'Background Guard failed: ThrowIf condition was true: guard'
+        );
+    });
 });
 
 async function collectFinal(stream: AsyncIterable<string>): Promise<string> {

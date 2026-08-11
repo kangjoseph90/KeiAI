@@ -31,6 +31,7 @@ import type {
     DictationTask,
     DisplayMessage,
     ChatTask,
+    CommandTask,
     InputTranslationTask,
     MediaTask,
     SuggestionTask,
@@ -187,6 +188,7 @@ export const hasActiveModule = derived(activeModuleId, (id) => !!id);
  * Managed by chatTask store logic.
  */
 export const chatTasks = writable<Map<string, ChatTask>>(new Map());
+export const commandTasks = writable<Map<string, CommandTask>>(new Map());
 export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
 export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
 export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
@@ -206,13 +208,19 @@ export const hasActiveRecording = derived(
 );
 
 /** True when the currently active chat has an in-flight task. */
-export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
-    chat ? tasks.get(chat.id)?.status === 'generating' : false
+export const isChatRunning = derived(
+    [chatTasks, commandTasks, activeChat],
+    ([chats, commands, chat]) =>
+        chat
+            ? chats.get(chat.id)?.status === 'generating' ||
+              commands.get(chat.id)?.status === 'generating'
+            : false
 );
 
 export const collectedTasks = derived(
     [
         chatTasks,
+        commandTasks,
         translationTasks,
         imageGenerationTasks,
         ttsTasks,
@@ -224,6 +232,7 @@ export const collectedTasks = derived(
     ],
     ([
         chats,
+        commands,
         translations,
         images,
         speech,
@@ -234,6 +243,7 @@ export const collectedTasks = derived(
         audioRecordings
     ]): CollectedTask[] => [
         ...collectTasks('chat', chats),
+        ...collectTasks('command', commands),
         ...collectTasks('translation', translations),
         ...collectTasks('image', images),
         ...collectTasks('tts', speech),
@@ -273,19 +283,22 @@ function collectTasks<T extends { status: 'generating' | 'completed' | 'error' }
  * Generating/error messages already exist in DB — this just marks them.
  */
 export const displayMessages = derived(
-    [messages, chatTasks, activeChat, messageIndexes],
-    ([msgs, tasks, chat, indexes]): DisplayMessage[] => {
+    [messages, chatTasks, commandTasks, activeChat, messageIndexes],
+    ([msgs, tasks, commands, chat, indexes]): DisplayMessage[] => {
         const task = chat ? tasks.get(chat.id) : undefined;
+        const commandTask = chat ? commands.get(chat.id) : undefined;
 
         return msgs.map((msg): DisplayMessage => {
             const messageIndex = indexes.get(msg.id);
             const base = { ...msg, messageIndex };
 
-            if (task?.messageId === msg.id) {
+            const displayTask = task?.messageId === msg.id ? task : commandTask;
+            if (displayTask?.messageId === msg.id) {
                 return {
                     ...base,
-                    displayStatus: task.status === 'generating' ? 'generating' : task.status,
-                    errorMessage: task.errorMessage
+                    displayStatus:
+                        displayTask.status === 'generating' ? 'generating' : displayTask.status,
+                    errorMessage: displayTask.errorMessage
                 };
             }
             return { ...base, displayStatus: 'completed' as const };

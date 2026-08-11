@@ -141,6 +141,8 @@ export async function executeSetChatVarNode({
         requireInput(inputs.content, `SetChatVar content input is required: ${node.id}`)
     ]);
     throwIfAborted(signal);
+    if (nameResult.status === 'error') throw nameResult.error;
+    if (contentResult.status === 'error') throw contentResult.error;
     if (nameResult.status !== 'value') return;
     if (contentResult.status !== 'value') return;
     await setChatVariable(
@@ -157,7 +159,8 @@ export async function executeSinkNode({
     // Sink has no output and no side effect; its sole purpose is to drive execution
     // of its dependency chain by awaiting the terminal event of its input.
     const input = requireWorkflowInput(inputs.content, 'Sink content input is required');
-    await input.done;
+    const result = await input.done;
+    if (result.status === 'error') throw result.error;
     throwIfAborted(signal);
 }
 
@@ -173,7 +176,8 @@ export async function executeLogNode({
             content: workflowValueToString(value)
         });
     });
-    await input.done;
+    const result = await input.done;
+    if (result.status === 'error') throw result.error;
     throwIfAborted(signal);
 }
 

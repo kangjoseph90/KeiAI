@@ -12,6 +12,7 @@ import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToggleItem } from '$lib/types/toggle';
+import type { ChatCommand } from '$lib/types/command';
 
 /**
  * Returns preset from store cache first, then from DB if needed.
@@ -160,6 +161,14 @@ export async function deletePresetToggleItem(presetId: string, itemId: string): 
     await updatePreset(presetId, { toggles: { refs: { [itemId]: undefined } } });
 }
 
+export async function savePresetCommand(presetId: string, command: ChatCommand): Promise<void> {
+    await updatePreset(presetId, { commands: { refs: { [command.id]: command } } });
+}
+
+export async function deletePresetCommand(presetId: string, commandId: string): Promise<void> {
+    await updatePreset(presetId, { commands: { refs: { [commandId]: undefined } } });
+}
+
 export async function savePresetScript(presetId: string, item: Script): Promise<void> {
     await updatePreset(presetId, { scripts: { refs: { [item.id]: item } } });
 }
@@ -170,7 +179,7 @@ export async function deletePresetScript(presetId: string, scriptId: string): Pr
 
 // ─── Preset-owned Folder & Item Management ──────────────────────
 
-export type PresetFolderType = 'scripts' | 'toggles';
+export type PresetFolderType = 'scripts' | 'toggles' | 'commands';
 
 export async function createPresetFolder(
     presetId: string,

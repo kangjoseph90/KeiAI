@@ -53,6 +53,8 @@
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import type { ThemePreference } from '$lib/stores';
+    import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
+    import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
 
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
     let localTab = $state<SettingsTab>('models');
@@ -60,6 +62,8 @@
     let settingsBusy = $state(false);
     let themeBusy = $state(false);
     let maintenanceBusy = $state(false);
+    let suggestionWorkflowEditorOpen = $state(false);
+    let titleWorkflowEditorOpen = $state(false);
 
     const tabs = [
         { id: 'models', label: 'Models', icon: Layers },
@@ -360,6 +364,35 @@
 
                         <div class="border-t border-border"></div>
 
+                        <section class="space-y-3">
+                            <div>
+                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                    Chat Inference
+                                </h3>
+                                <p class="text-sm text-muted-foreground">
+                                    Configure global workflows used for auxiliary chat inference.
+                                </p>
+                            </div>
+                            {#if $appSettings}
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <WorkflowSummaryCard
+                                        fullWidth
+                                        workflow={$appSettings.suggestion.workflow}
+                                        onEditWorkflow={() => (suggestionWorkflowEditorOpen = true)}
+                                        workflowLabel="Suggestion workflow"
+                                    />
+                                    <WorkflowSummaryCard
+                                        fullWidth
+                                        workflow={$appSettings.titleGeneration.workflow}
+                                        onEditWorkflow={() => (titleWorkflowEditorOpen = true)}
+                                        workflowLabel="Title generation workflow"
+                                    />
+                                </div>
+                            {/if}
+                        </section>
+
+                        <div class="border-t border-border"></div>
+
                         <!-- Local Data Maintenance Section -->
                         <section class="space-y-3">
                             <div>
@@ -442,3 +475,18 @@
         </ScrollArea>
     {/if}
 </WorkspaceShell>
+
+{#if $appSettings}
+    <WorkflowEditorModal
+        bind:open={suggestionWorkflowEditorOpen}
+        workflow={$appSettings.suggestion.workflow}
+        title="Suggestion Workflow"
+        onPatch={(patch) => updateSettings({ suggestion: { workflow: patch } })}
+    />
+    <WorkflowEditorModal
+        bind:open={titleWorkflowEditorOpen}
+        workflow={$appSettings.titleGeneration.workflow}
+        title="Title Workflow"
+        onPatch={(patch) => updateSettings({ titleGeneration: { workflow: patch } })}
+    />
+{/if}

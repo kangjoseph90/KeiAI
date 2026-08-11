@@ -61,6 +61,7 @@ export const chatSelections = readonly(StoreState.chatSelections);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
+export const commandTasks = readonly(StoreState.commandTasks);
 export const translationTasks = readonly(StoreState.translationTasks);
 export const imageGenerationTasks = readonly(StoreState.imageGenerationTasks);
 export const ttsTasks = readonly(StoreState.ttsTasks);
@@ -93,6 +94,7 @@ export {
 export type {
     DisplayMessage,
     DisplayMessageStatus,
+    CommandTask,
     InputTranslationTask,
     MediaTask,
     SuggestionTask,
@@ -129,6 +131,7 @@ export * from './content/plugin';
 export * from './content/message';
 export * from './content/merged';
 export * from './tasks/chat';
+export * from './tasks/command';
 export * from './tasks/translation';
 export * from './tasks/image';
 export * from './tasks/tts';

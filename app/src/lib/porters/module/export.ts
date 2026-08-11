@@ -33,6 +33,7 @@ export async function exportModulePackage(
         messageCSS: module.messageCSS,
         defaultVariables: { ...module.defaultVariables },
         toggles: structuredClone(module.toggles),
+        commands: structuredClone(module.commands),
         allowLowLevel: module.allowLowLevel,
         lorebooks: structuredClone(module.lorebooks),
         scripts: structuredClone(module.scripts),

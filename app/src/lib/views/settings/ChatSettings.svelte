@@ -2,18 +2,26 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { activePreset, appSettings, updatePreset, updateSettings } from '$lib/stores';
+    import {
+        activePreset,
+        createPresetFolder,
+        deletePresetCommand,
+        deletePresetFolder,
+        movePresetItem,
+        savePresetCommand,
+        updatePresetFolder,
+        updatePreset
+    } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import ScriptsTab from './chatbot/ScriptsTab.svelte';
     import TogglesTab from './chatbot/TogglesTab.svelte';
+    import CommandsSection from './chatbot/CommandsSection.svelte';
 
     type Tab = 'workflow' | 'scripts' | 'toggles' | 'presets';
     let activeTab = $state<Tab>('workflow');
     let chatWorkflowEditorOpen = $state(false);
-    let suggestionWorkflowEditorOpen = $state(false);
-    let titleWorkflowEditorOpen = $state(false);
 
     const tabs: Array<{ id: Tab; label: string }> = [
         { id: 'workflow', label: 'Workflow' },
@@ -52,29 +60,54 @@
                 <PresetsTab />
             </div>
         </ScrollArea>
-    {:else if $activePreset && activeTab === 'workflow'}
+    {:else if activeTab === 'workflow'}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
-            <div class="flex flex-col gap-5 pb-8">
-                <WorkflowSummaryCard
-                    workflow={$activePreset.chatWorkflow}
-                    onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
-                    workflowLabel="Chat workflow"
-                    editWorkflowLabel="Edit workflow"
-                />
-                {#if $appSettings}
+            <div class="space-y-8 pb-8">
+                <section class="space-y-3">
+                    <div>
+                        <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                            Chat workflow
+                        </h3>
+                        <p class="text-sm text-muted-foreground">
+                            Configure the workflow used to generate chat responses.
+                        </p>
+                    </div>
                     <WorkflowSummaryCard
-                        workflow={$appSettings.suggestion.workflow}
-                        onEditWorkflow={() => (suggestionWorkflowEditorOpen = true)}
-                        workflowLabel="Suggestion workflow"
-                        editWorkflowLabel="Edit suggestion workflow"
+                        wide
+                        workflow={$activePreset!.chatWorkflow}
+                        onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
+                        workflowLabel="Chat workflow"
                     />
-                    <WorkflowSummaryCard
-                        workflow={$appSettings.titleGeneration.workflow}
-                        onEditWorkflow={() => (titleWorkflowEditorOpen = true)}
-                        workflowLabel="Title generation workflow"
-                        editWorkflowLabel="Edit title workflow"
+                </section>
+                <div class="border-t border-border"></div>
+                <section>
+                    <h3 class="text-lg font-semibold tracking-tight text-foreground">Commands</h3>
+                    <CommandsSection
+                        panel={$activePreset!.commands}
+                        onSave={(command) => savePresetCommand($activePreset!.id, command)}
+                        onDelete={(commandId) => deletePresetCommand($activePreset!.id, commandId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createPresetFolder(
+                                $activePreset!.id,
+                                'commands',
+                                name,
+                                parentId,
+                                sortOrder
+                            )}
+                        onUpdateFolder={(folderId, changes) =>
+                            updatePresetFolder($activePreset!.id, 'commands', folderId, changes)}
+                        onDeleteFolder={(folderId) =>
+                            deletePresetFolder($activePreset!.id, 'commands', folderId)}
+                        onMoveItem={(commandId, folderId, sortOrder) =>
+                            movePresetItem(
+                                $activePreset!.id,
+                                'commands',
+                                commandId,
+                                folderId,
+                                sortOrder
+                            )}
                     />
-                {/if}
+                </section>
             </div>
         </ScrollArea>
     {:else if $activePreset}
@@ -96,20 +129,5 @@
         workflow={$activePreset.chatWorkflow}
         title="Chat Workflow"
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
-    />
-{/if}
-
-{#if $appSettings}
-    <WorkflowEditorModal
-        bind:open={suggestionWorkflowEditorOpen}
-        workflow={$appSettings.suggestion.workflow}
-        title="Suggestion Workflow"
-        onPatch={(patch) => updateSettings({ suggestion: { workflow: patch } })}
-    />
-    <WorkflowEditorModal
-        bind:open={titleWorkflowEditorOpen}
-        workflow={$appSettings.titleGeneration.workflow}
-        title="Title Workflow"
-        onPatch={(patch) => updateSettings({ titleGeneration: { workflow: patch } })}
     />
 {/if}

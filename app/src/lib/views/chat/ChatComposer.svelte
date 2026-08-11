@@ -3,8 +3,10 @@
         ArrowDown,
         AudioLines,
         Camera,
+        CheckCircle2,
         CornerUpLeft,
         Languages,
+        Loader2,
         MessageSquare,
         Mic,
         Paperclip,
@@ -21,8 +23,11 @@
     import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import {
         activeChat,
+        activePreset,
         appSettings,
         chatDrafts,
+        commandTasks,
+        modules,
         chatPersonas,
         chatSelections,
         createChatInlay,
@@ -34,6 +39,7 @@
         isChatRunning,
         roomCharacters,
         recordAudioTasks,
+        selectActiveModules,
         addChatDraftInlay,
         clearChatDraft,
         flushChatDrafts,
@@ -53,11 +59,13 @@
         finishDictation,
         finishRecordAudio,
         runChat,
+        runCommand,
         runDictation,
         runRecordAudio,
         runInputTranslation,
         runSuggestion,
         stopChat,
+        stopCommand,
         stopInputTranslationForChat,
         stopSuggestionForChat
     } from '$lib/tasks';
@@ -76,6 +84,16 @@
     import RecordingControls from './RecordingControls.svelte';
     import CameraCaptureDialog from './CameraCaptureDialog.svelte';
     import ChatSuggestions from './ChatSuggestions.svelte';
+    import ChatCommandPalette from './ChatCommandPalette.svelte';
+    import {
+        chatCommandNameKey,
+        chatCommandHasOutput,
+        filterChatCommands,
+        getChatCommandQuery,
+        parseChatCommand,
+        resolveChatCommands
+    } from '$lib/managers/command';
+    import type { ResolvedChatCommand } from '$lib/types/command';
 
     let {
         showScrollToBottom = false,
@@ -124,6 +142,18 @@
     let selectedGalleryId = $state<string | undefined>();
     let cameraOpen = $state(false);
     let cameraChatId = $state<string | undefined>();
+    let commandPaletteIndex = $state(0);
+    let commandPaletteDismissed = $state(false);
+    const availableCommands = $derived(
+        resolveChatCommands($activePreset, selectActiveModules($appSettings, $modules))
+    );
+    const commandQuery = $derived(getChatCommandQuery(value));
+    const commandSuggestions = $derived(
+        commandPaletteDismissed ? [] : filterChatCommands(availableCommands, commandQuery)
+    );
+    const activeCommandTask = $derived(
+        $activeChat ? ($commandTasks.get($activeChat.id) ?? null) : null
+    );
     const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
         const chat = $activeChat;
         if (!chat) return [];
@@ -189,6 +219,8 @@
         dragCounter = 0;
         value = '';
         attachmentIds = [];
+        commandPaletteDismissed = false;
+        commandPaletteIndex = 0;
         if (activeChatId) void restoreDraft(activeChatId);
     });
 
@@ -292,8 +324,76 @@
         if ($activeChat) setChatDraftInlayIds($activeChat.id, attachmentIds);
     }
 
+    function selectCommand(resolved: ResolvedChatCommand): void {
+        value = `/${resolved.command.name} `;
+        commandPaletteDismissed = true;
+        commandPaletteIndex = 0;
+        if ($activeChat) setChatDraftText($activeChat.id, value);
+    }
+
+    function handleCommandPaletteKey(event: KeyboardEvent): boolean {
+        if (commandSuggestions.length === 0) return false;
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            commandPaletteIndex = (commandPaletteIndex + 1) % commandSuggestions.length;
+            return true;
+        }
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            commandPaletteIndex =
+                (commandPaletteIndex - 1 + commandSuggestions.length) % commandSuggestions.length;
+            return true;
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            commandPaletteDismissed = true;
+            return true;
+        }
+        if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+            const command = commandSuggestions[commandPaletteIndex] ?? commandSuggestions[0];
+            if (
+                event.key === 'Enter' &&
+                command &&
+                commandQuery === chatCommandNameKey(command.command.name)
+            ) {
+                return false;
+            }
+            event.preventDefault();
+            if (command) selectCommand(command);
+            return true;
+        }
+        return false;
+    }
+
     async function handleSendMessage(): Promise<void> {
         if ((!value.trim() && attachmentIds.length === 0) || !$activeChat || $isChatRunning) return;
+
+        const parsedCommand = parseChatCommand(value, availableCommands);
+        if (parsedCommand && attachmentIds.length === 0) {
+            const hasOutput = chatCommandHasOutput(parsedCommand.resolved.command);
+            if (hasOutput && !selectedCharacter) {
+                $characterPickerOpen = true;
+                return;
+            }
+            if (hasOutput && !selectedPersona) {
+                $personaPickerOpen = true;
+                return;
+            }
+            const targetChatId = $activeChat.id;
+            value = '';
+            clearChatDraft(targetChatId);
+            commandPaletteDismissed = false;
+            void runCommand(targetChatId, parsedCommand.resolved.command, parsedCommand.source, {
+                characterId: selectedCharacter?.id,
+                personaId: selectedPersona?.id
+            }).catch((error) => {
+                toast.error({
+                    title: `Could not run /${parsedCommand.resolved.command.name}`,
+                    description: getErrorMessage(error)
+                });
+            });
+            return;
+        }
 
         if (!selectedCharacter) {
             $characterPickerOpen = true;
@@ -382,7 +482,9 @@
 
     function handleStop(): void {
         const chatId = $activeChat?.id;
-        if (chatId) stopChat(chatId);
+        if (!chatId) return;
+        if ($commandTasks.get(chatId)?.status === 'generating') stopCommand(chatId);
+        else stopChat(chatId);
     }
 
     async function attachFiles(files: File[], chatId = $activeChat?.id): Promise<number> {
@@ -553,9 +655,46 @@
         {#if hasSuggestions && $activeChat}
             <ChatSuggestions chatId={$activeChat.id} class="mb-2" />
         {/if}
+        {#if activeCommandTask?.status === 'generating' || activeCommandTask?.status === 'completed'}
+            <div
+                class="mb-2 rounded-2xl border border-border/80 bg-popover/95 p-1.5 text-popover-foreground shadow-xl backdrop-blur-xl"
+                role="status"
+                aria-live="polite"
+            >
+                <div
+                    class="flex min-w-0 items-center justify-between gap-4 rounded-xl px-3 py-2 text-sm"
+                >
+                    <span class="min-w-0 truncate font-mono font-medium">
+                        /{activeCommandTask.commandName}
+                    </span>
+                    {#if activeCommandTask.status === 'generating'}
+                        <span
+                            class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"
+                        >
+                            <Loader2 class="size-4 animate-spin" />
+                            Running
+                        </span>
+                    {:else}
+                        <span
+                            class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"
+                        >
+                            <CheckCircle2 class="size-4 text-emerald-500" />
+                            Completed
+                        </span>
+                    {/if}
+                </div>
+            </div>
+        {/if}
         <div
             class="relative rounded-3xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-black/10 backdrop-blur-xl transition-[border-color,box-shadow] has-[textarea:focus]:border-ring/60 has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-ring/20 dark:bg-card"
         >
+            {#if commandSuggestions.length > 0}
+                <ChatCommandPalette
+                    commands={commandSuggestions}
+                    selectedIndex={Math.min(commandPaletteIndex, commandSuggestions.length - 1)}
+                    onSelect={selectCommand}
+                />
+            {/if}
             {#if isDragging && !recordingBusy}
                 <div
                     class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/50 bg-background/95 text-sm font-medium text-primary backdrop-blur"
@@ -756,9 +895,12 @@
                             ? 'col-start-1 col-span-3 row-start-1 mx-2 w-auto'
                             : 'col-start-2 row-start-1'}"
                         oninput={() => {
+                            commandPaletteDismissed = false;
+                            commandPaletteIndex = 0;
                             if ($activeChat) setChatDraftText($activeChat.id, value);
                         }}
                         onkeydown={(event) => {
+                            if (handleCommandPaletteKey(event)) return;
                             if (event.key === 'Enter' && !event.shiftKey) {
                                 event.preventDefault();
                                 void handleSendMessage();

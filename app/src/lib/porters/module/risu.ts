@@ -49,6 +49,7 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
             messageCSS: extractStyleCSS(normalizeRisuTemplate(risu.backgroundEmbedding ?? '')),
             defaultVariables: {},
             toggles: readRisuTogglePanel(risu.customModuleToggle ?? ''),
+            commands: { refs: {}, folders: {} },
             allowLowLevel: risu.lowLevelAccess ?? false,
             lorebooks: refs(lorebooks),
             scripts: refs(scripts),

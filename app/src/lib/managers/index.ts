@@ -6,6 +6,7 @@
  */
 
 export * from './chat';
+export * from './command';
 export * from './character';
 export * from './llm';
 export * from './message';

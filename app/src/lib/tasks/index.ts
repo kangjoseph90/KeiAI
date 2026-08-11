@@ -1,4 +1,6 @@
 export { runChat, stopChat, dismissChat } from './chat';
+export { dismissCommand, runCommand, stopCommand } from './command';
+export type { RunCommandOptions } from './command';
 export type { RunChatOptions } from './chat';
 export {
     createTranslationSourceHash,

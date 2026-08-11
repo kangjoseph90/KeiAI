@@ -73,6 +73,7 @@ describe('ModuleService', () => {
         messageCSS: '',
         defaultVariables: {},
         toggles: { refs: {}, folders: {} },
+        commands: { refs: {}, folders: {} },
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },

@@ -35,6 +35,15 @@ export interface ChatTask extends TaskMetadata {
     controller?: AbortController;
 }
 
+export interface CommandTask extends TaskMetadata {
+    status: TaskStatus;
+    commandId: string;
+    commandName: string;
+    messageId?: string;
+    errorMessage?: string;
+    controller?: AbortController;
+}
+
 export interface TranslationTask extends TaskMetadata {
     status: TaskStatus;
     errorMessage?: string;
@@ -94,6 +103,7 @@ export interface RecordAudioTask extends TaskMetadata {
 
 export type CollectedTaskKind =
     | 'chat'
+    | 'command'
     | 'dictation'
     | 'record_audio'
     | 'translation'

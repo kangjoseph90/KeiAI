@@ -3,7 +3,7 @@
     import { slide } from 'svelte/transition';
     import { Badge } from '$lib/components/ui/badge';
     import ModelConfigCard from './ModelConfigCard.svelte';
-    import { appSettings, updatePreset } from '$lib/stores';
+    import { appSettings, modules, selectActiveModules, updatePreset } from '$lib/stores';
     import {
         BUILT_IN_LLM_MODELS,
         type LLMProvider,
@@ -15,6 +15,7 @@
     import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
     import { getWorkflowLLMTypes } from '$lib/workflow/agent/llm';
+    import { listItems } from '$lib/utils/ordering';
 
     interface Props {
         preset: Preset;
@@ -26,6 +27,11 @@
 
     let llmTypes = $derived.by(() => {
         const definitions: Record<string, LLMTypeDefinition> = {};
+        const activeModules = selectActiveModules($appSettings, $modules);
+        const commandWorkflows = [
+            ...listItems(preset.commands).map((cmd) => cmd.workflow),
+            ...activeModules.flatMap((mod) => listItems(mod.commands).map((cmd) => cmd.workflow))
+        ];
         const allTypes = [
             ...pluginManager.getInstances().flatMap((inst) => [...inst.llmTypes.values()]),
             ...[
@@ -34,7 +40,8 @@
                 $appSettings?.imageGeneration.workflow,
                 $appSettings?.tts.workflow,
                 $appSettings?.suggestion.workflow,
-                $appSettings?.titleGeneration.workflow
+                $appSettings?.titleGeneration.workflow,
+                ...commandWorkflows
             ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 

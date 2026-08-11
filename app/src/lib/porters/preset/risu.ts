@@ -145,6 +145,7 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
                 memoryRatio: 0.2,
                 lorebookScanDepth: 5
             }),
+            commands: { refs: {}, folders: {} },
             defaultVariables: readDefaultVariables(risu.templateDefaultVariables),
             toggles,
             scripts: refs(scripts)

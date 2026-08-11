@@ -11,13 +11,14 @@ import {
     isLoggedIn,
     messages,
     chatTasks,
+    commandTasks,
     activeChatId,
     roomChats,
     displayMessages,
     isChatRunning
 } from '$lib/stores/state';
 import type { AppSettings, User, Chat, Message } from '$lib/services';
-import type { ChatTask } from '$lib/stores/types';
+import type { ChatTask, CommandTask } from '$lib/stores/types';
 
 function makeMockTask(overrides: Partial<ChatTask> = {}): ChatTask {
     return {
@@ -41,6 +42,7 @@ describe('Global Stores', () => {
         pbConnected.set(false);
         messages.clear();
         chatTasks.set(new Map());
+        commandTasks.set(new Map());
         roomChats.clear();
         activeChatId.set(null);
     });
@@ -100,6 +102,30 @@ describe('Global Stores', () => {
             chatTasks.set(new Map<string, ChatTask>([['chat-2', makeMockTask()]]));
 
             expect(get(isChatRunning)).toBe(false);
+        });
+
+        it('should indicate a command workflow is running for the active chat', () => {
+            roomChats.set('chat-1', { id: 'chat-1' } as Chat);
+            activeChatId.set('chat-1');
+            commandTasks.set(
+                new Map<string, CommandTask>([
+                    [
+                        'chat-1',
+                        {
+                            roomId: 'room-1',
+                            chatId: 'chat-1',
+                            chatTitle: 'Chat 1',
+                            title: '/compact',
+                            startedAt: 1,
+                            status: 'generating',
+                            commandId: 'compact',
+                            commandName: 'compact'
+                        }
+                    ]
+                ])
+            );
+
+            expect(get(isChatRunning)).toBe(true);
         });
     });
 
@@ -201,6 +227,33 @@ describe('Global Stores', () => {
             const display = get(displayMessages);
             expect(display[0].displayStatus).toBe('error');
             expect(display[0].errorMessage).toBe('Network fail');
+        });
+
+        it('should mark an Output command message from the active chat slot', () => {
+            const chatId = 'chat-1';
+            roomChats.set(chatId, { id: chatId } as Chat);
+            activeChatId.set(chatId);
+            messages.setAll([{ id: 'm-command', swipes: {}, activeSwipeId: '' } as Message]);
+            commandTasks.set(
+                new Map<string, CommandTask>([
+                    [
+                        chatId,
+                        {
+                            roomId: 'room-1',
+                            chatId,
+                            chatTitle: 'Chat 1',
+                            title: '/compact',
+                            startedAt: 1,
+                            status: 'generating',
+                            commandId: 'command-1',
+                            commandName: 'compact',
+                            messageId: 'm-command'
+                        }
+                    ]
+                ])
+            );
+
+            expect(get(displayMessages)[0].displayStatus).toBe('generating');
         });
     });
 });

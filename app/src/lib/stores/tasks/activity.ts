@@ -1,5 +1,6 @@
 import {
     chatTasks,
+    commandTasks,
     dictationTasks,
     imageGenerationTasks,
     inputTranslationTasks,
@@ -9,36 +10,50 @@ import {
     recordAudioTasks,
     ttsTasks
 } from '../state';
-import type { Writable } from 'svelte/store';
+import { get, type Writable } from 'svelte/store';
 import type { ChatTaskIndicator, CollectedTask, TaskMetadata, TaskStatus } from '../types';
 
+const COMPLETED_TASK_CONSUME_DELAY_MS = 1500;
+
+const pendingCompletedConsumption = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function consumeCompletedTasks(chatId: string): void {
-    consumeCompleted(chatTasks, chatId);
-    consumeCompleted(translationTasks, chatId);
-    consumeCompleted(imageGenerationTasks, chatId);
-    consumeCompleted(ttsTasks, chatId);
-    consumeCompleted(inputTranslationTasks, chatId);
-    consumeCompleted(suggestionTasks, chatId);
-    consumeCompleted(titleTasks, chatId);
-    consumeCompleted(dictationTasks, chatId);
-    consumeCompleted(recordAudioTasks, chatId);
+    if (pendingCompletedConsumption.has(chatId)) return;
+
+    const timer = setTimeout(() => {
+        try {
+            consumeCompleted(commandTasks, chatId);
+            consumeCompleted(chatTasks, chatId);
+            consumeCompleted(translationTasks, chatId);
+            consumeCompleted(imageGenerationTasks, chatId);
+            consumeCompleted(ttsTasks, chatId);
+            consumeCompleted(inputTranslationTasks, chatId);
+            consumeCompleted(suggestionTasks, chatId);
+            consumeCompleted(titleTasks, chatId);
+            consumeCompleted(dictationTasks, chatId);
+            consumeCompleted(recordAudioTasks, chatId);
+        } finally {
+            pendingCompletedConsumption.delete(chatId);
+        }
+    }, COMPLETED_TASK_CONSUME_DELAY_MS);
+
+    pendingCompletedConsumption.set(chatId, timer);
 }
 
 function consumeCompleted<T extends TaskMetadata & { status: TaskStatus }>(
     store: Writable<Map<string, T>>,
     chatId: string
 ): void {
-    store.update((tasks) => {
-        const next = new Map(tasks);
-        let changed = false;
-        for (const [key, task] of tasks) {
-            if (task.chatId === chatId && task.status === 'completed') {
-                next.delete(key);
-                changed = true;
-            }
+    const tasks = get(store);
+    const next = new Map(tasks);
+    let changed = false;
+    for (const [key, task] of tasks) {
+        if (task.chatId === chatId && task.status === 'completed') {
+            next.delete(key);
+            changed = true;
         }
-        return changed ? next : tasks;
-    });
+    }
+    if (changed) store.set(next);
 }
 
 export function getChatTaskIndicator(
