@@ -454,8 +454,11 @@ export const guestSDK = String.raw`
         transcribeSpeech: (audio, signal) => {
             return broker.invoke('core.transcribeSpeech', [audio], signal);
         },
-        similarity: (query, documents, signal) => {
-            return broker.invoke('core.similarity', [query, documents], signal);
+        similarity: (query, documents, topKOrSignal, signal) => {
+            const topK = typeof topKOrSignal === 'number' ? topKOrSignal : undefined;
+            const abortSignal = topK === undefined ? topKOrSignal : signal;
+            const args = topK === undefined ? [query, documents] : [query, documents, topK];
+            return broker.invoke('core.similarity', args, abortSignal);
         },
         rerank: (query, documents, signal) => {
             return broker.invoke('core.rerank', [query, documents], signal);

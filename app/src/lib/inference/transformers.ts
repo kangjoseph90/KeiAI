@@ -183,7 +183,8 @@ export async function* streamGeneratedText(
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
 export class TransformersInference {
-    async embed(spec: ModelSpec, texts: string[], options?: EmbedOptions): Promise<number[][]> {
+    async embed(spec: ModelSpec, texts: string[], options?: EmbedOptions): Promise<Float32Array[]> {
+        if (texts.length === 0) return [];
         const device = options?.device ?? 'wasm';
         const extractor = await getOrLoadPipeline(
             'feature-extraction',
@@ -200,9 +201,12 @@ export class TransformersInference {
         // result.data is a flat Float32Array; split into per-text vectors
         const data = result.data;
         const dims = data.length / texts.length;
-        const vectors: number[][] = [];
+        if (!Number.isInteger(dims) || dims <= 0) {
+            throw new Error('Embedding pipeline returned an invalid vector shape');
+        }
+        const vectors: Float32Array[] = [];
         for (let i = 0; i < texts.length; i++) {
-            vectors.push(Array.from(data.subarray(i * dims, (i + 1) * dims)));
+            vectors.push(data.subarray(i * dims, (i + 1) * dims));
         }
         return vectors;
     }

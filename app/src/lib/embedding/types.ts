@@ -7,7 +7,7 @@
 
 export interface EmbeddingResult {
     /** One embedding vector per input text */
-    vectors: number[][];
+    vectors: Float32Array[];
 }
 
 export interface EmbeddingHandler {

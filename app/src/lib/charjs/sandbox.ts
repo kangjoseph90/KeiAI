@@ -334,14 +334,19 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     ctx.setProp(keiObj, 'transcribeSpeech', transcribeSpeechFn);
     transcribeSpeechFn.dispose();
 
-    const similarityFn = ctx.newFunction('similarity', (queryHandle, documentsHandle) => {
-        const query = ctx.getString(queryHandle);
-        const documents = readStringArray(ctx.dump(documentsHandle), 'documents');
-        return createValuePromise(async () => {
-            await requirePermission();
-            return similarity(query, documents, new AbortController().signal);
-        });
-    });
+    const similarityFn = ctx.newFunction(
+        'similarity',
+        (queryHandle, documentsHandle, topKHandle) => {
+            const query = ctx.getString(queryHandle);
+            const documents = readStringArray(ctx.dump(documentsHandle), 'documents');
+            const topKValue = topKHandle ? ctx.dump(topKHandle) : undefined;
+            const topK = topKValue === undefined || typeof topKValue === 'number' ? topKValue : NaN;
+            return createValuePromise(async () => {
+                await requirePermission();
+                return similarity(query, documents, new AbortController().signal, topK);
+            });
+        }
+    );
     ctx.setProp(keiObj, 'similarity', similarityFn);
     similarityFn.dispose();
 

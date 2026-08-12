@@ -47,7 +47,7 @@ const script: CharJS = {
             );
             const audio = await KeiAPI.synthesizeSpeech('hello');
             const text = await KeiAPI.transcribeSpeech('audio-id');
-            const similar = await KeiAPI.similarity('query', ['first', 'second']);
+            const similar = await KeiAPI.similarity('query', ['first', 'second'], 1);
             const ranked = await KeiAPI.rerank('query', ['first', 'second']);
             return JSON.stringify({ image, audio, text, similar, ranked });
         });
@@ -103,7 +103,8 @@ describe('CharJS media APIs', () => {
         expect(mocks.similarity).toHaveBeenCalledWith(
             'query',
             ['first', 'second'],
-            expect.any(AbortSignal)
+            expect.any(AbortSignal),
+            1
         );
         expect(mocks.rerank).toHaveBeenCalledWith(
             'query',

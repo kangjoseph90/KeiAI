@@ -219,13 +219,17 @@ describe('plugin media APIs', () => {
         mocks.rerank.mockResolvedValue(result);
 
         await expect(
-            exposed.get('core.similarity')!('query', ['first', 'second'], signal)
+            exposed.get('core.similarity')!('query', ['first', 'second'], 1, signal)
+        ).resolves.toBe(result);
+        await expect(
+            exposed.get('core.similarity')!('legacy-query', ['first'], signal)
         ).resolves.toBe(result);
         await expect(
             exposed.get('core.rerank')!('query', ['first', 'second'], signal)
         ).resolves.toBe(result);
 
-        expect(mocks.similarity).toHaveBeenCalledWith('query', ['first', 'second'], signal);
+        expect(mocks.similarity).toHaveBeenCalledWith('query', ['first', 'second'], signal, 1);
+        expect(mocks.similarity).toHaveBeenCalledWith('legacy-query', ['first'], signal, undefined);
         expect(mocks.rerank).toHaveBeenCalledWith('query', ['first', 'second'], signal);
     });
 

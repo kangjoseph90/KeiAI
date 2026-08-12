@@ -12,9 +12,7 @@ export class PluginEmbeddingHandler implements EmbeddingHandler {
         if (!isEmbeddingResult(result)) {
             throw new Error('Plugin embedding provider returned an invalid result');
         }
-        return {
-            vectors: result.vectors.map((vector) => [...vector])
-        };
+        return result;
     }
 }
 
@@ -23,7 +21,8 @@ function isEmbeddingResult(value: unknown): value is EmbeddingResult {
     if (!Array.isArray(value.vectors)) return false;
     return value.vectors.every(
         (vector) =>
-            Array.isArray(vector) &&
+            vector instanceof Float32Array &&
+            vector.length > 0 &&
             vector.every((component) => typeof component === 'number' && Number.isFinite(component))
     );
 }

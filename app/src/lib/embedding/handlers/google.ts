@@ -75,7 +75,9 @@ export class GoogleEmbeddingHandler implements EmbeddingHandler {
             );
         }
 
-        const vectors = json.embeddings.map((e: { values: number[] }) => e.values);
+        const vectors = json.embeddings.map((e: { values: number[] }) =>
+            Float32Array.from(e.values)
+        );
 
         return { vectors };
     }

@@ -57,7 +57,7 @@ export class OpenAIEmbeddingHandler implements EmbeddingHandler {
         const json = await response.json();
         const vectors = json.data
             .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
-            .map((d: { embedding: number[] }) => d.embedding);
+            .map((d: { embedding: number[] }) => Float32Array.from(d.embedding));
 
         return { vectors };
     }

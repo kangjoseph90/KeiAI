@@ -10,6 +10,24 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 
 describe('TransformersInference', () => {
+    it('returns zero-copy Float32 vector views from embedding output', async () => {
+        const data = new Float32Array([1, 2, 3, 4]);
+        const extractor = vi.fn(async () => ({ data }));
+        mockPipeline.mockResolvedValue(extractor);
+
+        const inference = new TransformersInference();
+        const vectors = await inference.embed({ modelId: 'test/float32-embedding-output' }, [
+            'first',
+            'second'
+        ]);
+
+        expect(vectors).toHaveLength(2);
+        expect(vectors[0]).toBeInstanceOf(Float32Array);
+        expect(vectors[0].buffer).toBe(data.buffer);
+        expect([...vectors[0]]).toEqual([1, 2]);
+        expect([...vectors[1]]).toEqual([3, 4]);
+    });
+
     it('attaches an ASR pipeline tokenizer to a processor that omitted it', async () => {
         const components: Record<string, unknown> = {};
         const tokenizer = {

@@ -534,12 +534,22 @@ export class PluginManager {
                     .text
         );
 
-        broker.expose('core.similarity', (query: unknown, documents: unknown, signal: unknown) =>
-            similarity(
-                String(query),
-                readStringArray(documents, 'documents'),
-                readAbortSignal(signal)
-            )
+        broker.expose(
+            'core.similarity',
+            (query: unknown, documents: unknown, topKOrSignal: unknown, signal: unknown) => {
+                const topK =
+                    topKOrSignal === undefined || topKOrSignal instanceof AbortSignal
+                        ? undefined
+                        : typeof topKOrSignal === 'number'
+                          ? topKOrSignal
+                          : NaN;
+                return similarity(
+                    String(query),
+                    readStringArray(documents, 'documents'),
+                    readAbortSignal(topKOrSignal instanceof AbortSignal ? topKOrSignal : signal),
+                    topK
+                );
+            }
         );
 
         broker.expose('core.rerank', (query: unknown, documents: unknown, signal: unknown) =>
