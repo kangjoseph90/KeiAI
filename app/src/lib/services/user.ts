@@ -1,15 +1,8 @@
-/**
- * User Service — Local User Lifecycle
- *
- * Owns local user record persistence:
- * local identity creation, sync-link user saves, user field updates, local
- * deletion, active-user KV selection, and key-backed session activation.
- * PB auth, sync server selection, and page reload orchestration live above this layer.
- */
+/** Local user persistence, boot selection, and session activation. */
 
 import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
-import { clearSession, getActiveSession, hasActiveSession, setUserSession } from './session';
+import { getActiveSession, setUserSession } from './session';
 export type { MultiRoomSession, Session, UserSession } from './session';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appMulti } from '$lib/adapters/multi';
@@ -25,11 +18,7 @@ import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
 import { purgeOrphanScopes } from './purge';
 import type { UserConnectionSettings } from '$lib/types/connections';
-import {
-    applyUserConnectionRuntime,
-    resetConnectionRuntime,
-    resolveServerUrl
-} from './connection/runtime';
+import { applyUserConnectionRuntime, resolveServerUrl } from './connection/runtime';
 
 export interface UserFields {
     name: string;
@@ -51,6 +40,9 @@ const defaultFields: UserFields = {
         proxy: { mode: 'default' }
     }
 };
+
+const PENDING_INITIALIZATION_KEY = 'pendingInitializationUserId';
+const ACTIVE_USER_KEY = 'activeUserId';
 
 function getDefaultAvatarUrl(seed: string): string {
     const svg = minidenticon(seed);
@@ -76,30 +68,29 @@ function parseFields(record: UserRecord): UserFields {
 }
 
 export class UserService {
-    /**
-     * Persist the active user ID and activate the in-memory session.
-     * Pass an empty string to clear the KV (e.g. before page reload for new user creation).
-     */
-    static async setActiveUser(userId: string): Promise<void> {
-        if (!userId) return this.clearActiveUser();
-        const stored = await appUser.getUser(userId);
-        if (!stored) {
-            throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+    private static async activateUser(stored: UserRecord): Promise<UserRecord> {
+        const user: UserRecord = { ...stored, ...parseFields(stored) };
+        if (!user.identityKeyPair) {
+            user.identityKeyPair = await generateIdentityKeyPair();
+            user.updatedAt = clock.now();
+            await appUser.saveUser(user);
         }
-        const fields = parseFields(stored);
         setUserSession({
-            userId,
-            masterKey: stored.masterKey,
-            identityKeyPair: stored.identityKeyPair
+            userId: user.id,
+            masterKey: user.masterKey,
+            identityKeyPair: user.identityKeyPair
         });
-        await appKV.set('activeUserId', userId);
-        applyUserConnectionRuntime(fields.connections);
+        await appKV.set(ACTIVE_USER_KEY, user.id);
+        applyUserConnectionRuntime(user.connections);
+        return user;
     }
 
-    static async clearActiveUser(): Promise<void> {
-        clearSession();
-        await appKV.set('activeUserId', '');
-        resetConnectionRuntime();
+    static async selectUser(userId: string): Promise<void> {
+        await appKV.set(ACTIVE_USER_KEY, userId);
+    }
+
+    static async isUserSwitchPending(): Promise<boolean> {
+        return (await appKV.get(ACTIVE_USER_KEY)) !== getActiveSession().userId;
     }
 
     /** Get a user view by local user ID. */
@@ -120,37 +111,29 @@ export class UserService {
     }
 
     /**
-     * Restore the previously active user from local DB, or create a new local identity.
-     * This is the app's boot entry point — called once from +page.svelte onMount.
-     *
-     * @returns restored — whether an existing user was restored from local DB.
+     * Restore the active user, fall back to an existing user, or create the first user.
+     * This is the app's boot entry point, called once from App.svelte.
      */
-    static async restoreOrCreateUser(): Promise<{ user: UserRecord; restored: boolean }> {
-        const savedUserId = await appKV.get('activeUserId');
+    static async restoreOrCreateUser(): Promise<{
+        user: UserRecord;
+        needsInitialization: boolean;
+    }> {
+        const savedUserId = await appKV.get(ACTIVE_USER_KEY);
+        let user = savedUserId ? await appUser.getUser(savedUserId) : null;
 
-        if (savedUserId) {
-            const stored = await appUser.getUser(savedUserId);
-            if (stored) {
-                const user: UserRecord = {
-                    ...parseFields(stored),
-                    id: stored.id,
-                    createdAt: stored.createdAt,
-                    updatedAt: stored.updatedAt,
-                    masterKey: stored.masterKey,
-                    identityKeyPair: stored.identityKeyPair
-                };
-
-                // Backfill identity key pair if the record predates this feature
-                if (!user.identityKeyPair) {
-                    user.identityKeyPair = await generateIdentityKeyPair();
-                    user.updatedAt = clock.now();
-                    await appUser.saveUser(user);
-                }
-                return { user, restored: true };
-            }
+        if (!user) {
+            const users = await appUser.getAllUsers();
+            user = users[0] ?? null;
         }
-        const user = await this.createUser();
-        return { user, restored: false };
+        if (!user) {
+            user = await this.createUser();
+        }
+
+        user = await this.activateUser(user);
+        return {
+            user,
+            needsInitialization: (await appKV.get(PENDING_INITIALIZATION_KEY)) === user.id
+        };
     }
 
     /**
@@ -176,8 +159,14 @@ export class UserService {
             connections: structuredClone(defaultFields.connections)
         };
 
+        await appKV.set(PENDING_INITIALIZATION_KEY, id);
         await appUser.saveUser(user);
         return user;
+    }
+
+    static async finishInitialization(): Promise<void> {
+        await buffer.flushAll();
+        await appKV.remove(PENDING_INITIALIZATION_KEY);
     }
 
     static async saveUser(params: {
@@ -294,12 +283,5 @@ export class UserService {
             appMulti.purgeUserLocal(userId, { origin: 'sync' })
         ]);
         await purgeOrphanScopes();
-
-        if (hasActiveSession()) {
-            const { userId: currentUserId } = getActiveSession();
-            if (currentUserId === userId) {
-                await this.clearActiveUser();
-            }
-        }
     }
 }

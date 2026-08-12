@@ -77,9 +77,14 @@ vi.mock('$lib/adapters/storage', () => ({
     }
 }));
 
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: { flushAll: vi.fn(), flushTable: vi.fn() }
+}));
+
 import { appUser } from '$lib/adapters/user';
 import { appKV } from '$lib/adapters/kv';
 import { syncCursorDB } from '$lib/adapters/sync';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('UserService', () => {
     beforeEach(() => {
@@ -100,12 +105,9 @@ describe('UserService', () => {
             connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         });
 
-        const restored = await UserService.restoreOrCreateUser();
+        const { user } = await UserService.restoreOrCreateUser();
 
-        expect(restored).toEqual({
-            user: expect.objectContaining({ id: 'user-1' }),
-            restored: true
-        });
+        expect(user).toEqual(expect.objectContaining({ id: 'user-1' }));
     });
 
     it('normalizes connection settings on legacy user records', async () => {
@@ -157,12 +159,9 @@ describe('UserService', () => {
     it('creates a new local identity when no active user exists', async () => {
         vi.mocked(appKV.get).mockResolvedValue(null);
 
-        const restored = await UserService.restoreOrCreateUser();
+        const { user } = await UserService.restoreOrCreateUser();
 
-        expect(restored).toEqual({
-            user: expect.objectContaining({ id: 'local-id' }),
-            restored: false
-        });
+        expect(user).toEqual(expect.objectContaining({ id: 'local-id' }));
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'local-id',
@@ -171,8 +170,37 @@ describe('UserService', () => {
                 identityKeyPair: mockIdentityKeyPair
             })
         );
-        // KV set is now handled by the caller (App.svelte) or AuthService, not internally
-        expect(appKV.set).not.toHaveBeenCalled();
+        expect(appKV.set).toHaveBeenCalledWith('pendingInitializationUserId', 'local-id');
+    });
+
+    it('uses an existing user when the active user pointer is missing', async () => {
+        vi.mocked(appKV.get).mockResolvedValue(null);
+        vi.mocked(appUser.getAllUsers).mockResolvedValue([
+            {
+                id: 'user-1',
+                name: 'Local 1',
+                avatar: '',
+                createdAt: 1,
+                updatedAt: 1,
+                masterKey: mockMasterKey,
+                identityKeyPair: mockIdentityKeyPair,
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
+            }
+        ]);
+
+        const { user } = await UserService.restoreOrCreateUser();
+
+        expect(user.id).toBe('user-1');
+        expect(appUser.saveUser).not.toHaveBeenCalled();
+    });
+
+    it('persists defaults before clearing pending initialization', async () => {
+        await UserService.finishInitialization();
+
+        expect(buffer.flushAll).toHaveBeenCalledOnce();
+        expect(vi.mocked(buffer.flushAll).mock.invocationCallOrder[0]).toBeLessThan(
+            vi.mocked(appKV.remove).mock.invocationCallOrder[0]
+        );
     });
 
     it('marks a user as sync linked after server authentication', async () => {

@@ -119,6 +119,7 @@ export class ConnectionService {
         }
 
         this.lockServerTransition();
+        let transitionRecovered = true;
         let remoteAssets: AssetRegistryRecord[] = [];
         let assetCommitStarted = false;
         let settingsCommitted = false;
@@ -167,6 +168,7 @@ export class ConnectionService {
                 }
             }
             if (rollbackErrors.length > 0) {
+                transitionRecovered = false;
                 throw new AppError(
                     'STORAGE_ERROR',
                     'Server connection change failed and could not be fully rolled back. Restart the app before retrying.',
@@ -175,7 +177,7 @@ export class ConnectionService {
             }
             throw error;
         } finally {
-            this.unlockServerTransition();
+            if (transitionRecovered) this.unlockServerTransition();
         }
     }
 
@@ -286,12 +288,14 @@ export class ConnectionService {
     private static lockServerTransition(): void {
         this.serverTransitionLocked = true;
         SyncManager.stopAutoSync();
+        AuthService.stopAutoRefresh();
         AssetService.stopEviction();
         this.emitLockChange();
     }
 
     private static unlockServerTransition(): void {
         SyncManager.startAutoSync();
+        AuthService.startAutoRefresh();
         AssetService.resumeEviction();
         this.serverTransitionLocked = false;
         this.emitLockChange();

@@ -7,10 +7,10 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebKeyValueAdapter } from '$lib/adapters/kv/web';
-import type { IKeyValueAdapter } from '$lib/adapters/kv/types';
+import type { AsyncKeyValueStore } from '$lib/adapters/kv/types';
 
 describe('WebKeyValueAdapter (localStorage)', () => {
-    let adapter: IKeyValueAdapter;
+    let adapter: AsyncKeyValueStore;
 
     beforeEach(() => {
         // Clear localStorage before each test
@@ -171,7 +171,7 @@ describe('WebKeyValueAdapter (localStorage)', () => {
     });
 });
 
-describe('IKeyValueAdapter interface contract', () => {
+describe('AsyncKeyValueStore interface contract', () => {
     it('should have all required methods', async () => {
         const adapter = new WebKeyValueAdapter();
 

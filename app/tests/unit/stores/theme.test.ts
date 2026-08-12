@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { IKeyValueAdapter } from '$lib/adapters/kv';
+import type { KeyValueStore } from '$lib/adapters/kv';
 import { themePreference } from '$lib/stores/state';
 import {
     applyTheme,
@@ -10,13 +10,12 @@ import {
     updateThemePreference
 } from '$lib/stores/theme';
 
-function createStorage(value: string | null): IKeyValueAdapter {
+function createStorage(value: string | null): KeyValueStore {
     return {
-        get: vi.fn().mockResolvedValue(value),
-        set: vi.fn().mockResolvedValue(undefined),
-        remove: vi.fn().mockResolvedValue(undefined),
-        keys: vi.fn().mockResolvedValue([]),
-        init: vi.fn().mockResolvedValue(undefined)
+        get: vi.fn().mockReturnValue(value),
+        set: vi.fn(),
+        remove: vi.fn(),
+        keys: vi.fn().mockReturnValue([])
     };
 }
 
@@ -28,21 +27,21 @@ describe('theme preference', () => {
     it('restores the device-local preference', async () => {
         const storage = createStorage('light');
 
-        await loadThemePreference(storage);
+        loadThemePreference(storage);
 
         expect(storage.get).toHaveBeenCalledWith(THEME_PREFERENCE_KEY);
         expect(get(themePreference)).toBe('light');
     });
 
     it('falls back to system for a missing or invalid preference', async () => {
-        await loadThemePreference(createStorage('sepia'));
+        loadThemePreference(createStorage('sepia'));
         expect(get(themePreference)).toBe('system');
     });
 
     it('updates state after persistence succeeds', async () => {
         const storage = createStorage(null);
 
-        await updateThemePreference('dark', storage);
+        updateThemePreference('dark', storage);
 
         expect(storage.set).toHaveBeenCalledWith(THEME_PREFERENCE_KEY, 'dark');
         expect(get(themePreference)).toBe('dark');
@@ -50,9 +49,11 @@ describe('theme preference', () => {
 
     it('keeps the current state when persistence fails', async () => {
         const storage = createStorage(null);
-        vi.mocked(storage.set).mockRejectedValue(new Error('storage failed'));
+        vi.mocked(storage.set).mockImplementation(() => {
+            throw new Error('storage failed');
+        });
 
-        await expect(updateThemePreference('dark', storage)).rejects.toThrow('storage failed');
+        expect(() => updateThemePreference('dark', storage)).toThrow('storage failed');
         expect(get(themePreference)).toBe('system');
     });
 

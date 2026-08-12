@@ -1,4 +1,4 @@
-import { appKV, type IKeyValueAdapter } from '$lib/adapters/kv';
+import { deviceKV, type KeyValueStore } from '$lib/adapters/kv';
 import { isUiLocale, resolveUiLocale, type UiLocale } from '$lib/language';
 import { updateSettings } from './content/settings';
 import { appLocale, deviceLocale } from './state';
@@ -9,13 +9,13 @@ function getSystemLanguages(): readonly string[] {
     return typeof navigator === 'undefined' ? [] : navigator.languages;
 }
 
-export async function loadLocalePreference(
-    storage: IKeyValueAdapter = appKV,
+export function loadLocalePreference(
+    storage: KeyValueStore = deviceKV,
     systemLanguages: readonly string[] = getSystemLanguages()
-): Promise<UiLocale> {
+): UiLocale {
     let stored: string | null = null;
     try {
-        stored = await storage.get(LOCALE_PREFERENCE_KEY);
+        stored = storage.get(LOCALE_PREFERENCE_KEY);
     } catch {
         // Bootstrap must remain available when optional preference storage fails.
     }
@@ -25,18 +25,26 @@ export async function loadLocalePreference(
     return locale;
 }
 
-export function startLocalePreferenceCache(storage: IKeyValueAdapter = appKV): () => void {
+export function startLocalePreferenceCache(storage: KeyValueStore = deviceKV): () => void {
     return appLocale.subscribe((locale) => {
         deviceLocale.set(locale);
-        void storage.set(LOCALE_PREFERENCE_KEY, locale).catch(() => undefined);
+        try {
+            storage.set(LOCALE_PREFERENCE_KEY, locale);
+        } catch {
+            // The synchronized setting remains authoritative if the bootstrap cache fails.
+        }
     });
 }
 
 export async function updateAppLocale(
     locale: UiLocale,
-    storage: IKeyValueAdapter = appKV
+    storage: KeyValueStore = deviceKV
 ): Promise<void> {
     await updateSettings({ ui: { locale } });
     deviceLocale.set(locale);
-    await storage.set(LOCALE_PREFERENCE_KEY, locale).catch(() => undefined);
+    try {
+        storage.set(LOCALE_PREFERENCE_KEY, locale);
+    } catch {
+        // The synchronized setting remains authoritative if the bootstrap cache fails.
+    }
 }

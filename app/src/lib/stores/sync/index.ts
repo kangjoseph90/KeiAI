@@ -11,10 +11,10 @@ import { startDataStoreSync, stopDataStoreSync } from './data';
 import { startMultiStoreSync, stopMultiStoreSync } from './multi';
 import { startUserStoreSync, stopUserStoreSync } from './user';
 
-let stopTracking: (() => void) | null = null;
+let stopBindings: (() => void) | null = null;
 
-export function startSyncStatusTracking(): void {
-    if (stopTracking) return;
+export function startSyncStoreBindings(): void {
+    if (stopBindings) return;
 
     const unsubscribers = [
         DataRecordSyncEngine.subscribeStatus((status: SyncStatus) => {
@@ -35,7 +35,7 @@ export function startSyncStatusTracking(): void {
     startUserStoreSync();
     startMultiStoreSync();
 
-    stopTracking = () => {
+    stopBindings = () => {
         for (const unsubscribe of unsubscribers) {
             unsubscribe();
         }
@@ -48,12 +48,12 @@ export function startSyncStatusTracking(): void {
         userSyncStatus.set({ state: 'idle' });
         multiSyncStatus.set({ state: 'idle' });
         assetSyncStatus.set({ state: 'idle' });
-        stopTracking = null;
+        stopBindings = null;
     };
 }
 
-export function stopSyncStatusTracking(): void {
-    stopTracking?.();
+export function stopSyncStoreBindings(): void {
+    stopBindings?.();
 }
 
 export async function performResetSyncCursors(): Promise<void> {

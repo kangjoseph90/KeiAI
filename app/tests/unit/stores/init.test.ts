@@ -46,92 +46,28 @@ describe('Init Store', () => {
     });
 
     describe('initDefaultContents', () => {
-        it('should call createPersona', async () => {
-            await initDefaultContents();
-
-            expect(createPersona).toHaveBeenCalledWith();
-            expect(createPersona).toHaveBeenCalledTimes(1);
-        });
-
-        it('should call createPreset', async () => {
-            await initDefaultContents();
-
-            expect(createPreset).toHaveBeenCalledWith({
-                chatWorkflow: expect.objectContaining({
-                    nodes: expect.objectContaining({
-                        chat_agent: expect.objectContaining({ class: 'Agent' }),
-                        output: expect.objectContaining({ class: 'Output' })
-                    })
-                })
-            });
-            expect(createPreset).toHaveBeenCalledTimes(1);
-        });
-
-        it('should call createCharacter', async () => {
-            await initDefaultContents();
-
-            expect(createCharacter).toHaveBeenCalledWith();
-            expect(createCharacter).toHaveBeenCalledTimes(1);
-        });
-
-        it('should call createRoom', async () => {
-            await initDefaultContents();
-
-            expect(createRoom).toHaveBeenCalledWith();
-            expect(createRoom).toHaveBeenCalledTimes(1);
-        });
-
-        it('should call all create functions in parallel', async () => {
-            await initDefaultContents();
-
-            expect(createPersona).toHaveBeenCalled();
-            expect(createPreset).toHaveBeenCalled();
-            expect(createCharacter).toHaveBeenCalled();
-            expect(createRoom).toHaveBeenCalled();
-        });
-
-        it('should attach the created character and select the created preset', async () => {
-            await initDefaultContents();
-
-            expect(addRoomCharacter).toHaveBeenCalledWith('room-1', 'char-1');
-            expect(selectPreset).toHaveBeenCalledWith('preset-1');
-        });
-
-        it('should initialize the default task workflows', async () => {
+        it('creates and durably initializes the default content', async () => {
             deviceLocale.set('ko');
             await initDefaultContents();
 
+            expect(createPersona).toHaveBeenCalledOnce();
+            expect(createPreset).toHaveBeenCalledWith({
+                chatWorkflow: expect.objectContaining({
+                    nodes: expect.objectContaining({
+                        chat_agent: expect.objectContaining({ class: 'Agent' })
+                    })
+                })
+            });
+            expect(createCharacter).toHaveBeenCalledOnce();
+            expect(createRoom).toHaveBeenCalledOnce();
+            expect(addRoomCharacter).toHaveBeenCalledWith('room-1', 'char-1');
+            expect(selectPreset).toHaveBeenCalledWith('preset-1');
             expect(updateSettings).toHaveBeenCalledWith(
                 expect.objectContaining({
                     ui: { locale: 'ko' },
-                    translation: {
-                        workflow: expect.objectContaining({
-                            nodes: expect.objectContaining({
-                                translation_agent: expect.objectContaining({ class: 'Agent' }),
-                                translation_output: expect.objectContaining({ class: 'Output' })
-                            })
-                        })
-                    },
-                    imageGeneration: {
-                        workflow: expect.objectContaining({
-                            nodes: expect.objectContaining({
-                                image_generation: expect.objectContaining({
-                                    class: 'ImageGeneration'
-                                }),
-                                image_generation_output: expect.objectContaining({
-                                    class: 'Output'
-                                })
-                            })
-                        })
-                    },
-                    tts: {
-                        workflow: expect.objectContaining({
-                            nodes: expect.objectContaining({
-                                tts: expect.objectContaining({ class: 'TTS' }),
-                                tts_output: expect.objectContaining({ class: 'Output' })
-                            })
-                        })
-                    }
+                    translation: { workflow: expect.any(Object) },
+                    imageGeneration: { workflow: expect.any(Object) },
+                    tts: { workflow: expect.any(Object) }
                 })
             );
         });

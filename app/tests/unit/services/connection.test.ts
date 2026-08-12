@@ -15,6 +15,16 @@ const userServiceMock = vi.hoisted(() => ({
     getUser: vi.fn(),
     updateConnections: vi.fn()
 }));
+const authServiceMock = vi.hoisted(() => ({
+    persistPbAuth: vi.fn(),
+    restorePbAuth: vi.fn(),
+    stopAutoRefresh: vi.fn(),
+    startAutoRefresh: vi.fn()
+}));
+const syncManagerMock = vi.hoisted(() => ({
+    stopAutoSync: vi.fn(),
+    startAutoSync: vi.fn()
+}));
 const assetServiceMock = vi.hoisted(() => ({
     getRemoteAssets: vi.fn(),
     load: vi.fn(),
@@ -33,12 +43,13 @@ vi.mock('$lib/config', () => ({
 vi.mock('$lib/adapters/http', () => ({ appHttp: appHttpMock }));
 vi.mock('$lib/adapters/pb', () => ({ pb: pbMock }));
 vi.mock('$lib/services/user', () => ({ UserService: userServiceMock }));
+vi.mock('$lib/services/auth', () => ({ AuthService: authServiceMock }));
 vi.mock('$lib/services/asset', () => ({ AssetService: assetServiceMock }));
 vi.mock('$lib/services/session', () => ({
     getActiveSession: () => ({ userId: 'user-1' })
 }));
 vi.mock('$lib/services/sync', () => ({
-    SyncManager: { stopAutoSync: vi.fn(), startAutoSync: vi.fn() }
+    SyncManager: syncManagerMock
 }));
 
 import { ConnectionService } from '$lib/services/connection/service';
@@ -119,7 +130,12 @@ describe('ConnectionService', () => {
         expect(assetServiceMock.load).toHaveBeenCalledWith(remoteAsset);
         expect(assetServiceMock.markLocalBatch).toHaveBeenCalledWith([remoteAsset]);
         expect(pbMock.baseUrl).toBe('https://custom-server.example.test');
-        expect(pbMock.authStore.clear).toHaveBeenCalledOnce();
+        expect(authServiceMock.stopAutoRefresh).toHaveBeenCalledOnce();
+        expect(authServiceMock.restorePbAuth).toHaveBeenCalledWith(
+            'user-1',
+            'https://custom-server.example.test'
+        );
+        expect(authServiceMock.startAutoRefresh).toHaveBeenCalledOnce();
     });
 
     it('restores remote asset state when the server commit fails', async () => {
@@ -140,5 +156,35 @@ describe('ConnectionService', () => {
 
         expect(assetServiceMock.markRemoteBatch).toHaveBeenCalledWith([remoteAsset]);
         expect(pbMock.baseUrl).toBe('https://default.example.test');
+    });
+
+    it('keeps background work stopped when rollback cannot restore the connection', async () => {
+        appHttpMock.fetch.mockResolvedValue(
+            new Response(JSON.stringify({ app: 'keiai', protocol: 1 }), { status: 200 })
+        );
+        userServiceMock.updateConnections
+            .mockResolvedValueOnce({
+                ...baseUser,
+                connections: {
+                    ...baseUser.connections,
+                    server: {
+                        mode: 'custom',
+                        customUrl: 'https://custom-server.example.test'
+                    }
+                }
+            })
+            .mockRejectedValueOnce(new Error('rollback failed'));
+        authServiceMock.restorePbAuth.mockRejectedValueOnce(new Error('restore failed'));
+
+        await expect(
+            ConnectionService.changeServerConnection({
+                mode: 'custom',
+                customUrl: 'https://custom-server.example.test'
+            })
+        ).rejects.toThrow('could not be fully rolled back');
+
+        expect(syncManagerMock.startAutoSync).not.toHaveBeenCalled();
+        expect(authServiceMock.startAutoRefresh).not.toHaveBeenCalled();
+        expect(assetServiceMock.resumeEviction).not.toHaveBeenCalled();
     });
 });

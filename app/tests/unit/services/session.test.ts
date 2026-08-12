@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveSession, hasActiveSession } from '$lib/services/session';
+import { clearSession, getActiveSession, hasActiveSession } from '$lib/services/session';
 import { UserService } from '$lib/services/user';
 
 vi.mock('$lib/adapters/user', () => ({
@@ -23,14 +23,16 @@ vi.mock('$lib/adapters/multi', () => ({
 }));
 
 import { appUser } from '$lib/adapters/user';
+import { appKV } from '$lib/adapters/kv';
 
 describe('UserService Session Management', () => {
     const masterKey = {} as CryptoKey;
     const identityKeyPair = {} as CryptoKeyPair;
 
     beforeEach(async () => {
-        await UserService.clearActiveUser();
+        clearSession();
         vi.clearAllMocks();
+        vi.mocked(appKV.get).mockResolvedValue('user-1');
         vi.mocked(appUser.getUser).mockResolvedValue({
             id: 'user-1',
             name: 'User',
@@ -44,7 +46,7 @@ describe('UserService Session Management', () => {
     });
 
     it('loads active local identity state', async () => {
-        await UserService.setActiveUser('user-1');
+        await UserService.restoreOrCreateUser();
 
         expect(getActiveSession().userId).toBe('user-1');
     });
@@ -52,19 +54,12 @@ describe('UserService Session Management', () => {
     it('tracks active and sync availability', async () => {
         expect(hasActiveSession()).toBe(false);
 
-        await UserService.setActiveUser('user-1');
+        await UserService.restoreOrCreateUser();
 
         expect(hasActiveSession()).toBe(true);
     });
 
     it('throws when no session is initialized', () => {
         expect(() => getActiveSession()).toThrow('Active session not found');
-    });
-
-    it('clears session state', async () => {
-        await UserService.setActiveUser('user-1');
-        await UserService.clearActiveUser();
-
-        expect(hasActiveSession()).toBe(false);
     });
 });

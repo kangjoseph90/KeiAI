@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { startSyncStatusTracking, stopSyncStatusTracking } from '$lib/stores/sync';
+import { startSyncStoreBindings, stopSyncStoreBindings } from '$lib/stores/sync';
 import {
     dataSyncStatus,
     userSyncStatus,
@@ -55,7 +55,7 @@ vi.mock('$lib/services/sync', () => ({
 
 describe('sync status stores', () => {
     beforeEach(() => {
-        stopSyncStatusTracking();
+        stopSyncStoreBindings();
         dataStatusListeners.clear();
         userStatusListeners.clear();
         multiStatusListeners.clear();
@@ -67,7 +67,7 @@ describe('sync status stores', () => {
     });
 
     it('should mirror sync engine statuses into store state', () => {
-        startSyncStatusTracking();
+        startSyncStoreBindings();
 
         for (const listener of dataStatusListeners) {
             listener({ state: 'syncing' });
@@ -92,13 +92,13 @@ describe('sync status stores', () => {
     });
 
     it('should reset stores when tracking stops', () => {
-        startSyncStatusTracking();
+        startSyncStoreBindings();
 
         for (const listener of assetStatusListeners) {
             listener({ state: 'quota_error' });
         }
 
-        stopSyncStatusTracking();
+        stopSyncStoreBindings();
 
         expect(get(dataSyncStatus)).toEqual({ state: 'idle' });
         expect(get(userSyncStatus)).toEqual({ state: 'idle' });

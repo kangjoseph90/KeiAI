@@ -18,8 +18,8 @@
     import {
         loadGlobalState,
         loadUser,
-        startSyncStatusTracking,
-        stopSyncStatusTracking,
+        startSyncStoreBindings,
+        stopSyncStoreBindings,
         selectChat,
         clearActiveRoom,
         clearActiveCharacter,
@@ -74,8 +74,8 @@
     const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
     const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
     let compactShellMedia: MediaQueryList | undefined;
-    let systemThemeMedia: MediaQueryList | undefined;
-    let systemThemeDark = $state(false);
+    const systemThemeMedia = window.matchMedia(SYSTEM_THEME_QUERY);
+    let systemThemeDark = $state(systemThemeMedia.matches);
     let shellTransitionFrame: number | undefined;
     let shellTransitionRestoreFrame: number | undefined;
     const appSidebarVisible = $derived(
@@ -92,6 +92,9 @@
             ? $t('shell.startup.cryptoTitleSecure')
             : $t('shell.startup.cryptoTitleUnsupported')
     );
+
+    loadThemePreference();
+    loadLocalePreference();
 
     function navigateFromHome(r: RouteState) {
         navigate(r);
@@ -286,12 +289,7 @@
     let _cleanupLocaleCache: (() => void) | undefined;
 
     onMount(async () => {
-        systemThemeMedia = window.matchMedia(SYSTEM_THEME_QUERY);
-        systemThemeDark = systemThemeMedia.matches;
         systemThemeMedia.addEventListener('change', handleSystemThemeChange);
-        await loadThemePreference();
-        await loadLocalePreference();
-        _cleanupLocaleCache = startLocalePreferenceCache();
 
         try {
             if (environmentIssue) return;
@@ -303,26 +301,29 @@
             compactShell = compactShellMedia.matches;
             sidebarCollapsed = compactShell;
             compactShellMedia.addEventListener('change', handleCompactShellChange);
-            startSyncStatusTracking();
             await clock.init(appKV);
-            const { user, restored } = await UserService.restoreOrCreateUser();
-            await UserService.setActiveUser(user.id);
+            const { user, needsInitialization } = await UserService.restoreOrCreateUser();
             await AuthService.restorePbAuth(user.id);
             await AuthService.refreshPbAuth();
             AuthService.startAutoRefresh();
-            if (!restored) {
+            if (needsInitialization) {
                 await initDefaultContents();
+                await UserService.finishInitialization();
             }
             await loadUser();
             await loadGlobalState();
+            startSyncStoreBindings();
             SyncManager.startAutoSync();
             await SyncManager.syncAll();
             const initialRoute = getCurrentHashRoute();
             await restoreRoute(initialRoute);
-            ready = true;
-
+            _cleanupLocaleCache = startLocalePreferenceCache();
             _cleanupHash = initHashListener();
+            ready = true;
         } catch (err) {
+            AuthService.stopAutoRefresh();
+            SyncManager.stopAutoSync();
+            stopSyncStoreBindings();
             errorMsg = getErrorMessage(err);
         }
     });
@@ -334,7 +335,7 @@
     onDestroy(() => {
         AuthService.stopAutoRefresh();
         SyncManager.stopAutoSync();
-        stopSyncStatusTracking();
+        stopSyncStoreBindings();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);
         systemThemeMedia?.removeEventListener('change', handleSystemThemeChange);
         if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);

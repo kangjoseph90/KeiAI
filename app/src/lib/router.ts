@@ -178,6 +178,10 @@ export function navigate(next: RouteState): void {
     }
 }
 
+export function resetRouteForReload(): void {
+    window.history.replaceState(window.history.state, '', buildHash({ view: 'home' }));
+}
+
 // ─── Boot / Hash Change ───────────────────────────────────────────────
 
 export function getCurrentHashRoute(): RouteState {

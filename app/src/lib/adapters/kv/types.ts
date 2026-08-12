@@ -1,21 +1,16 @@
-/**
- * Key-Value Storage Adapter Interface
- *
- * Used for storing lightweight string data such as user preferences and active session IDs.
- */
-export interface IKeyValueAdapter {
-    /** Retrieve a string value. Returns null if not found. */
+/** Synchronous device preferences needed during UI bootstrap. */
+export interface KeyValueStore {
+    get(key: string): string | null;
+    set(key: string, value: string): void;
+    remove(key: string): void;
+    keys(prefix?: string): string[];
+}
+
+/** Durable application metadata that may require platform I/O. */
+export interface AsyncKeyValueStore {
     get(key: string): Promise<string | null>;
-
-    /** Store a string value. */
     set(key: string, value: string): Promise<void>;
-
-    /** Remove a value by key. */
     remove(key: string): Promise<void>;
-
-    /** List stored keys, optionally restricted to a prefix. */
     keys(prefix?: string): Promise<string[]>;
-
-    /** Ensure the storage is initialized (especially required for Tauri plugin_store) */
     init(): Promise<void>;
 }

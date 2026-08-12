@@ -1,26 +1,15 @@
-/**
- * Auth Store — Derived auth state + auth action functions.
- *
- * Auth state is defined in state.ts; this module exposes auth action functions.
- * Action functions: performCreateAccount, performSignIn, performRecoverAndReset,
- *   performChangePassword, performLogout,
- *   performDeleteWithRecoveryCode.
- *
- * Action functions wrap AuthService calls and handle post-auth store refresh.
- * UI components call these instead of AuthService directly — this keeps
- * core/api free of store imports (no layer violation).
- *
- * Imports from individual store files (not the barrel) to avoid circular deps,
- * since stores/index.ts re-exports from this file indirectly via views.
- */
+/** Authentication actions and their store lifecycle boundaries. */
 
 import { pbConnected } from './state';
-import { AuthService } from '$lib/services';
+import { AuthService, UserService, getActiveSession } from '$lib/services';
+import { appWindow } from '$lib/adapters/window';
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
 import { clearActivePersona } from './content/persona';
 import { loadGlobalState } from './init';
+import { resetRouteForReload } from '$lib/router';
+import { startSyncStoreBindings, stopSyncStoreBindings } from './sync';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -32,18 +21,41 @@ AuthService.onPbAuthChange((isValid) => {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Refresh all store state after a login/register/recover/change-password.
- * Syncs remote data, then reloads every global list so the UI reflects the
- * newly authenticated user's data.
- */
-async function refreshAfterLogin(): Promise<void> {
+async function refreshAuthenticatedUser(): Promise<void> {
     await loadUser();
     SyncManager.startAutoSync();
     await SyncManager.syncAll();
     clearActiveCharacter();
     clearActivePersona();
     await loadGlobalState();
+}
+
+async function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
+    const { userId } = getActiveSession();
+    stopSyncStoreBindings();
+    SyncManager.stopAutoSync();
+    AuthService.stopAutoRefresh();
+    let result: T;
+    try {
+        await AuthService.persistPbAuth(userId);
+        result = await action();
+        if (await UserService.isUserSwitchPending()) {
+            resetRouteForReload();
+            await appWindow.reload();
+            return result;
+        }
+    } catch (error) {
+        await UserService.selectUser(userId);
+        await AuthService.restorePbAuth(userId);
+        startSyncStoreBindings();
+        AuthService.startAutoRefresh();
+        SyncManager.startAutoSync();
+        throw error;
+    }
+    startSyncStoreBindings();
+    AuthService.startAutoRefresh();
+    await refreshAuthenticatedUser();
+    return result;
 }
 
 // ─── Auth Actions ────────────────────────────────────────────────────
@@ -53,23 +65,19 @@ export async function performCreateAccount(
     password: string,
     email?: string
 ): Promise<string> {
-    const recoveryCode = await AuthService.createAccount(username, password, email);
-    await refreshAfterLogin();
-    return recoveryCode;
+    return runAuthTransition(() => AuthService.createAccount(username, password, email));
 }
 
 export async function performSignIn(username: string, password: string): Promise<void> {
-    await AuthService.signIn(username, password);
-    await refreshAfterLogin();
+    await runAuthTransition(() => AuthService.signIn(username, password));
 }
 
 export async function performRecoverAndReset(
     recoveryCode: string,
     newPassword: string
 ): Promise<string> {
-    const newCode = await AuthService.recoverAndResetPassword(recoveryCode, newPassword);
-    await refreshAfterLogin();
-    return newCode;
+    // Recovery resets remote credentials but does not replace the active local identity.
+    return AuthService.recoverAndResetPassword(recoveryCode, newPassword);
 }
 
 export async function performDeleteWithRecoveryCode(recoveryCode: string): Promise<void> {
@@ -78,17 +86,14 @@ export async function performDeleteWithRecoveryCode(recoveryCode: string): Promi
 }
 
 export async function performPairWithCode(pairingCode: string): Promise<void> {
-    await AuthService.connectWithPairingCode(pairingCode);
-    await refreshAfterLogin();
+    await runAuthTransition(() => AuthService.connectWithPairingCode(pairingCode));
 }
 
 export async function performChangePassword(
     oldPassword: string,
     newPassword: string
 ): Promise<string> {
-    const newCode = await AuthService.changePassword(oldPassword, newPassword);
-    await refreshAfterLogin();
-    return newCode;
+    return runAuthTransition(() => AuthService.changePassword(oldPassword, newPassword));
 }
 
 export async function performLogout(): Promise<void> {

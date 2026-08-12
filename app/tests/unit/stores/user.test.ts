@@ -3,14 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     currentUserId: 'user-1',
     persistPbAuth: vi.fn(),
-    restorePbAuth: vi.fn(),
+    stopAutoRefresh: vi.fn(),
+    startAutoRefresh: vi.fn(),
     clearAllPbAuthForUser: vi.fn(),
-    setActiveUser: vi.fn(),
+    selectUser: vi.fn(),
     createUser: vi.fn(),
     deleteUser: vi.fn(),
     getAllUsers: vi.fn(),
     stopAutoSync: vi.fn(),
-    initDefaultContents: vi.fn(),
+    startAutoSync: vi.fn(),
+    stopSyncStoreBindings: vi.fn(),
+    startSyncStoreBindings: vi.fn(),
+    resetRouteForReload: vi.fn(),
     reload: vi.fn()
 }));
 
@@ -19,14 +23,15 @@ vi.mock('$lib/services', () => ({
     hasActiveSession: () => true,
     AuthService: {
         persistPbAuth: mocks.persistPbAuth,
-        restorePbAuth: mocks.restorePbAuth,
+        stopAutoRefresh: mocks.stopAutoRefresh,
+        startAutoRefresh: mocks.startAutoRefresh,
         clearAllPbAuthForUser: mocks.clearAllPbAuthForUser
     },
     ConnectionService: {
         isServerTransitionLocked: () => false
     },
     UserService: {
-        setActiveUser: mocks.setActiveUser,
+        selectUser: mocks.selectUser,
         createUser: mocks.createUser,
         deleteUser: mocks.deleteUser,
         getAllUsers: mocks.getAllUsers
@@ -34,12 +39,15 @@ vi.mock('$lib/services', () => ({
 }));
 
 vi.mock('$lib/services/sync', () => ({
-    SyncManager: { stopAutoSync: mocks.stopAutoSync }
+    SyncManager: { stopAutoSync: mocks.stopAutoSync, startAutoSync: mocks.startAutoSync }
 }));
 
-vi.mock('$lib/stores/init', () => ({
-    initDefaultContents: mocks.initDefaultContents
+vi.mock('$lib/stores/sync', () => ({
+    stopSyncStoreBindings: mocks.stopSyncStoreBindings,
+    startSyncStoreBindings: mocks.startSyncStoreBindings
 }));
+
+vi.mock('$lib/router', () => ({ resetRouteForReload: mocks.resetRouteForReload }));
 
 vi.mock('$lib/adapters/window', () => ({
     appWindow: { reload: mocks.reload }
@@ -55,18 +63,17 @@ describe('user store actions', () => {
         mocks.getAllUsers.mockResolvedValue([{ id: 'user-1' }, { id: 'user-2' }]);
     });
 
-    it('switches users through the auth save and restore flow', async () => {
+    it('selects the next user without replacing the current session', async () => {
         await switchLocalUser('user-2');
 
         expect(mocks.persistPbAuth).toHaveBeenCalledWith('user-1');
-        expect(mocks.setActiveUser).toHaveBeenCalledWith('user-2');
-        expect(mocks.restorePbAuth).toHaveBeenCalledWith('user-2');
+        expect(mocks.resetRouteForReload).toHaveBeenCalledOnce();
+        expect(mocks.stopSyncStoreBindings).toHaveBeenCalledOnce();
+        expect(mocks.stopAutoRefresh).toHaveBeenCalledOnce();
+        expect(mocks.selectUser).toHaveBeenCalledWith('user-2');
         expect(mocks.reload).toHaveBeenCalledOnce();
         expect(mocks.persistPbAuth.mock.invocationCallOrder[0]).toBeLessThan(
-            mocks.setActiveUser.mock.invocationCallOrder[0]
-        );
-        expect(mocks.setActiveUser.mock.invocationCallOrder[0]).toBeLessThan(
-            mocks.restorePbAuth.mock.invocationCallOrder[0]
+            mocks.selectUser.mock.invocationCallOrder[0]
         );
     });
 
@@ -74,19 +81,29 @@ describe('user store actions', () => {
         await createAndSwitchLocalUser();
 
         expect(mocks.persistPbAuth).toHaveBeenCalledWith('user-1');
-        expect(mocks.setActiveUser).toHaveBeenCalledWith('user-new');
-        expect(mocks.restorePbAuth).toHaveBeenCalledWith('user-new');
-        expect(mocks.initDefaultContents).toHaveBeenCalledOnce();
+        expect(mocks.selectUser).toHaveBeenCalledWith('user-new');
         expect(mocks.reload).toHaveBeenCalledOnce();
+    });
+
+    it('restores the current selection when reload fails', async () => {
+        mocks.reload.mockRejectedValueOnce(new Error('reload failed'));
+
+        await expect(switchLocalUser('user-2')).rejects.toThrow('reload failed');
+
+        expect(mocks.selectUser).toHaveBeenLastCalledWith('user-1');
+        expect(mocks.startAutoRefresh).toHaveBeenCalledOnce();
+        expect(mocks.startAutoSync).toHaveBeenCalledOnce();
+        expect(mocks.startSyncStoreBindings).toHaveBeenCalledOnce();
     });
 
     it('deletes the active user and restores the fallback user auth', async () => {
         await deleteActiveLocalUser();
 
         expect(mocks.clearAllPbAuthForUser).toHaveBeenCalledWith('user-1');
+        expect(mocks.resetRouteForReload).toHaveBeenCalledOnce();
+        expect(mocks.stopSyncStoreBindings).toHaveBeenCalledOnce();
         expect(mocks.deleteUser).toHaveBeenCalledWith('user-1');
-        expect(mocks.setActiveUser).toHaveBeenCalledWith('user-2');
-        expect(mocks.restorePbAuth).toHaveBeenCalledWith('user-2');
+        expect(mocks.selectUser).toHaveBeenCalledWith('user-2');
         expect(mocks.createUser).not.toHaveBeenCalled();
         expect(mocks.reload).toHaveBeenCalledOnce();
     });
@@ -97,8 +114,6 @@ describe('user store actions', () => {
         await deleteActiveLocalUser();
 
         expect(mocks.createUser).toHaveBeenCalledOnce();
-        expect(mocks.setActiveUser).toHaveBeenCalledWith('user-new');
-        expect(mocks.restorePbAuth).toHaveBeenCalledWith('user-new');
-        expect(mocks.initDefaultContents).toHaveBeenCalledOnce();
+        expect(mocks.selectUser).toHaveBeenCalledWith('user-new');
     });
 });

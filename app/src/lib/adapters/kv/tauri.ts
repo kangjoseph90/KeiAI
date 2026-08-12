@@ -1,5 +1,5 @@
 import { Store } from '@tauri-apps/plugin-store';
-import type { IKeyValueAdapter } from './types';
+import type { AsyncKeyValueStore } from './types';
 
 /**
  * Tauri Key-Value Adapter
@@ -8,7 +8,7 @@ import type { IKeyValueAdapter } from './types';
  * in the OS AppData directory (e.g., `<appDataDir>/settings.json`).
  * Resilient against WebView cache clears.
  */
-export class TauriKeyValueAdapter implements IKeyValueAdapter {
+export class TauriKeyValueAdapter implements AsyncKeyValueStore {
     private store: Store | null = null;
     private initPromise: Promise<void> | null = null;
 

@@ -40,15 +40,6 @@ export function applyUserConnectionRuntime(settings: UserConnectionSettings): vo
     appHttp.configureProxy(resolveProxyRuntimeConfig(settings.proxy));
 }
 
-export function resetConnectionRuntime(): void {
-    pb.baseUrl = normalizeUrl(PB_URL.trim());
-    appHttp.configureProxy(
-        PROXY_URL.trim()
-            ? { mode: 'proxy', baseUrl: normalizeUrl(PROXY_URL.trim()) }
-            : { mode: 'direct' }
-    );
-}
-
 export function isKeiServer(): boolean {
     return normalizeUrl(pb.baseUrl) === normalizeUrl(KEI_PB_URL);
 }

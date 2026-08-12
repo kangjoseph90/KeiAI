@@ -167,7 +167,8 @@ export const settingsMessages = {
     'settings.account.validation.passwordsDoNotMatch': 'Passwords do not match.',
     'settings.account.toast.created': 'Account created. Save your recovery code.',
     'settings.account.toast.signedIn': 'Signed in successfully.',
-    'settings.account.toast.recovered': 'Device recovered. Save your new recovery code.',
+    'settings.account.toast.recovered':
+        'Password reset. Save your new recovery code, then sign in with the new password.',
     'settings.account.toast.paired': 'Device paired successfully.',
     'settings.account.toast.remoteDeleted': 'Remote account deleted. Local data remains available.',
     'settings.account.toast.passwordChanged': 'Password changed. Save your new recovery code.',

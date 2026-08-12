@@ -1,4 +1,4 @@
-import { appKV, type IKeyValueAdapter } from '$lib/adapters/kv';
+import { deviceKV, type KeyValueStore } from '$lib/adapters/kv';
 import { themePreference } from './state';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -15,20 +15,20 @@ export function isThemePreference(value: unknown): value is ThemePreference {
     return value === 'light' || value === 'dark' || value === 'system';
 }
 
-export async function loadThemePreference(storage: IKeyValueAdapter = appKV): Promise<void> {
+export function loadThemePreference(storage: KeyValueStore = deviceKV): void {
     try {
-        const stored = await storage.get(THEME_PREFERENCE_KEY);
+        const stored = storage.get(THEME_PREFERENCE_KEY);
         themePreference.set(isThemePreference(stored) ? stored : 'system');
     } catch {
         themePreference.set('system');
     }
 }
 
-export async function updateThemePreference(
+export function updateThemePreference(
     preference: ThemePreference,
-    storage: IKeyValueAdapter = appKV
-): Promise<void> {
-    await storage.set(THEME_PREFERENCE_KEY, preference);
+    storage: KeyValueStore = deviceKV
+): void {
+    storage.set(THEME_PREFERENCE_KEY, preference);
     themePreference.set(preference);
 }
 
@@ -43,6 +43,7 @@ export function applyTheme(
 ): ResolvedTheme {
     const resolved = resolveTheme(preference, systemDark);
     root.classList.toggle('dark', resolved === 'dark');
+    root.classList.toggle('light', preference === 'light');
     root.style.colorScheme = resolved;
     return resolved;
 }

@@ -166,7 +166,8 @@ export const settingsMessages = {
     'settings.account.validation.passwordsDoNotMatch': '비밀번호가 일치하지 않습니다.',
     'settings.account.toast.created': '계정이 생성되었습니다. 복구 코드를 저장하세요.',
     'settings.account.toast.signedIn': '성공적으로 로그인되었습니다.',
-    'settings.account.toast.recovered': '기기가 복구되었습니다. 새 복구 코드를 저장하세요.',
+    'settings.account.toast.recovered':
+        '비밀번호를 재설정했습니다. 새 복구 코드를 저장한 뒤 새 비밀번호로 로그인하세요.',
     'settings.account.toast.paired': '기기가 성공적으로 페어링되었습니다.',
     'settings.account.toast.remoteDeleted':
         '원격 계정이 삭제되었습니다. 로컬 데이터는 사용 가능합니다.',

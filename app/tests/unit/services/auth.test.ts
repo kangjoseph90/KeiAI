@@ -141,12 +141,11 @@ vi.mock('$lib/services/user', () => ({
     UserService: {
         saveUser: vi.fn(() => Promise.resolve()),
         updateUser: vi.fn(() => Promise.resolve()),
-        clearActiveUser: vi.fn(() => Promise.resolve()),
         getActiveConnections: vi.fn(() =>
             Promise.resolve({ server: { mode: 'default' }, proxy: { mode: 'default' } })
         ),
         getUser: vi.fn(),
-        setActiveUser: vi.fn(() => Promise.resolve()),
+        selectUser: vi.fn(() => Promise.resolve()),
         restoreOrCreateUser: vi.fn()
     }
 }));
@@ -239,7 +238,7 @@ describe('AuthService', () => {
         await expect(AuthService.signIn('kei', 'password')).rejects.toBe(networkError);
     });
 
-    it('recovers a device with a recovery code and resets the password', async () => {
+    it('resets a password without replacing the current local session', async () => {
         vi.mocked(pb.send)
             .mockResolvedValueOnce({
                 userId: 'user-123',
@@ -251,22 +250,6 @@ describe('AuthService', () => {
                 username: 'kei'
             })
             .mockResolvedValueOnce({ success: true });
-
-        vi.mocked(mockCollection.authWithPassword).mockResolvedValueOnce({
-            record: {
-                id: 'user-123',
-                username: 'kei',
-                name: 'Recovered',
-                email: '',
-                encryptedMasterKey: 'm',
-                masterKeyIv: 'iv',
-                identityPublicKey: JSON.stringify({ kty: 'EC' }),
-                encryptedIdentityPrivateKey: 'priv',
-                identityPrivateKeyIv: 'privIv',
-                encryptedProfile: 'profile',
-                encryptedProfileIV: 'profileIv'
-            }
-        });
 
         const newCode = await AuthService.recoverAndResetPassword(
             'ABCDEFGHIJKLMNOPQRSTUVWX',
@@ -282,14 +265,8 @@ describe('AuthService', () => {
             '/api/recovery/reset-password',
             expect.objectContaining({ method: 'POST' })
         );
-        expect(UserService.saveUser).toHaveBeenCalledWith(
-            expect.objectContaining({
-                id: 'user-123',
-                username: 'kei',
-                name: 'Remote Profile',
-                avatar: 'remote-avatar'
-            })
-        );
+        expect(mockCollection.authWithPassword).not.toHaveBeenCalled();
+        expect(UserService.saveUser).not.toHaveBeenCalled();
     });
 
     it('returns the local identity to local-only mode after remote account deletion', async () => {

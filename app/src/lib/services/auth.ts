@@ -29,8 +29,7 @@ import {
     toBase64,
     toHex,
     unwrapMasterKeyRaw,
-    wrapMasterKey,
-    type RecoveryBundle
+    wrapMasterKey
 } from '$lib/crypto';
 import { UserService } from './user';
 import type { UserConnectionSettings } from '$lib/types/connections';
@@ -52,14 +51,8 @@ interface SaltResponse {
 }
 
 interface RecoverResponse {
-    userId: string;
     encryptedRecoveryMasterKey: string;
     encryptedRecoveryMasterKeyIV: string;
-    identityPublicKey: string;
-    encryptedIdentityPrivateKey: string;
-    identityPrivateKeyIv: string;
-    username: string; // server specific field
-    email?: string;
 }
 
 interface StoredPocketBaseAuth {
@@ -238,6 +231,9 @@ export class AuthService {
     static stopAutoRefresh(): void {
         for (const cleanup of this.refreshCleanups) cleanup();
         this.refreshCleanups = [];
+        this.authRevision++;
+        this.refreshPromise = null;
+        pb.cancelRequest(AUTH_REFRESH_REQUEST_KEY);
     }
 
     // ─── Account Flows ────────────────────────────────────────────────
@@ -333,26 +329,15 @@ export class AuthService {
         const { backHalf } = splitRecoveryCode(recoveryCode);
         const authTokenHash = await hashRecoveryAuthToken(backHalf);
 
-        const currentConnections = await UserService.getActiveConnections();
-
         const resp = (await pb.send('/api/recovery/lookup', {
             method: 'POST',
             body: JSON.stringify({ authTokenHash: toBase64(authTokenHash) })
         })) as RecoverResponse;
 
-        const bundle: RecoveryBundle = {
-            userId: resp.userId,
-            encryptedRecoveryMasterKey: fromBase64(resp.encryptedRecoveryMasterKey),
-            encryptedRecoveryMasterKeyIV: fromBase64(resp.encryptedRecoveryMasterKeyIV),
-            identityPublicKey: JSON.parse(resp.identityPublicKey) as JsonWebKey,
-            encryptedIdentityPrivateKey: fromBase64(resp.encryptedIdentityPrivateKey),
-            identityPrivateKeyIV: fromBase64(resp.identityPrivateKeyIv)
-        };
-
         const masterKey = await recoverMasterKey(
             recoveryCode,
-            bundle.encryptedRecoveryMasterKey,
-            bundle.encryptedRecoveryMasterKeyIV
+            fromBase64(resp.encryptedRecoveryMasterKey),
+            fromBase64(resp.encryptedRecoveryMasterKeyIV)
         );
 
         const salt = generateSalt();
@@ -382,7 +367,6 @@ export class AuthService {
             newKeys.loginKey.fill(0);
         }
 
-        await this.authenticateExisting(resp.username, newPassword, salt, currentConnections);
         return newRecoveryCode;
     }
 
@@ -535,7 +519,7 @@ export class AuthService {
                 username,
                 email: serverRecord?.email
             });
-            await UserService.setActiveUser(userId);
+            await UserService.selectUser(userId);
             if (serverRecord) await this.persistPbAuth(userId);
         } catch (e) {
             pb.authStore.clear();
@@ -546,6 +530,7 @@ export class AuthService {
     /** Clear only the remote auth token; local profile/link metadata remains. */
     static async logout(): Promise<void> {
         const { userId } = getActiveSession();
+        this.stopAutoRefresh();
         SyncManager.stopAutoSync();
         await this.clearPbAuth(userId);
     }
@@ -568,6 +553,7 @@ export class AuthService {
         const keys = await deriveKeys(password, salt);
         let rawM: Uint8Array<ArrayBuffer> | null = null;
         let rawPrivateKey: Uint8Array<ArrayBuffer> | null = null;
+        let authReplaced = false;
         try {
             let authData: { record: Record<string, string> };
             try {
@@ -576,6 +562,7 @@ export class AuthService {
                     .authWithPassword(username, toHex(keys.loginKey))) as {
                     record: Record<string, string>;
                 };
+                authReplaced = true;
             } catch (error) {
                 const status = (error as { status?: unknown })?.status;
                 if (status === 400 || status === 401) {
@@ -602,25 +589,21 @@ export class AuthService {
 
             const profile = await decryptUserProfile(masterKey, authData.record);
 
-            try {
-                await UserService.saveUser({
-                    id: authData.record.id,
-                    name: profile?.name,
-                    avatar: profile?.avatar,
-                    masterKey,
-                    identityKeyPair: { publicKey, privateKey },
-                    connections,
-                    username: authData.record.username,
-                    email: authData.record.email || undefined
-                });
-                await UserService.setActiveUser(authData.record.id);
-                await this.persistPbAuth(authData.record.id);
-            } catch (err) {
-                // authWithPassword succeeded but local save failed (e.g. ISLAND_MISMATCH).
-                // Clear PB token so a stale cross-island token is never left in memory.
-                pb.authStore.clear();
-                throw err;
-            }
+            await UserService.saveUser({
+                id: authData.record.id,
+                name: profile?.name,
+                avatar: profile?.avatar,
+                masterKey,
+                identityKeyPair: { publicKey, privateKey },
+                connections,
+                username: authData.record.username,
+                email: authData.record.email || undefined
+            });
+            await UserService.selectUser(authData.record.id);
+            await this.persistPbAuth(authData.record.id);
+        } catch (error) {
+            if (authReplaced) pb.authStore.clear();
+            throw error;
         } finally {
             keys.loginKey.fill(0);
             keys.encryptionKey.fill(0);

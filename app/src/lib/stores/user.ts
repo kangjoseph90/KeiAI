@@ -1,8 +1,4 @@
-/**
- * User Store
- *
- * UI imports these functions; they call UserService + update Svelte stores.
- */
+/** Local user store actions. */
 
 import {
     getActiveSession,
@@ -16,8 +12,9 @@ import {
 import { SyncManager } from '$lib/services/sync';
 import { activeUser, localUsers } from './state';
 import type { DeepPartial } from '$lib/utils/defaults';
-import { initDefaultContents } from './init';
 import { appWindow } from '$lib/adapters/window';
+import { resetRouteForReload } from '$lib/router';
+import { startSyncStoreBindings, stopSyncStoreBindings } from './sync';
 
 /**
  * Load (or refresh) the current user's user record into the activeUser store.
@@ -65,27 +62,39 @@ export async function switchLocalUser(userId: string): Promise<void> {
     const { userId: currentUserId } = getActiveSession();
     if (userId === currentUserId) return;
 
-    SyncManager.stopAutoSync();
-    await AuthService.persistPbAuth(currentUserId);
-    await UserService.setActiveUser(userId);
-    await AuthService.restorePbAuth(userId);
-    await appWindow.reload();
+    await selectUserAndReload(currentUserId, () => UserService.selectUser(userId));
 }
 
-/**
- * Create a fresh local identity, seed its default content, and make it active.
- */
+async function selectUserAndReload(
+    currentUserId: string,
+    selectNextUser: () => Promise<void>
+): Promise<void> {
+    stopSyncStoreBindings();
+    SyncManager.stopAutoSync();
+    AuthService.stopAutoRefresh();
+    try {
+        await AuthService.persistPbAuth(currentUserId);
+        await selectNextUser();
+        resetRouteForReload();
+        await appWindow.reload();
+    } catch (error) {
+        await UserService.selectUser(currentUserId);
+        startSyncStoreBindings();
+        AuthService.startAutoRefresh();
+        SyncManager.startAutoSync();
+        throw error;
+    }
+}
+
+/** Create a local identity and select it for the next boot. */
 export async function createAndSwitchLocalUser(): Promise<void> {
     if (ConnectionService.isServerTransitionLocked()) return;
 
-    SyncManager.stopAutoSync();
     const { userId: currentUserId } = getActiveSession();
-    await AuthService.persistPbAuth(currentUserId);
-    const user = await UserService.createUser();
-    await UserService.setActiveUser(user.id);
-    await AuthService.restorePbAuth(user.id);
-    await initDefaultContents();
-    await appWindow.reload();
+    await selectUserAndReload(currentUserId, async () => {
+        const user = await UserService.createUser();
+        await UserService.selectUser(user.id);
+    });
 }
 
 /** Delete the active local identity and continue with another or a fresh identity. */
@@ -93,20 +102,27 @@ export async function deleteActiveLocalUser(): Promise<void> {
     if (ConnectionService.isServerTransitionLocked()) return;
 
     const { userId } = getActiveSession();
-    SyncManager.stopAutoSync();
     const localUsers = await UserService.getAllUsers();
     const fallback = localUsers.find((user) => user.id !== userId);
-    await AuthService.clearAllPbAuthForUser(userId);
-    await UserService.deleteUser(userId);
+    stopSyncStoreBindings();
+    SyncManager.stopAutoSync();
+    AuthService.stopAutoRefresh();
+    try {
+        await AuthService.clearAllPbAuthForUser(userId);
+        await UserService.deleteUser(userId);
 
-    if (fallback) {
-        await UserService.setActiveUser(fallback.id);
-        await AuthService.restorePbAuth(fallback.id);
-    } else {
-        const user = await UserService.createUser();
-        await UserService.setActiveUser(user.id);
-        await AuthService.restorePbAuth(user.id);
-        await initDefaultContents();
+        if (fallback) {
+            await UserService.selectUser(fallback.id);
+        } else {
+            const user = await UserService.createUser();
+            await UserService.selectUser(user.id);
+        }
+    } catch (error) {
+        // Deletion spans multiple stores and cannot be rolled back safely; reboot into what remains.
+        resetRouteForReload();
+        await appWindow.reload();
+        throw error;
     }
+    resetRouteForReload();
     await appWindow.reload();
 }
