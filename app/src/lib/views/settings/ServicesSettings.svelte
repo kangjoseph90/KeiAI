@@ -242,6 +242,7 @@
         'minilm',
         'transformers',
         'custom',
+        'mock',
         'plugin'
     ];
     const RERANKER_PROVIDERS: RerankerProvider[] = [
@@ -250,6 +251,7 @@
         'voyageai',
         'openrouter',
         'transformers',
+        'mock',
         'plugin'
     ];
     let activeGroup = $state<ServiceGroup>('image');
@@ -1002,6 +1004,20 @@
                                 'Model ID'
                             )
                         ];
+                    case 'mock':
+                        return [
+                            {
+                                ...configField(
+                                    'mock',
+                                    'embedding',
+                                    'modelId',
+                                    'Model',
+                                    settings.mock.embedding.modelId,
+                                    'sample'
+                                ),
+                                options: EMBEDDING_MODEL_IDS.mock
+                            }
+                        ];
                     case 'plugin':
                         return [];
                 }
@@ -1067,6 +1083,20 @@
                                 settings.transformers.reranker.modelId,
                                 'Model ID'
                             )
+                        ];
+                    case 'mock':
+                        return [
+                            {
+                                ...configField(
+                                    'mock',
+                                    'reranker',
+                                    'modelId',
+                                    'Model',
+                                    settings.mock.reranker.modelId,
+                                    'sample'
+                                ),
+                                options: RERANKER_MODEL_IDS.mock
+                            }
                         ];
                     case 'plugin':
                         return [];

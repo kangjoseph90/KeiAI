@@ -12,6 +12,7 @@ import { OpenAIEmbeddingHandler } from './handlers/openai';
 import { GoogleEmbeddingHandler } from './handlers/google';
 import { TransformersEmbeddingHandler } from './handlers/transformers';
 import { PluginEmbeddingHandler } from './handlers/plugin';
+import { MockEmbeddingHandler, type MockEmbeddingBehavior } from './handlers/mock';
 import { createLogger } from '$lib/adapters/logger';
 import { pluginManager } from '$lib/plugins';
 
@@ -96,6 +97,14 @@ export function selectEmbeddingHandler(
                     baseUrl,
                     modelId
                 })
+            };
+        }
+
+        case 'mock': {
+            const modelId = settings.mock.embedding.modelId;
+            return {
+                modelId: buildModelId(provider, modelId),
+                handler: new MockEmbeddingHandler({ behavior: modelId as MockEmbeddingBehavior })
             };
         }
 

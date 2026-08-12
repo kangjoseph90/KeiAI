@@ -9,7 +9,8 @@ export type BuiltInRerankerProvider =
     | 'jina'
     | 'voyageai'
     | 'openrouter'
-    | 'transformers';
+    | 'transformers'
+    | 'mock';
 export type RerankerProvider = BuiltInRerankerProvider | 'plugin';
 
 export interface PluginRerankerModel {
@@ -35,7 +36,8 @@ export const RERANKER_MODEL_IDS: Partial<Record<BuiltInRerankerProvider, readonl
     ],
     voyageai: ['rerank-2.5', 'rerank-2.5-lite', 'rerank-2', 'rerank-2-lite'],
     openrouter: [],
-    transformers: ['Xenova/bge-reranker-base', 'onnx-community/bge-reranker-base-ONNX']
+    transformers: ['Xenova/bge-reranker-base', 'onnx-community/bge-reranker-base-ONNX'],
+    mock: ['sample', 'diagnostic']
 };
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
@@ -46,6 +48,7 @@ const providerNames: Record<RerankerProvider, string> = {
     voyageai: 'VoyageAI',
     openrouter: 'OpenRouter',
     transformers: 'Transformers',
+    mock: 'Mock',
     plugin: 'Plugin'
 };
 

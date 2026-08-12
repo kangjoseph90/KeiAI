@@ -265,6 +265,12 @@ export const defaultSettings: AppSettings = {
         },
         stt: {
             modelId: 'sample'
+        },
+        embedding: {
+            modelId: 'sample'
+        },
+        reranker: {
+            modelId: 'sample'
         }
     },
     minilm: {

@@ -131,6 +131,12 @@ export interface MockProviderConfig {
     stt: {
         modelId: string;
     };
+    embedding: {
+        modelId: string;
+    };
+    reranker: {
+        modelId: string;
+    };
 }
 
 export interface MiniLMProviderConfig {

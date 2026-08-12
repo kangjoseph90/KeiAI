@@ -13,6 +13,7 @@ import { JinaRerankerHandler } from './handlers/jina';
 import { VoyageAIRerankerHandler } from './handlers/voyageai';
 import { TransformersRerankerHandler } from './handlers/transformers';
 import { PluginRerankerHandler } from './handlers/plugin';
+import { MockRerankerHandler, type MockRerankerBehavior } from './handlers/mock';
 import { pluginManager } from '$lib/plugins';
 
 export function selectRerankerHandler(
@@ -55,6 +56,12 @@ export function selectRerankerHandler(
         case 'transformers': {
             return new TransformersRerankerHandler({
                 modelId: settings.transformers.reranker.modelId
+            });
+        }
+
+        case 'mock': {
+            return new MockRerankerHandler({
+                behavior: settings.mock.reranker.modelId as MockRerankerBehavior
             });
         }
 

@@ -11,7 +11,8 @@ export type BuiltInEmbeddingProvider =
     | 'openrouter'
     | 'minilm'
     | 'transformers'
-    | 'custom';
+    | 'custom'
+    | 'mock';
 export type EmbeddingProvider = BuiltInEmbeddingProvider | 'plugin';
 
 export interface PluginEmbeddingModel {
@@ -49,7 +50,8 @@ export const EMBEDDING_MODEL_IDS: Partial<Record<BuiltInEmbeddingProvider, reado
         'onnx-community/all-MiniLM-L6-v2-ONNX',
         'onnx-community/embeddinggemma-300m-ONNX',
         'Xenova/all-MiniLM-L6-v2'
-    ]
+    ],
+    mock: ['sample', 'diagnostic']
 };
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ const providerNames: Record<EmbeddingProvider, string> = {
     minilm: 'MiniLM',
     transformers: 'Transformers',
     custom: 'Custom',
+    mock: 'Mock',
     plugin: 'Plugin'
 };
 
