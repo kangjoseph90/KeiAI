@@ -26,6 +26,7 @@ export const EMBEDDING_MODEL_IDS: Partial<Record<BuiltInEmbeddingProvider, reado
     openai: ['text-embedding-3-large', 'text-embedding-3-small', 'text-embedding-ada-002'],
     google: ['gemini-embedding-2', 'gemini-embedding-001'],
     voyageai: [
+        'voyage-context-4',
         'voyage-4-large',
         'voyage-4',
         'voyage-4-lite',

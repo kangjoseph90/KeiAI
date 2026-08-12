@@ -6,9 +6,13 @@ const mocks = vi.hoisted(() => ({
     generateImageInlay: vi.fn().mockResolvedValue('generated-image'),
     synthesizeSpeechInlay: vi.fn().mockResolvedValue('generated-audio'),
     transcribeSpeechInlay: vi.fn().mockResolvedValue('transcribed text'),
-    similarity: vi.fn().mockResolvedValue([
+    searchChunks: vi.fn().mockResolvedValue([
         { index: 1, score: 0.9 },
         { index: 0, score: 0.4 }
+    ]),
+    searchDocuments: vi.fn().mockResolvedValue([
+        { documentIndex: 0, chunkIndex: 1, score: 0.9 },
+        { documentIndex: 0, chunkIndex: 0, score: 0.4 }
     ]),
     rerank: vi.fn().mockResolvedValue([
         { index: 0, score: 0.8 },
@@ -28,7 +32,8 @@ vi.mock('$lib/managers/chat', () => ({
 }));
 
 vi.mock('$lib/managers/retrieval', () => ({
-    similarity: mocks.similarity,
+    searchChunks: mocks.searchChunks,
+    searchDocuments: mocks.searchDocuments,
     rerank: mocks.rerank
 }));
 
@@ -47,9 +52,14 @@ const script: CharJS = {
             );
             const audio = await KeiAPI.synthesizeSpeech('hello');
             const text = await KeiAPI.transcribeSpeech('audio-id');
-            const similar = await KeiAPI.similarity('query', ['first', 'second'], 1);
+            const chunks = await KeiAPI.searchChunks('query', ['first', 'second'], 1);
+            const documents = await KeiAPI.searchDocuments(
+                'query',
+                [{ chunks: ['first', 'second'] }],
+                1
+            );
             const ranked = await KeiAPI.rerank('query', ['first', 'second']);
-            return JSON.stringify({ image, audio, text, similar, ranked });
+            return JSON.stringify({ image, audio, text, chunks, documents, ranked });
         });
     `
 };
@@ -69,9 +79,13 @@ describe('CharJS media APIs', () => {
                 image: 'generated-image',
                 audio: 'generated-audio',
                 text: 'transcribed text',
-                similar: [
+                chunks: [
                     { index: 1, score: 0.9 },
                     { index: 0, score: 0.4 }
+                ],
+                documents: [
+                    { documentIndex: 0, chunkIndex: 1, score: 0.9 },
+                    { documentIndex: 0, chunkIndex: 0, score: 0.4 }
                 ],
                 ranked: [
                     { index: 0, score: 0.8 },
@@ -100,9 +114,15 @@ describe('CharJS media APIs', () => {
             'audio-id',
             expect.any(AbortSignal)
         );
-        expect(mocks.similarity).toHaveBeenCalledWith(
+        expect(mocks.searchChunks).toHaveBeenCalledWith(
             'query',
             ['first', 'second'],
+            expect.any(AbortSignal),
+            1
+        );
+        expect(mocks.searchDocuments).toHaveBeenCalledWith(
+            'query',
+            [{ chunks: ['first', 'second'] }],
             expect.any(AbortSignal),
             1
         );

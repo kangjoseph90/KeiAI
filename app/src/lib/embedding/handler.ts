@@ -9,6 +9,7 @@ import type { SelectedEmbeddingHandler } from './types';
 import type { AppSettings } from '$lib/services';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import { OpenAIEmbeddingHandler } from './handlers/openai';
+import { VoyageAIEmbeddingHandler } from './handlers/voyageai';
 import { GoogleEmbeddingHandler } from './handlers/google';
 import { TransformersEmbeddingHandler } from './handlers/transformers';
 import { PluginEmbeddingHandler } from './handlers/plugin';
@@ -51,7 +52,7 @@ export function selectEmbeddingHandler(
             const modelId = settings.voyageai.embedding.modelId;
             return {
                 modelId: buildModelId(provider, modelId),
-                handler: new OpenAIEmbeddingHandler({
+                handler: new VoyageAIEmbeddingHandler({
                     apiKey: settings.voyageai.apiKey,
                     baseUrl: 'https://api.voyageai.com/v1',
                     modelId

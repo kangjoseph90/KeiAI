@@ -18,7 +18,12 @@ import type { PluginEmbeddingModel } from '$lib/types/models/embedding';
 import type { PluginRerankerModel } from '$lib/types/models/reranker';
 import type { LLMMessage } from '$lib/llm/types';
 import { callLLM, streamLLM } from '$lib/managers/llm';
-import { rerank, similarity } from '$lib/managers/retrieval';
+import {
+    rerank,
+    searchChunks,
+    searchDocuments,
+    type RetrievalDocument
+} from '$lib/managers/retrieval';
 import {
     createInlay,
     generateImage,
@@ -535,19 +540,27 @@ export class PluginManager {
         );
 
         broker.expose(
-            'core.similarity',
-            (query: unknown, documents: unknown, topKOrSignal: unknown, signal: unknown) => {
-                const topK =
-                    topKOrSignal === undefined || topKOrSignal instanceof AbortSignal
-                        ? undefined
-                        : typeof topKOrSignal === 'number'
-                          ? topKOrSignal
-                          : NaN;
-                return similarity(
+            'core.searchChunks',
+            (query: unknown, chunks: unknown, topKOrSignal: unknown, signal: unknown) => {
+                const options = readSearchOptions(topKOrSignal, signal);
+                return searchChunks(
                     String(query),
-                    readStringArray(documents, 'documents'),
-                    readAbortSignal(topKOrSignal instanceof AbortSignal ? topKOrSignal : signal),
-                    topK
+                    readStringArray(chunks, 'chunks'),
+                    options.signal,
+                    options.topK
+                );
+            }
+        );
+
+        broker.expose(
+            'core.searchDocuments',
+            (query: unknown, documents: unknown, topKOrSignal: unknown, signal: unknown) => {
+                const options = readSearchOptions(topKOrSignal, signal);
+                return searchDocuments(
+                    String(query),
+                    readRetrievalDocuments(documents),
+                    options.signal,
+                    options.topK
                 );
             }
         );
@@ -656,6 +669,21 @@ function readAbortSignal(value: unknown): AbortSignal {
     return value instanceof AbortSignal ? value : new AbortController().signal;
 }
 
+function readSearchOptions(
+    topKOrSignal: unknown,
+    signal: unknown
+): { topK: number | undefined; signal: AbortSignal } {
+    return {
+        topK:
+            topKOrSignal === undefined || topKOrSignal instanceof AbortSignal
+                ? undefined
+                : typeof topKOrSignal === 'number'
+                  ? topKOrSignal
+                  : NaN,
+        signal: readAbortSignal(topKOrSignal instanceof AbortSignal ? topKOrSignal : signal)
+    };
+}
+
 function readOptionalPrompt(value: unknown): { negativePrompt?: string } {
     return typeof value === 'string' && value.trim() ? { negativePrompt: value } : {};
 }
@@ -711,6 +739,20 @@ function readStringArray(value: unknown, name: string): string[] {
         throw new Error(`${name} must be an array of strings`);
     }
     return value;
+}
+
+function readRetrievalDocuments(value: unknown): RetrievalDocument[] {
+    if (!Array.isArray(value)) {
+        throw new Error('documents must be an array of objects with a chunks array');
+    }
+    return value.map((document) => {
+        if (!document || typeof document !== 'object' || !('chunks' in document)) {
+            throw new Error('documents must be an array of objects with a chunks array');
+        }
+        const chunks = readStringArray(document.chunks, 'document.chunks');
+        if (chunks.length === 0) throw new Error('document.chunks cannot be empty');
+        return { chunks };
+    });
 }
 
 function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {

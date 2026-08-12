@@ -6,12 +6,18 @@
  */
 
 export interface EmbeddingResult {
-    /** One embedding vector per input text */
     vectors: Float32Array[];
 }
 
+export interface DocumentEmbeddingResult {
+    /** Vectors grouped to mirror the input documents and their chunks. */
+    vectors: Float32Array[][];
+}
+
 export interface EmbeddingHandler {
-    embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult>;
+    embedQuery(queries: string[], signal?: AbortSignal): Promise<EmbeddingResult>;
+    /** Each inner array contains ordered chunks from one source document. */
+    embedDocuments(documents: string[][], signal?: AbortSignal): Promise<DocumentEmbeddingResult>;
 }
 
 export interface SelectedEmbeddingHandler {

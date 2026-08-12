@@ -5,7 +5,8 @@
  * Uses batchEmbedContents for efficient multi-text embedding.
  */
 
-import type { EmbeddingResult, EmbeddingHandler } from '../types';
+import type { DocumentEmbeddingResult, EmbeddingResult, EmbeddingHandler } from '../types';
+import { groupEmbeddingVectors } from '../grouping';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
 import { buildUrl } from '$lib/utils/url';
@@ -28,7 +29,25 @@ export class GoogleEmbeddingHandler implements EmbeddingHandler {
         this.config = config;
     }
 
-    async embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
+    embedQuery(queries: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
+        return this.embed(queries, 'RETRIEVAL_QUERY', signal);
+    }
+
+    async embedDocuments(
+        documents: string[][],
+        signal?: AbortSignal
+    ): Promise<DocumentEmbeddingResult> {
+        const groupSizes = documents.map((document) => document.length);
+        const { vectors } = await this.embed(documents.flat(), 'RETRIEVAL_DOCUMENT', signal);
+        return { vectors: groupEmbeddingVectors(vectors, groupSizes) };
+    }
+
+    private async embed(
+        texts: string[],
+        taskType: 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT',
+        signal?: AbortSignal
+    ): Promise<EmbeddingResult> {
+        signal?.throwIfAborted();
         if (texts.length === 0) return { vectors: [] };
 
         // Ensure modelId has 'models/' prefix if not present for the URL/Payload
@@ -48,6 +67,7 @@ export class GoogleEmbeddingHandler implements EmbeddingHandler {
                 body: JSON.stringify({
                     requests: texts.map((text) => ({
                         model: modelName,
+                        taskType,
                         content: {
                             parts: [{ text }]
                         }

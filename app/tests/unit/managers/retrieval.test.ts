@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { rerank, similarity } from '$lib/managers/retrieval';
+import { rerank, searchChunks, searchDocuments } from '$lib/managers/retrieval';
 
 const vector = (...components: number[]): Float32Array => new Float32Array(components);
+const document = (...chunks: string[]) => ({ chunks });
 
 const mocks = vi.hoisted(() => ({
     getAppSettings: vi.fn(),
     selectEmbeddingHandler: vi.fn(),
     selectRerankerHandler: vi.fn(),
-    embed: vi.fn(),
+    embedQuery: vi.fn(),
+    embedDocuments: vi.fn(),
     rerank: vi.fn(),
-    queryCache: new Map<string, number[]>(),
-    documentCache: new Map<string, number[]>(),
     queryStore: {
         getMany: vi.fn(),
         setMany: vi.fn(),
@@ -28,248 +28,182 @@ vi.mock('$lib/adapters/cache', () => ({
     createAsyncCache: (namespace: string) =>
         namespace === 'normalized-embedding-query-vectors' ? mocks.queryStore : mocks.documentStore
 }));
-
-vi.mock('$lib/crypto', () => ({
-    sha256: mocks.sha256
-}));
-
-vi.mock('$lib/stores', () => ({
-    getAppSettings: mocks.getAppSettings
-}));
-
-vi.mock('$lib/embedding', () => ({
-    selectEmbeddingHandler: mocks.selectEmbeddingHandler
-}));
-
-vi.mock('$lib/reranker', () => ({
-    selectRerankerHandler: mocks.selectRerankerHandler
-}));
+vi.mock('$lib/crypto', () => ({ sha256: mocks.sha256 }));
+vi.mock('$lib/stores', () => ({ getAppSettings: mocks.getAppSettings }));
+vi.mock('$lib/embedding', () => ({ selectEmbeddingHandler: mocks.selectEmbeddingHandler }));
+vi.mock('$lib/reranker', () => ({ selectRerankerHandler: mocks.selectRerankerHandler }));
 
 describe('retrieval manager', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
-        mocks.queryCache.clear();
-        mocks.documentCache.clear();
-        mocks.queryStore.getMany.mockImplementation(async (keys: string[]) => {
-            return new Map(
-                keys
-                    .filter((key) => mocks.queryCache.has(key))
-                    .map((key) => [key, mocks.queryCache.get(key)!])
-            );
-        });
-        mocks.documentStore.getMany.mockImplementation(async (keys: string[]) => {
-            return new Map(
-                keys
-                    .filter((key) => mocks.documentCache.has(key))
-                    .map((key) => [key, mocks.documentCache.get(key)!])
-            );
-        });
-        mocks.queryStore.setMany.mockImplementation(
-            async (entries: Array<readonly [string, number[]]>) => {
-                for (const [key, value] of entries) mocks.queryCache.set(key, value);
-            }
-        );
-        mocks.documentStore.setMany.mockImplementation(
-            async (entries: Array<readonly [string, number[]]>) => {
-                for (const [key, value] of entries) mocks.documentCache.set(key, value);
-            }
-        );
-        mocks.queryStore.deleteMany.mockImplementation(async (keys: string[]) => {
-            for (const key of keys) mocks.queryCache.delete(key);
-        });
-        mocks.documentStore.deleteMany.mockImplementation(async (keys: string[]) => {
-            for (const key of keys) mocks.documentCache.delete(key);
-        });
+        vi.resetAllMocks();
+        mocks.sha256.mockImplementation(async (value: string) => value);
+        mocks.queryStore.getMany.mockResolvedValue(new Map());
+        mocks.documentStore.getMany.mockResolvedValue(new Map());
+        mocks.queryStore.setMany.mockResolvedValue(undefined);
+        mocks.documentStore.setMany.mockResolvedValue(undefined);
+        mocks.queryStore.deleteMany.mockResolvedValue(undefined);
+        mocks.documentStore.deleteMany.mockResolvedValue(undefined);
         mocks.getAppSettings.mockResolvedValue({
             embeddingProvider: 'openai',
             rerankerProvider: 'cohere'
         });
         mocks.selectEmbeddingHandler.mockReturnValue({
             modelId: 'openai::embedding-model',
-            handler: { embed: mocks.embed }
+            handler: {
+                embedQuery: mocks.embedQuery,
+                embedDocuments: mocks.embedDocuments
+            }
         });
         mocks.selectRerankerHandler.mockReturnValue({ rerank: mocks.rerank });
+        mocks.embedQuery.mockResolvedValue({ vectors: [vector(1, 0)] });
     });
 
-    it('ranks documents by normalized dot-product similarity', async () => {
+    it('embeds queries separately and preserves document chunk groups', async () => {
         const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(0, 1), vector(1, 0)]
+        mocks.embedDocuments.mockResolvedValue({
+            vectors: [[vector(0, 1), vector(1, 0)], [vector(0.8, 0.2)]]
         });
 
         await expect(
-            similarity('rank-query', ['rank-first', 'rank-second'], signal)
+            searchDocuments(
+                'grouped-query',
+                [document('first', 'second'), document('third')],
+                signal
+            )
         ).resolves.toEqual([
-            { index: 1, score: 1 },
-            { index: 0, score: 0 }
+            { documentIndex: 0, chunkIndex: 1, score: 1 },
+            { documentIndex: 1, chunkIndex: 0, score: expect.closeTo(0.9701) },
+            { documentIndex: 0, chunkIndex: 0, score: 0 }
         ]);
-        expect(mocks.embed).toHaveBeenCalledWith(
-            ['rank-query', 'rank-first', 'rank-second'],
-            signal
+        expect(mocks.embedQuery).toHaveBeenCalledWith(['grouped-query'], signal);
+        expect(mocks.embedDocuments).toHaveBeenCalledWith([['first', 'second'], ['third']], signal);
+    });
+
+    it('reuses a document group cache and invalidates it when context changes', async () => {
+        const signal = new AbortController().signal;
+        mocks.embedDocuments.mockResolvedValueOnce({
+            vectors: [[vector(1, 0), vector(0, 1)]]
+        });
+        await searchDocuments('cache-identity-query', [document('shared', 'context-a')], signal);
+        await searchDocuments('cache-identity-query', [document('shared', 'context-a')], signal);
+
+        mocks.embedDocuments.mockResolvedValueOnce({
+            vectors: [[vector(0, 1), vector(1, 0)]]
+        });
+        await searchDocuments('cache-identity-query', [document('shared', 'context-b')], signal);
+
+        expect(mocks.embedQuery).toHaveBeenCalledTimes(1);
+        expect(mocks.embedDocuments).toHaveBeenCalledTimes(2);
+    });
+
+    it('deduplicates identical document groups while preserving indices', async () => {
+        const signal = new AbortController().signal;
+        mocks.embedDocuments.mockResolvedValue({ vectors: [[vector(1, 0)]] });
+
+        await expect(
+            searchDocuments('dedupe-query', [document('same'), document('same')], signal)
+        ).resolves.toEqual([
+            { documentIndex: 0, chunkIndex: 0, score: 1 },
+            { documentIndex: 1, chunkIndex: 0, score: 1 }
+        ]);
+        expect(mocks.embedDocuments).toHaveBeenCalledWith([['same']], signal);
+    });
+
+    it('optionally returns only the top K chunks', async () => {
+        const signal = new AbortController().signal;
+        mocks.embedDocuments.mockResolvedValue({
+            vectors: [[vector(0, 1), vector(0.8, 0.2), vector(1, 0)]]
+        });
+
+        await expect(
+            searchDocuments('top-k-query', [document('low', 'mid', 'high')], signal, 2)
+        ).resolves.toEqual([
+            { documentIndex: 0, chunkIndex: 2, score: 1 },
+            { documentIndex: 0, chunkIndex: 1, score: expect.closeTo(0.9701) }
+        ]);
+    });
+
+    it('rejects empty document groups and invalid vectors', async () => {
+        const signal = new AbortController().signal;
+        await expect(searchDocuments('empty-document-query', [document()], signal)).rejects.toThrow(
+            'Search documents must contain at least one chunk'
+        );
+
+        mocks.embedDocuments.mockResolvedValue({ vectors: [[vector(Number.NaN, 0)]] });
+        await expect(searchDocuments('invalid-query', [document('chunk')], signal)).rejects.toThrow(
+            'Embedding returned an invalid vector'
         );
     });
 
-    it('embeds only cache misses and reuses vectors for the selected model', async () => {
+    it('searches independent chunks without exposing document grouping', async () => {
         const signal = new AbortController().signal;
-        mocks.documentCache.set('openai::embedding-model\0first', [0, 1]);
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(1, 0)]
+        mocks.embedDocuments.mockResolvedValue({
+            vectors: [[vector(0, 1)], [vector(1, 0)]]
         });
 
-        await expect(similarity('query', ['first', 'second'], signal)).resolves.toEqual([
+        await expect(searchChunks('chunk-query', ['first', 'second'], signal)).resolves.toEqual([
             { index: 1, score: 1 },
             { index: 0, score: 0 }
         ]);
-        expect(mocks.embed).toHaveBeenCalledWith(['query', 'second'], signal);
-        expect(mocks.queryCache.get('openai::embedding-model\0query')).toEqual([1, 0]);
-        expect(mocks.documentCache.get('openai::embedding-model\0second')).toEqual([1, 0]);
+        expect(mocks.embedDocuments).toHaveBeenCalledWith([['first'], ['second']], signal);
     });
 
-    it('deduplicates identical cache misses', async () => {
+    it('reuses valid persistent query and document vectors', async () => {
         const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({ vectors: [vector(1, 0)] });
-
-        await similarity('same', ['same', 'same'], signal);
-
-        expect(mocks.embed).toHaveBeenCalledWith(['same'], signal);
-        expect(mocks.queryCache.get('openai::embedding-model\0same')).toEqual([1, 0]);
-        expect(mocks.documentCache.get('openai::embedding-model\0same')).toEqual([1, 0]);
-    });
-
-    it('hashes duplicate documents once while preserving their result indices', async () => {
-        const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(1, 0), vector(0, 1)]
-        });
+        const queryKey = 'openai::embedding-model\0query\0persistent-query';
+        const documentGroupKey = 'openai::embedding-model\0document\0["persistent-chunk"]';
+        const documentKey = `${documentGroupKey}\0${0}`;
+        mocks.queryStore.getMany.mockResolvedValue(new Map([[queryKey, [1, 0]]]));
+        mocks.documentStore.getMany.mockResolvedValue(new Map([[documentKey, [1, 0]]]));
 
         await expect(
-            similarity('dedupe-query', ['duplicate', 'other', 'duplicate'], signal)
-        ).resolves.toEqual([
-            { index: 0, score: 1 },
-            { index: 2, score: 1 },
-            { index: 1, score: 0 }
-        ]);
-        expect(mocks.embed).toHaveBeenCalledWith(['dedupe-query', 'duplicate', 'other'], signal);
-        expect(mocks.embed).toHaveBeenCalledTimes(1);
-        expect(mocks.sha256).toHaveBeenCalledTimes(3);
+            searchChunks('persistent-query', ['persistent-chunk'], signal)
+        ).resolves.toEqual([{ index: 0, score: 1 }]);
+        expect(mocks.embedQuery).not.toHaveBeenCalled();
+        expect(mocks.embedDocuments).not.toHaveBeenCalled();
     });
 
-    it('promotes independent query and document L2 hits into their L1 caches', async () => {
+    it('batches by chunk count without splitting document groups', async () => {
         const signal = new AbortController().signal;
-        mocks.queryCache.set('openai::embedding-model\0cached-query', [1, 0]);
-        mocks.documentCache.set('openai::embedding-model\0cached-document', [1, 0]);
+        const documents = [
+            document(...Array.from({ length: 40 }, (_, index) => `first-${index}`)),
+            document(...Array.from({ length: 30 }, (_, index) => `second-${index}`))
+        ];
+        mocks.embedDocuments.mockImplementation(async (groups: string[][]) => ({
+            vectors: groups.map((group) => group.map(() => vector(1, 0)))
+        }));
 
-        await expect(similarity('cached-query', ['cached-document'], signal)).resolves.toEqual([
-            { index: 0, score: 1 }
-        ]);
+        await searchDocuments('batch-query', documents, signal);
 
-        mocks.queryStore.getMany.mockClear();
-        mocks.documentStore.getMany.mockClear();
-        mocks.queryCache.clear();
-        mocks.documentCache.clear();
-
-        await expect(similarity('cached-query', ['cached-document'], signal)).resolves.toEqual([
-            { index: 0, score: 1 }
-        ]);
-        expect(mocks.queryStore.getMany).not.toHaveBeenCalled();
-        expect(mocks.documentStore.getMany).not.toHaveBeenCalled();
-        expect(mocks.embed).not.toHaveBeenCalled();
+        expect(mocks.embedDocuments).toHaveBeenCalledTimes(2);
+        expect(mocks.embedDocuments.mock.calls[0][0]).toEqual([documents[0].chunks]);
+        expect(mocks.embedDocuments.mock.calls[1][0]).toEqual([documents[1].chunks]);
     });
 
-    it('normalizes embeddings before storing and scores them with dot product', async () => {
+    it('does not wait for best-effort persistent cache writes', async () => {
         const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(3, 0), vector(3, 4)]
-        });
-
-        await expect(similarity('normal-query', ['normal-document'], signal)).resolves.toEqual([
-            { index: 0, score: expect.closeTo(0.6) }
-        ]);
-        expect(mocks.queryCache.get('openai::embedding-model\0normal-query')).toEqual([1, 0]);
-        expect(mocks.documentCache.get('openai::embedding-model\0normal-document')).toEqual([
-            expect.closeTo(0.6),
-            expect.closeTo(0.8)
-        ]);
-    });
-
-    it('does not wait for best-effort L2 writes before returning', async () => {
-        const signal = new AbortController().signal;
-        let resolveWrites: (() => void) | undefined;
+        let finishWrites: (() => void) | undefined;
         const pendingWrite = new Promise<void>((resolve) => {
-            resolveWrites = resolve;
+            finishWrites = resolve;
         });
         mocks.queryStore.setMany.mockReturnValue(pendingWrite);
         mocks.documentStore.setMany.mockReturnValue(pendingWrite);
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(1, 0)]
-        });
+        mocks.embedDocuments.mockResolvedValue({ vectors: [[vector(1, 0)]] });
 
         await expect(
-            similarity('background-query', ['background-document'], signal)
+            searchChunks('background-query', ['background-chunk'], signal)
         ).resolves.toEqual([{ index: 0, score: 1 }]);
-        expect(mocks.queryStore.setMany).toHaveBeenCalled();
-        expect(mocks.documentStore.setMany).toHaveBeenCalled();
-        resolveWrites?.();
+        finishWrites?.();
         await pendingWrite;
-    });
-
-    it('embeds cache misses in bounded sequential batches', async () => {
-        const signal = new AbortController().signal;
-        const documents = Array.from({ length: 64 }, (_, index) => `batch-document-${index}`);
-        mocks.embed
-            .mockResolvedValueOnce({
-                vectors: Array.from({ length: 64 }, () => vector(1, 0))
-            })
-            .mockResolvedValueOnce({ vectors: [vector(1, 0)] });
-
-        await similarity('batch-query', documents, signal);
-
-        expect(mocks.embed).toHaveBeenCalledTimes(2);
-        expect(mocks.embed.mock.calls[0][0]).toHaveLength(64);
-        expect(mocks.embed.mock.calls[1][0]).toHaveLength(1);
-        expect(mocks.embed.mock.invocationCallOrder[0]).toBeLessThan(
-            mocks.embed.mock.invocationCallOrder[1]
-        );
-    });
-
-    it('optionally returns only the top K results', async () => {
-        const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(0, 1), vector(0.8, 0.2), vector(1, 0)]
-        });
-
-        await expect(
-            similarity('top-query', ['top-low', 'top-mid', 'top-high'], signal, 2)
-        ).resolves.toEqual([
-            { index: 2, score: 1 },
-            { index: 1, score: expect.closeTo(0.9701) }
-        ]);
-
-        await expect(
-            similarity('top-query', ['top-low', 'top-mid', 'top-high'], signal)
-        ).resolves.toHaveLength(3);
     });
 
     it('rejects a non-positive top K', async () => {
         await expect(
-            similarity('top-query-invalid', ['document'], new AbortController().signal, 0)
-        ).rejects.toThrow('Similarity topK must be a positive integer');
+            searchChunks('invalid-top-k-query', ['chunk'], new AbortController().signal, 0)
+        ).rejects.toThrow('Search topK must be a positive integer');
     });
 
-    it('rejects invalid embedding vectors before caching them', async () => {
-        const signal = new AbortController().signal;
-        mocks.embed.mockResolvedValue({
-            vectors: [vector(1, 0), vector(Number.NaN, 0)]
-        });
-
-        await expect(similarity('invalid-query', ['invalid-document'], signal)).rejects.toThrow(
-            'Embedding returned an invalid vector'
-        );
-        expect(mocks.queryStore.setMany).not.toHaveBeenCalled();
-        expect(mocks.documentStore.setMany).not.toHaveBeenCalled();
-    });
-
-    it('returns the selected reranker result', async () => {
+    it('returns the selected reranker result unchanged', async () => {
         const signal = new AbortController().signal;
         const result = [
             { index: 1, score: 0.9 },

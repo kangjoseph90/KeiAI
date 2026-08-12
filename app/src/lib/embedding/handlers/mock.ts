@@ -2,7 +2,8 @@
  * Mock Embedding Handler — Development / Testing
  */
 
-import type { EmbeddingHandler, EmbeddingResult } from '../types';
+import type { DocumentEmbeddingResult, EmbeddingHandler, EmbeddingResult } from '../types';
+import { groupEmbeddingVectors } from '../grouping';
 
 const DIAGNOSTIC_DIMENSIONS = 32;
 
@@ -19,7 +20,24 @@ export class MockEmbeddingHandler implements EmbeddingHandler {
         this.behavior = config.behavior ?? 'sample';
     }
 
-    async embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
+    embedQuery(queries: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
+        return this.embed(queries, signal);
+    }
+
+    async embedDocuments(
+        documents: string[][],
+        signal?: AbortSignal
+    ): Promise<DocumentEmbeddingResult> {
+        const { vectors } = await this.embed(documents.flat(), signal);
+        return {
+            vectors: groupEmbeddingVectors(
+                vectors,
+                documents.map((document) => document.length)
+            )
+        };
+    }
+
+    private async embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
         signal?.throwIfAborted();
         const vectors = texts.map((text) => {
             signal?.throwIfAborted();

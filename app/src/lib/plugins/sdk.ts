@@ -239,6 +239,15 @@ export const guestSDK = String.raw`
     const registrations = [];
     const activeMacros = new Map();
 
+    function invokeSearch(id, query, input, topKOrSignal, signal) {
+        const hasTopK = typeof topKOrSignal === 'number';
+        return broker.invoke(
+            id,
+            hasTopK ? [query, input, topKOrSignal] : [query, input],
+            hasTopK ? signal : (topKOrSignal ?? signal)
+        );
+    }
+
     window.KeiAPI = {
         log: (...args) => broker.fire('core.log', args),
         getArg: (key) => broker.invoke('core.getArg', [key]),
@@ -381,9 +390,13 @@ export const guestSDK = String.raw`
                 }
             };
         },
-        addEmbeddingProvider: (modelId, fn, opts = {}) => {
+        addEmbeddingProvider: (modelId, provider, opts = {}) => {
             const fnId = 'embedding_' + Date.now() + '_' + Math.random();
-            broker.expose(fnId, fn);
+            broker.expose(fnId, (inputType, inputs, signal) => {
+                return inputType === 'query'
+                    ? provider.embedQuery(inputs, signal)
+                    : provider.embedDocuments(inputs, signal);
+            });
             const registration = broker.invoke('core.addEmbeddingProvider', [
                 modelId,
                 fnId,
@@ -454,11 +467,11 @@ export const guestSDK = String.raw`
         transcribeSpeech: (audio, signal) => {
             return broker.invoke('core.transcribeSpeech', [audio], signal);
         },
-        similarity: (query, documents, topKOrSignal, signal) => {
-            const topK = typeof topKOrSignal === 'number' ? topKOrSignal : undefined;
-            const abortSignal = topK === undefined ? topKOrSignal : signal;
-            const args = topK === undefined ? [query, documents] : [query, documents, topK];
-            return broker.invoke('core.similarity', args, abortSignal);
+        searchChunks: (query, chunks, topKOrSignal, signal) => {
+            return invokeSearch('core.searchChunks', query, chunks, topKOrSignal, signal);
+        },
+        searchDocuments: (query, documents, topKOrSignal, signal) => {
+            return invokeSearch('core.searchDocuments', query, documents, topKOrSignal, signal);
         },
         rerank: (query, documents, signal) => {
             return broker.invoke('core.rerank', [query, documents], signal);

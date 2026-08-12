@@ -28,7 +28,7 @@ describe('embedding handlers', () => {
             modelId: 'embedding-model'
         });
 
-        const result = await handler.embed(['first', 'second']);
+        const result = await handler.embedQuery(['first', 'second']);
 
         expect(result.vectors).toEqual([new Float32Array([1, 2]), new Float32Array([3, 4])]);
     });
@@ -45,24 +45,46 @@ describe('embedding handlers', () => {
             modelId: 'embedding-model'
         });
 
-        const result = await handler.embed(['first', 'second']);
+        const result = await handler.embedQuery(['first', 'second']);
 
         expect(result.vectors).toEqual([new Float32Array([1, 2]), new Float32Array([3, 4])]);
     });
 
-    it('requires plugin providers to return Float32Array vectors', async () => {
+    it('validates plugin query and document embedding shapes', async () => {
         const invoke = vi
             .fn()
             .mockResolvedValueOnce({ vectors: [new Float32Array([1, 2])] })
-            .mockResolvedValueOnce({ vectors: [[1, 2]] });
+            .mockResolvedValueOnce({ vectors: [[1, 2]] })
+            .mockResolvedValueOnce({
+                vectors: [[new Float32Array([1, 2]), new Float32Array([3, 4])]]
+            })
+            .mockResolvedValueOnce({ vectors: [[new Float32Array([1, 2])]] });
         const instance = { broker: { invoke } } as unknown as PluginInstance;
         const handler = new PluginEmbeddingHandler(instance, 'embedding-function');
 
-        await expect(handler.embed(['valid'])).resolves.toEqual({
+        await expect(handler.embedQuery(['valid'])).resolves.toEqual({
             vectors: [new Float32Array([1, 2])]
         });
-        await expect(handler.embed(['invalid'])).rejects.toThrow(
+        await expect(handler.embedQuery(['invalid'])).rejects.toThrow(
             'Plugin embedding provider returned an invalid result'
+        );
+        await expect(handler.embedDocuments([['first', 'second']])).resolves.toEqual({
+            vectors: [[new Float32Array([1, 2]), new Float32Array([3, 4])]]
+        });
+        await expect(handler.embedDocuments([['first', 'second']])).rejects.toThrow(
+            'Plugin embedding provider returned an invalid result'
+        );
+        expect(invoke).toHaveBeenNthCalledWith(
+            1,
+            'embedding-function',
+            ['query', ['valid']],
+            undefined
+        );
+        expect(invoke).toHaveBeenNthCalledWith(
+            3,
+            'embedding-function',
+            ['document', [['first', 'second']]],
+            undefined
         );
     });
 });

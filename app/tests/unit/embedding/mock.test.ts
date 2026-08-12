@@ -5,7 +5,7 @@ import { defaultSettings } from '$lib/services/content/settings';
 
 describe('MockEmbeddingHandler', () => {
     it('returns one stable Float32 vector per text in sample mode', async () => {
-        const result = await new MockEmbeddingHandler().embed(['alpha', 'beta']);
+        const result = await new MockEmbeddingHandler().embedQuery(['alpha', 'beta']);
 
         expect(result.vectors).toHaveLength(2);
         expect(result.vectors.every((vector) => vector instanceof Float32Array)).toBe(true);
@@ -15,7 +15,7 @@ describe('MockEmbeddingHandler', () => {
 
     it('produces deterministic input-sensitive vectors in diagnostic mode', async () => {
         const handler = new MockEmbeddingHandler({ behavior: 'diagnostic' });
-        const result = await handler.embed(['shared token', 'shared token', 'different']);
+        const result = await handler.embedQuery(['shared token', 'shared token', 'different']);
 
         expect(result.vectors[0]).toEqual(result.vectors[1]);
         expect(result.vectors[0]).not.toEqual(result.vectors[2]);
@@ -27,7 +27,7 @@ describe('MockEmbeddingHandler', () => {
         controller.abort();
 
         await expect(
-            new MockEmbeddingHandler().embed(['text'], controller.signal)
+            new MockEmbeddingHandler().embedQuery(['text'], controller.signal)
         ).rejects.toThrow();
     });
 

@@ -14,13 +14,15 @@ const mocks = vi.hoisted(() => ({
     getRoom: vi.fn(),
     getChat: vi.fn(),
     getMessage: vi.fn(),
-    similarity: vi.fn(),
+    searchChunks: vi.fn(),
+    searchDocuments: vi.fn(),
     rerank: vi.fn()
 }));
 
 vi.mock('$lib/managers/media', () => mocks);
 vi.mock('$lib/managers/retrieval', () => ({
-    similarity: mocks.similarity,
+    searchChunks: mocks.searchChunks,
+    searchDocuments: mocks.searchDocuments,
     rerank: mocks.rerank
 }));
 vi.mock('$lib/stores', () => ({
@@ -211,25 +213,30 @@ describe('plugin media APIs', () => {
 
     it('passes retrieval input and cancellation to the configured managers', async () => {
         const signal = new AbortController().signal;
-        const result = [
+        const chunkResult = [
             { index: 1, score: 0.9 },
             { index: 0, score: 0.4 }
         ];
-        mocks.similarity.mockResolvedValue(result);
-        mocks.rerank.mockResolvedValue(result);
+        const documentResult = [{ documentIndex: 0, chunkIndex: 1, score: 0.9 }];
+        mocks.searchChunks.mockResolvedValue(chunkResult);
+        mocks.searchDocuments.mockResolvedValue(documentResult);
+        mocks.rerank.mockResolvedValue(chunkResult);
 
-        await expect(
-            exposed.get('core.similarity')!('query', ['first', 'second'], 1, signal)
-        ).resolves.toBe(result);
-        await expect(
-            exposed.get('core.similarity')!('legacy-query', ['first'], signal)
-        ).resolves.toBe(result);
-        await expect(
-            exposed.get('core.rerank')!('query', ['first', 'second'], signal)
-        ).resolves.toBe(result);
+        await exposed.get('core.searchChunks')!('query', ['first', 'second'], 1, signal);
+        await exposed.get('core.searchDocuments')!(
+            'document-query',
+            [{ chunks: ['first', 'second'] }],
+            signal
+        );
+        await exposed.get('core.rerank')!('query', ['first', 'second'], signal);
 
-        expect(mocks.similarity).toHaveBeenCalledWith('query', ['first', 'second'], signal, 1);
-        expect(mocks.similarity).toHaveBeenCalledWith('legacy-query', ['first'], signal, undefined);
+        expect(mocks.searchChunks).toHaveBeenCalledWith('query', ['first', 'second'], signal, 1);
+        expect(mocks.searchDocuments).toHaveBeenCalledWith(
+            'document-query',
+            [{ chunks: ['first', 'second'] }],
+            signal,
+            undefined
+        );
         expect(mocks.rerank).toHaveBeenCalledWith('query', ['first', 'second'], signal);
     });
 

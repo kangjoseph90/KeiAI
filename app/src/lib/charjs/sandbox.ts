@@ -10,7 +10,12 @@ import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { callLLM } from '$lib/managers/llm';
-import { rerank, similarity } from '$lib/managers/retrieval';
+import {
+    rerank,
+    searchChunks,
+    searchDocuments,
+    type RetrievalDocument
+} from '$lib/managers/retrieval';
 import {
     generateImageInlay,
     listInlays,
@@ -334,21 +339,35 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     ctx.setProp(keiObj, 'transcribeSpeech', transcribeSpeechFn);
     transcribeSpeechFn.dispose();
 
-    const similarityFn = ctx.newFunction(
-        'similarity',
-        (queryHandle, documentsHandle, topKHandle) => {
+    const searchChunksFn = ctx.newFunction(
+        'searchChunks',
+        (queryHandle, chunksHandle, topKHandle) => {
             const query = ctx.getString(queryHandle);
-            const documents = readStringArray(ctx.dump(documentsHandle), 'documents');
-            const topKValue = topKHandle ? ctx.dump(topKHandle) : undefined;
-            const topK = topKValue === undefined || typeof topKValue === 'number' ? topKValue : NaN;
+            const chunks = readStringArray(ctx.dump(chunksHandle), 'chunks');
+            const topK = readTopK(topKHandle ? ctx.dump(topKHandle) : undefined);
             return createValuePromise(async () => {
                 await requirePermission();
-                return similarity(query, documents, new AbortController().signal, topK);
+                return searchChunks(query, chunks, new AbortController().signal, topK);
             });
         }
     );
-    ctx.setProp(keiObj, 'similarity', similarityFn);
-    similarityFn.dispose();
+    ctx.setProp(keiObj, 'searchChunks', searchChunksFn);
+    searchChunksFn.dispose();
+
+    const searchDocumentsFn = ctx.newFunction(
+        'searchDocuments',
+        (queryHandle, documentsHandle, topKHandle) => {
+            const query = ctx.getString(queryHandle);
+            const documents = readRetrievalDocuments(ctx.dump(documentsHandle));
+            const topK = readTopK(topKHandle ? ctx.dump(topKHandle) : undefined);
+            return createValuePromise(async () => {
+                await requirePermission();
+                return searchDocuments(query, documents, new AbortController().signal, topK);
+            });
+        }
+    );
+    ctx.setProp(keiObj, 'searchDocuments', searchDocumentsFn);
+    searchDocumentsFn.dispose();
 
     const rerankFn = ctx.newFunction('rerank', (queryHandle, documentsHandle) => {
         const query = ctx.getString(queryHandle);
@@ -399,6 +418,24 @@ function readStringArray(value: unknown, name: string): string[] {
         throw new Error(`${name} must be an array of strings`);
     }
     return value;
+}
+
+function readTopK(value: unknown): number | undefined {
+    return value === undefined || typeof value === 'number' ? value : NaN;
+}
+
+function readRetrievalDocuments(value: unknown): RetrievalDocument[] {
+    if (!Array.isArray(value)) {
+        throw new Error('documents must be an array of objects with a chunks array');
+    }
+    return value.map((document) => {
+        if (!document || typeof document !== 'object' || !('chunks' in document)) {
+            throw new Error('documents must be an array of objects with a chunks array');
+        }
+        const chunks = readStringArray(document.chunks, 'document.chunks');
+        if (chunks.length === 0) throw new Error('document.chunks cannot be empty');
+        return { chunks };
+    });
 }
 
 function getErrorMessage(error: unknown): string {
