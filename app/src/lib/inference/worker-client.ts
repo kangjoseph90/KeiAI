@@ -19,6 +19,7 @@ import type {
     TransformersWorkerApi,
     WorkerMultimodalGenerateMessage
 } from './worker-types';
+import { acquireInferenceLease } from './cache-coordinator';
 
 type ReleasableCallback<T extends (...args: never[]) => unknown> = T & {
     [releaseProxy]?: () => void;
@@ -131,6 +132,7 @@ export class TransformersWorkerClient {
         texts: string[],
         options: EmbedOptions = {}
     ): Promise<Float32Array[]> {
+        const releaseLease = await acquireInferenceLease(options.signal);
         const { onProgress, signal, ...workerOptions } = options;
         const progress = createProgressProxy(onProgress);
         try {
@@ -143,6 +145,7 @@ export class TransformersWorkerClient {
             );
         } finally {
             releaseCallback(progress);
+            releaseLease();
         }
     }
 
@@ -152,6 +155,7 @@ export class TransformersWorkerClient {
         documents: string[],
         options: RerankOptions = {}
     ): Promise<number[]> {
+        const releaseLease = await acquireInferenceLease(options.signal);
         const { onProgress, signal, ...workerOptions } = options;
         const progress = createProgressProxy(onProgress);
         try {
@@ -160,6 +164,7 @@ export class TransformersWorkerClient {
             );
         } finally {
             releaseCallback(progress);
+            releaseLease();
         }
     }
 
@@ -168,6 +173,7 @@ export class TransformersWorkerClient {
         text: string,
         options: SynthesizeOptions = {}
     ): Promise<SynthesizeResult> {
+        const releaseLease = await acquireInferenceLease(options.signal);
         const { onProgress, signal, ...workerOptions } = options;
         const progress = createProgressProxy(onProgress);
         try {
@@ -176,6 +182,7 @@ export class TransformersWorkerClient {
             );
         } finally {
             releaseCallback(progress);
+            releaseLease();
         }
     }
 
@@ -184,26 +191,31 @@ export class TransformersWorkerClient {
         audio: Blob | Float32Array,
         options: TranscribeOptions = {}
     ): Promise<TranscribeResult> {
-        options.signal?.throwIfAborted();
-        const samples =
-            audio instanceof Blob
-                ? await decodeAudio(await audio.arrayBuffer())
-                : new Float32Array(audio);
-        options.signal?.throwIfAborted();
-        const { onProgress, signal, ...workerOptions } = options;
-        const progress = createProgressProxy(onProgress);
+        const releaseLease = await acquireInferenceLease(options.signal);
         try {
-            return await runAbortable(signal, (operationId) =>
-                getRemote().transcribe(
-                    operationId,
-                    spec,
-                    transfer(samples, [samples.buffer]),
-                    workerOptions,
-                    progress
-                )
-            );
+            options.signal?.throwIfAborted();
+            const samples =
+                audio instanceof Blob
+                    ? await decodeAudio(await audio.arrayBuffer())
+                    : new Float32Array(audio);
+            options.signal?.throwIfAborted();
+            const { onProgress, signal, ...workerOptions } = options;
+            const progress = createProgressProxy(onProgress);
+            try {
+                return await runAbortable(signal, (operationId) =>
+                    getRemote().transcribe(
+                        operationId,
+                        spec,
+                        transfer(samples, [samples.buffer]),
+                        workerOptions,
+                        progress
+                    )
+                );
+            } finally {
+                releaseCallback(progress);
+            }
         } finally {
-            releaseCallback(progress);
+            releaseLease();
         }
     }
 
@@ -213,7 +225,21 @@ export class TransformersWorkerClient {
         messages: GenerationMessages,
         options: GenerateOptions = {}
     ): AsyncIterable<string> {
-        return this.streamGeneration(kind, spec, messages, options);
+        return this.streamGenerationWithLease(kind, spec, messages, options);
+    }
+
+    private async *streamGenerationWithLease(
+        kind: GenerationKind,
+        spec: ModelSpec,
+        messages: GenerationMessages,
+        options: GenerateOptions
+    ): AsyncIterable<string> {
+        const releaseLease = await acquireInferenceLease(options.signal);
+        try {
+            yield* this.streamGeneration(kind, spec, messages, options);
+        } finally {
+            releaseLease();
+        }
     }
 
     private async *streamGeneration(
@@ -272,7 +298,8 @@ export class TransformersWorkerClient {
     }
 
     async dispose(modelId: string): Promise<void> {
-        await getRemote().dispose(modelId);
+        if (!remoteInstance) return;
+        await remoteInstance.dispose(modelId);
     }
 
     async disposeAll(): Promise<void> {

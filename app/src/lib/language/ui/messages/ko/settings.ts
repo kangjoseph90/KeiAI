@@ -12,6 +12,7 @@ export const settingsMessages = {
     'settings.tabs.profile': '프로필',
     'settings.tabs.account': '계정',
     'settings.tabs.connections': '연결',
+    'settings.tabs.system': '시스템',
     'settings.general.appearance.title': '화면',
     'settings.general.appearance.description': 'KeiAI의 화면 표시 방식을 설정합니다.',
     'settings.general.theme.label': '색상 테마',
@@ -63,6 +64,52 @@ export const settingsMessages = {
     'settings.general.maintenance.deleteUserBody':
         '이 사용자와 모든 로컬 데이터를 이 기기에서 영구적으로 삭제합니다. 원격 계정은 삭제되지 않습니다.',
     'settings.general.maintenance.maintenanceFailed': '유지 관리 실패',
+    'settings.system.modelCache.title': '로컬 모델',
+    'settings.system.modelCache.description':
+        '이 기기에서 로컬 추론을 위해 다운로드한 모델 파일을 확인하고 삭제합니다.',
+    'settings.system.modelCache.refresh': '로컬 모델 다시 검색',
+    'settings.system.modelCache.loading': '캐시된 모델을 확인하는 중…',
+    'settings.system.modelCache.unavailable': '이 실행 환경에서는 모델 캐시를 관리할 수 없습니다.',
+    'settings.system.modelCache.empty': '캐시된 로컬 모델이 없습니다.',
+    'settings.system.modelCache.totalSize': '전체 {:size}',
+    'settings.system.modelCache.selectedSize': '선택 {:count}개 · {:size}',
+    'settings.system.modelCache.unknownSize': '알 수 없음',
+    'settings.system.modelCache.clearSelected': '선택한 모델 삭제',
+    'settings.system.modelCache.clearTitle': '선택한 모델을 삭제할까요?',
+    'settings.system.modelCache.clearBody':
+        '선택한 모델 파일을 이 기기에서 삭제합니다. 다시 필요할 때 자동으로 다운로드됩니다.',
+    'settings.system.modelCache.clearButton': '모델 삭제',
+    'settings.system.modelCache.clearSuccess': '선택한 로컬 모델을 삭제했습니다.',
+    'settings.system.modelCache.loadFailed': '로컬 모델을 확인하지 못했습니다',
+    'settings.system.modelCache.clearFailed': '로컬 모델을 삭제하지 못했습니다',
+    'settings.system.maintenance.title': '로컬 데이터 유지 관리',
+    'settings.system.maintenance.description':
+        '로컬 동기화 상태를 복구하거나 로컬 데이터를 영구적으로 제거합니다.',
+    'settings.system.maintenance.resetSync': '동기화 커서 재설정',
+    'settings.system.maintenance.resetSyncHelp':
+        '로컬 데이터를 삭제하지 않고 동기화 서버에서 모든 데이터를 다시 가져옵니다.',
+    'settings.system.maintenance.resetButton': '동기화 커서 재설정',
+    'settings.system.maintenance.purgeOrphans': '연결 해제된 데이터 제거',
+    'settings.system.maintenance.purgeOrphansHelp':
+        '활성 사용자에게 더 이상 속하지 않는 로컬 레코드와 자산을 영구적으로 제거합니다.',
+    'settings.system.maintenance.purgeButton': '연결 해제된 데이터 제거',
+    'settings.system.maintenance.deleteUser': '로컬 사용자 삭제',
+    'settings.system.maintenance.deleteUserHelp':
+        '이 사용자와 모든 로컬 데이터를 이 기기에서 영구적으로 제거합니다.',
+    'settings.system.maintenance.deleteButton': '로컬 사용자 삭제',
+    'settings.system.maintenance.resetTitle': '동기화 커서를 재설정할까요?',
+    'settings.system.maintenance.resetBody':
+        '현재 사용자가 이 동기화 서버에서 모든 데이터를 다시 가져옵니다. 로컬 데이터는 삭제되지 않습니다.',
+    'settings.system.maintenance.resetSuccess':
+        '동기화 커서를 재설정하고 전체 동기화를 완료했습니다.',
+    'settings.system.maintenance.purgeTitle': '연결 해제된 데이터를 제거할까요?',
+    'settings.system.maintenance.purgeBody':
+        '기존 사용자나 접근 가능한 멀티룸에 더 이상 속하지 않는 로컬 레코드와 자산을 영구적으로 제거합니다.',
+    'settings.system.maintenance.purgeSuccess': '연결 해제된 로컬 데이터를 제거했습니다.',
+    'settings.system.maintenance.deleteUserTitle': '로컬 사용자를 삭제할까요?',
+    'settings.system.maintenance.deleteUserBody':
+        '이 사용자와 모든 로컬 데이터를 이 기기에서 영구적으로 삭제합니다. 원격 계정은 삭제되지 않습니다.',
+    'settings.system.maintenance.maintenanceFailed': '유지 관리 실패',
     'settings.language.interface.title': '표시 언어',
     'settings.language.interface.description': '앱 UI에 사용할 언어를 선택하세요.',
     'settings.language.translation.title': '번역',

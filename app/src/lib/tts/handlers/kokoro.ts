@@ -8,6 +8,7 @@ import type { KokoroTTS } from 'kokoro-js';
 import { AppError } from '$lib/types/errors';
 import { isKokoroVoiceId } from '$lib/types/models/tts';
 import type { TTSHandler, TTSResult } from '../types';
+import { acquireInferenceLease } from '$lib/inference/cache-coordinator';
 
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 
@@ -42,20 +43,25 @@ export class KokoroTTSHandler implements TTSHandler {
     }
 
     async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
-        if (!isKokoroVoiceId(this.config.voiceId)) {
-            throw new AppError('INVALID_INPUT', `Unknown Kokoro voice: ${this.config.voiceId}`);
+        const releaseLease = await acquireInferenceLease(signal);
+        try {
+            if (!isKokoroVoiceId(this.config.voiceId)) {
+                throw new AppError('INVALID_INPUT', `Unknown Kokoro voice: ${this.config.voiceId}`);
+            }
+
+            signal.throwIfAborted();
+            const model = await loadModel();
+            signal.throwIfAborted();
+
+            const audio = await model.generate(text, { voice: this.config.voiceId });
+            signal.throwIfAborted();
+
+            return {
+                data: new Uint8Array(audio.toWav()),
+                mimeType: 'audio/wav'
+            };
+        } finally {
+            releaseLease();
         }
-
-        signal.throwIfAborted();
-        const model = await loadModel();
-        signal.throwIfAborted();
-
-        const audio = await model.generate(text, { voice: this.config.voiceId });
-        signal.throwIfAborted();
-
-        return {
-            data: new Uint8Array(audio.toWav()),
-            mimeType: 'audio/wav'
-        };
     }
 }

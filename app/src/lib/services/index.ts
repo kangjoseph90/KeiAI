@@ -21,3 +21,4 @@ export * from './sync';
 export * from './connection';
 export * from './notification';
 export * from './purge';
+export * from './model_cache';

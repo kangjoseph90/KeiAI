@@ -12,6 +12,7 @@ export const settingsMessages = {
     'settings.tabs.profile': 'Profile',
     'settings.tabs.account': 'Account',
     'settings.tabs.connections': 'Connections',
+    'settings.tabs.system': 'System',
     'settings.general.appearance.title': 'Appearance',
     'settings.general.appearance.description': 'Customize how KeiAI looks on your screen.',
     'settings.general.theme.label': 'Color Theme',
@@ -62,6 +63,52 @@ export const settingsMessages = {
     'settings.general.maintenance.deleteUserBody':
         'This permanently deletes this user and all of their local data from this device. The remote account is not deleted.',
     'settings.general.maintenance.maintenanceFailed': 'Maintenance failed',
+    'settings.system.modelCache.title': 'Local Models',
+    'settings.system.modelCache.description':
+        'Review and remove model files downloaded for local inference on this device.',
+    'settings.system.modelCache.refresh': 'Scan local models again',
+    'settings.system.modelCache.loading': 'Inspecting cached models…',
+    'settings.system.modelCache.unavailable':
+        'Model cache management is unavailable in this runtime.',
+    'settings.system.modelCache.empty': 'No cached local models were found.',
+    'settings.system.modelCache.totalSize': 'Total {:size}',
+    'settings.system.modelCache.selectedSize': '{:count} selected · {:size}',
+    'settings.system.modelCache.unknownSize': 'Unknown',
+    'settings.system.modelCache.clearSelected': 'Delete selected models',
+    'settings.system.modelCache.clearTitle': 'Delete selected models?',
+    'settings.system.modelCache.clearBody':
+        'The selected model files will be removed from this device and downloaded again when needed.',
+    'settings.system.modelCache.clearButton': 'Delete models',
+    'settings.system.modelCache.clearSuccess': 'Selected local models were deleted.',
+    'settings.system.modelCache.loadFailed': 'Could not inspect local models',
+    'settings.system.modelCache.clearFailed': 'Could not delete local models',
+    'settings.system.maintenance.title': 'Local Data Maintenance',
+    'settings.system.maintenance.description':
+        'Repair local sync state or permanently remove local data.',
+    'settings.system.maintenance.resetSync': 'Reset Sync Cursors',
+    'settings.system.maintenance.resetSyncHelp':
+        'Fetch all data again from the sync server without deleting local data.',
+    'settings.system.maintenance.resetButton': 'Reset Sync Cursors',
+    'settings.system.maintenance.purgeOrphans': 'Purge Orphaned Data',
+    'settings.system.maintenance.purgeOrphansHelp':
+        'Permanently remove local records and assets that no longer belong to an active user.',
+    'settings.system.maintenance.purgeButton': 'Purge Orphaned Data',
+    'settings.system.maintenance.deleteUser': 'Delete Local User',
+    'settings.system.maintenance.deleteUserHelp':
+        'Permanently remove this user and all local data from this device.',
+    'settings.system.maintenance.deleteButton': 'Delete Local User',
+    'settings.system.maintenance.resetTitle': 'Reset sync cursors?',
+    'settings.system.maintenance.resetBody':
+        'The current user will fetch all data again from this sync server. Local data is not deleted.',
+    'settings.system.maintenance.resetSuccess': 'Sync cursors reset. A full sync has completed.',
+    'settings.system.maintenance.purgeTitle': 'Purge orphaned data?',
+    'settings.system.maintenance.purgeBody':
+        'This permanently removes local records and assets that no longer belong to an existing user or accessible multi-room.',
+    'settings.system.maintenance.purgeSuccess': 'Orphaned local data was purged.',
+    'settings.system.maintenance.deleteUserTitle': 'Delete local user?',
+    'settings.system.maintenance.deleteUserBody':
+        'This permanently deletes this user and all of their local data from this device. The remote account is not deleted.',
+    'settings.system.maintenance.maintenanceFailed': 'Maintenance failed',
     'settings.language.interface.title': 'Interface Language',
     'settings.language.interface.description': 'Choose the language used by the app.',
     'settings.language.translation.title': 'Translation',

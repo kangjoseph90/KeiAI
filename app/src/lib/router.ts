@@ -19,6 +19,7 @@ export type SettingsTab =
     | 'profile'
     | 'account'
     | 'connections'
+    | 'system'
     | 'general';
 export type CharacterStudioTab =
     | 'profile'
@@ -155,6 +156,7 @@ function parseHash(hash: string): RouteState {
             parts[1] === 'profile' ||
             parts[1] === 'account' ||
             parts[1] === 'connections' ||
+            parts[1] === 'system' ||
             parts[1] === 'general'
         ) {
             return { view: 'settings', settingsTab: parts[1] };

@@ -148,6 +148,7 @@ describe('TransformersWorkerClient', () => {
         const operation = client.embed({ modelId: 'embedding' }, ['text'], {
             signal: controller.signal
         });
+        await vi.waitFor(() => expect(mocks.remote.embed).toHaveBeenCalledOnce());
         controller.abort();
 
         await expect(operation).rejects.toMatchObject({ name: 'AbortError' });

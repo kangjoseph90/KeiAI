@@ -2,25 +2,16 @@
     import {
         User,
         Shield,
-        Cpu,
-        Sparkles,
         Settings,
         Puzzle,
         MessageSquare,
         Languages,
         Network,
-        DatabaseZap,
-        Trash2,
-        BrainCircuit,
-        Brain,
+        HardDrive,
         Layers,
-        LayoutGrid,
-        Wand2,
-        Shapes
+        LayoutGrid
     } from 'lucide-svelte';
-    import { Button } from '$lib/components/ui/button';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
-    import SettingRow from '$lib/components/SettingRow.svelte';
     import { WorkspaceShell } from '$lib/components/layout';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -34,12 +25,7 @@
         updateThemePreference,
         activePreset,
         activeRoom,
-        activeChat,
-        deleteActiveLocalUser,
-        isLoggedIn,
-        performPurgeOrphans,
-        performResetSyncCursors,
-        serverTransitionLocked
+        activeChat
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import type { SettingsTab } from '$lib/router';
@@ -51,7 +37,8 @@
     import ChatSettings from './ChatSettings.svelte';
     import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
-    import { appConfirm, toast } from '$lib/ui';
+    import SystemSettings from './SystemSettings.svelte';
+    import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import type { ThemePreference } from '$lib/stores';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
@@ -62,7 +49,6 @@
     let activeTab = $derived(settingsTab ?? localTab);
     let settingsBusy = $state(false);
     let themeBusy = $state(false);
-    let maintenanceBusy = $state(false);
     let suggestionWorkflowEditorOpen = $state(false);
     let titleWorkflowEditorOpen = $state(false);
 
@@ -75,7 +61,8 @@
         { id: 'profile', label: $t('settings.tabs.profile'), icon: User },
         { id: 'account', label: $t('settings.tabs.account'), icon: Shield },
         { id: 'connections', label: $t('settings.tabs.connections'), icon: Network },
-        { id: 'general', label: $t('settings.tabs.general'), icon: Settings }
+        { id: 'general', label: $t('settings.tabs.general'), icon: Settings },
+        { id: 'system', label: $t('settings.tabs.system'), icon: HardDrive }
     ] as const);
 
     async function handleThemeChange(preference: ThemePreference): Promise<void> {
@@ -128,61 +115,6 @@
     function returnToTabs() {
         navigate({ view: 'settings' });
     }
-
-    async function runMaintenance(
-        action: () => Promise<void>,
-        confirmation: Parameters<typeof appConfirm>[0],
-        successTitle?: string
-    ): Promise<void> {
-        if (maintenanceBusy) return;
-        maintenanceBusy = true;
-        try {
-            if (!(await appConfirm(confirmation))) return;
-            await action();
-            if (successTitle) toast.success({ title: successTitle });
-        } catch (error) {
-            toast.error({
-                title: $t('settings.general.maintenance.maintenanceFailed'),
-                description: getErrorMessage(error)
-            });
-        } finally {
-            maintenanceBusy = false;
-        }
-    }
-
-    function handleResetSyncCursors(): void {
-        void runMaintenance(
-            performResetSyncCursors,
-            {
-                title: $t('settings.general.maintenance.resetTitle'),
-                description: $t('settings.general.maintenance.resetBody'),
-                confirmText: $t('common.confirm.reset')
-            },
-            $t('settings.general.maintenance.resetSuccess')
-        );
-    }
-
-    function handlePurgeOrphans(): void {
-        void runMaintenance(
-            performPurgeOrphans,
-            {
-                title: $t('settings.general.maintenance.purgeTitle'),
-                description: $t('settings.general.maintenance.purgeBody'),
-                confirmText: $t('common.actions.delete'),
-                variant: 'destructive'
-            },
-            $t('settings.general.maintenance.purgeSuccess')
-        );
-    }
-
-    function handleDeleteLocalUser(): void {
-        void runMaintenance(deleteActiveLocalUser, {
-            title: $t('settings.general.maintenance.deleteUserTitle'),
-            description: $t('settings.general.maintenance.deleteUserBody'),
-            confirmText: $t('settings.general.maintenance.deleteUser'),
-            variant: 'destructive'
-        });
-    }
 </script>
 
 {#snippet titleExtra()}
@@ -229,6 +161,8 @@
                     <AccountSettings />
                 {:else if activeTab === 'connections'}
                     <ConnectionsSettings />
+                {:else if activeTab === 'system'}
+                    <SystemSettings />
                 {:else if activeTab === 'general'}
                     <div class="space-y-8 pb-8">
                         <!-- Appearance Section -->
@@ -412,88 +346,6 @@
                                     />
                                 </div>
                             {/if}
-                        </section>
-
-                        <div class="border-t border-border"></div>
-
-                        <!-- Local Data Maintenance Section -->
-                        <section class="space-y-3">
-                            <div>
-                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
-                                    {$t('settings.general.maintenance.title')}
-                                </h3>
-                                <p class="text-sm text-muted-foreground">
-                                    {$t('settings.general.maintenance.description')}
-                                </p>
-                            </div>
-                            <div class="divide-y divide-border" aria-busy={maintenanceBusy}>
-                                <div class="flex items-center justify-between py-3.5">
-                                    <div class="space-y-0.5 pr-4">
-                                        <Label class="text-sm font-medium"
-                                            >{$t('settings.general.maintenance.resetSync')}</Label
-                                        >
-                                        <p class="text-xs text-muted-foreground">
-                                            {$t('settings.general.maintenance.resetSyncHelp')}
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5 shrink-0"
-                                        disabled={maintenanceBusy ||
-                                            !$isLoggedIn ||
-                                            $serverTransitionLocked}
-                                        onclick={handleResetSyncCursors}
-                                    >
-                                        <DatabaseZap class="size-4" />
-                                        {$t('settings.general.maintenance.resetButton')}
-                                    </Button>
-                                </div>
-
-                                <div class="flex items-center justify-between py-3.5">
-                                    <div class="space-y-0.5 pr-4">
-                                        <Label class="text-sm font-medium"
-                                            >{$t(
-                                                'settings.general.maintenance.purgeOrphans'
-                                            )}</Label
-                                        >
-                                        <p class="text-xs text-muted-foreground">
-                                            {$t('settings.general.maintenance.purgeOrphansHelp')}
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5 shrink-0"
-                                        disabled={maintenanceBusy || $serverTransitionLocked}
-                                        onclick={handlePurgeOrphans}
-                                    >
-                                        <Trash2 class="size-4" />
-                                        {$t('settings.general.maintenance.purgeButton')}
-                                    </Button>
-                                </div>
-
-                                <div class="flex items-center justify-between py-3.5">
-                                    <div class="space-y-0.5 pr-4">
-                                        <Label class="text-sm font-medium text-destructive"
-                                            >{$t('settings.general.maintenance.deleteUser')}</Label
-                                        >
-                                        <p class="text-xs text-muted-foreground">
-                                            {$t('settings.general.maintenance.deleteUserHelp')}
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        class="gap-1.5 shrink-0"
-                                        disabled={maintenanceBusy || $serverTransitionLocked}
-                                        onclick={handleDeleteLocalUser}
-                                    >
-                                        <Trash2 class="size-4" />
-                                        {$t('settings.general.maintenance.deleteButton')}
-                                    </Button>
-                                </div>
-                            </div>
                         </section>
                     </div>
                 {/if}
