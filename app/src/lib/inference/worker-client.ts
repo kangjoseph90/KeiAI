@@ -20,6 +20,7 @@ import type {
     WorkerMultimodalGenerateMessage
 } from './worker-types';
 import { acquireInferenceLease } from './cache-coordinator';
+import type { KokoroVoiceId } from '$lib/types/models/tts';
 
 type ReleasableCallback<T extends (...args: never[]) => unknown> = T & {
     [releaseProxy]?: () => void;
@@ -186,6 +187,22 @@ export class TransformersWorkerClient {
         }
     }
 
+    async synthesizeKokoro(
+        text: string,
+        voiceId: KokoroVoiceId,
+        signal?: AbortSignal
+    ): Promise<{ data: Uint8Array<ArrayBuffer>; mimeType: string }> {
+        const releaseLease = await acquireInferenceLease(signal);
+        try {
+            const result = await runAbortable(signal, (operationId) =>
+                getRemote().synthesizeKokoro(operationId, text, voiceId)
+            );
+            return { data: new Uint8Array(result.data), mimeType: result.mimeType };
+        } finally {
+            releaseLease();
+        }
+    }
+
     async transcribe(
         spec: ModelSpec,
         audio: Blob | Float32Array,
@@ -339,6 +356,10 @@ export const gemma4 = {
 export const qwen35 = {
     generate: (spec: ModelSpec, messages: MultimodalGenerateMessage[], options?: GenerateOptions) =>
         client.generate('qwen35', spec, messages, options)
+};
+
+export const kokoro = {
+    synthesize: client.synthesizeKokoro.bind(client)
 };
 
 async function decodeGemmaAudio(

@@ -2,7 +2,9 @@ import { expose, transfer } from 'comlink';
 import { transformers as transformersCore } from './transformers';
 import { gemma4 as gemma4Core } from './gemma4';
 import { qwen35 as qwen35Core } from './qwen35';
+import { kokoro as kokoroCore } from './kokoro';
 import type {
+    AudioFileTransfer,
     EmbeddingTransfer,
     GenerationMessages,
     SynthesisTransfer,
@@ -73,6 +75,14 @@ const api: TransformersWorkerApi = {
             return transfer(result, [result.audio]) as SynthesisTransfer;
         }),
 
+    synthesizeKokoro: (operationId, text, voiceId) =>
+        enqueueInference(operationId, async (signal) => {
+            const data = await kokoroCore.synthesize(text, voiceId, signal);
+            return transfer({ data: data.buffer, mimeType: 'audio/wav' }, [
+                data.buffer
+            ]) as AudioFileTransfer;
+        }),
+
     transcribe: (operationId, spec, audio, options, onProgress) =>
         enqueueInference(operationId, (signal) =>
             transformersCore.transcribe(spec, audio, { ...options, onProgress, signal })
@@ -106,7 +116,10 @@ const api: TransformersWorkerApi = {
     },
 
     dispose: (modelId) => enqueue(() => transformersCore.dispose(modelId)),
-    disposeAll: () => enqueue(() => transformersCore.disposeAll())
+    disposeAll: () =>
+        enqueue(async () => {
+            await Promise.all([transformersCore.disposeAll(), kokoroCore.dispose()]);
+        })
 };
 
 expose(api);

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
             embed: vi.fn(),
             rerank: vi.fn(),
             synthesize: vi.fn(),
+            synthesizeKokoro: vi.fn(),
             transcribe: vi.fn(),
             generate: vi.fn(),
             cancel: vi.fn().mockResolvedValue(undefined),
@@ -100,6 +101,27 @@ describe('TransformersWorkerClient', () => {
             samples,
             {},
             undefined
+        );
+    });
+
+    it('returns Kokoro WAV bytes synthesized by the worker', async () => {
+        const wav = new Uint8Array([82, 73, 70, 70]);
+        mocks.remote.synthesizeKokoro.mockResolvedValue({
+            data: wav.buffer,
+            mimeType: 'audio/wav'
+        });
+        const { TransformersWorkerClient } = await import('$lib/inference/worker-client');
+        const client = new TransformersWorkerClient();
+        const signal = new AbortController().signal;
+
+        await expect(client.synthesizeKokoro('hello', 'af_heart', signal)).resolves.toEqual({
+            data: wav,
+            mimeType: 'audio/wav'
+        });
+        expect(mocks.remote.synthesizeKokoro).toHaveBeenCalledWith(
+            expect.stringMatching(/^inference-/),
+            'hello',
+            'af_heart'
         );
     });
 

@@ -9,6 +9,7 @@ import type {
     TranscribeOptions,
     TranscribeResult
 } from './types';
+import type { KokoroVoiceId } from '$lib/types/models/tts';
 
 export type WorkerEmbedOptions = Omit<EmbedOptions, 'onProgress' | 'signal'>;
 export type WorkerRerankOptions = Omit<RerankOptions, 'onProgress' | 'signal'>;
@@ -25,6 +26,11 @@ export interface EmbeddingTransfer {
 export interface SynthesisTransfer {
     audio: ArrayBuffer;
     sampleRate: number;
+}
+
+export interface AudioFileTransfer {
+    data: ArrayBuffer;
+    mimeType: string;
 }
 
 export type GenerationKind = 'pipeline' | 'gemma4' | 'qwen35';
@@ -66,6 +72,11 @@ export interface TransformersWorkerApi {
         options: WorkerSynthesizeOptions,
         onProgress?: InferenceProgressCallback
     ): Promise<SynthesisTransfer>;
+    synthesizeKokoro(
+        operationId: string,
+        text: string,
+        voiceId: KokoroVoiceId
+    ): Promise<AudioFileTransfer>;
     transcribe(
         operationId: string,
         spec: ModelSpec,
