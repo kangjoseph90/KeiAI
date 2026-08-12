@@ -1,4 +1,2 @@
 export * from './types';
-export { transformers } from './transformers';
-export { gemma4 } from './gemma4';
-export { qwen35 } from './qwen35';
+export { transformers, gemma4, qwen35 } from './worker-client';

@@ -32,7 +32,6 @@ export const TTS_MODEL_IDS: Partial<Record<BuiltInTTSProvider, readonly string[]
     ],
     elevenlabs: ['eleven_v3', 'eleven_flash_v2_5', 'eleven_multilingual_v2', 'eleven_flash_v2'],
     transformers: [
-        'onnx-community/Kokoro-82M-v1.0-ONNX',
         'Xenova/mms-tts-eng',
         'Xenova/mms-tts-kor',
         'Xenova/mms-tts-deu',

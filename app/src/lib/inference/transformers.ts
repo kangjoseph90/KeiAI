@@ -4,8 +4,7 @@
  * Local model execution via @huggingface/transformers (ONNX WASM / WebGPU).
  * Pipelines are lazy-loaded and cached by modelId to avoid repeated init cost.
  *
- * Runs on the main thread. Worker isolation is a future optimization
- * (requires SharedArrayBuffer + COOP/COEP headers for Transferable).
+ * Runtime core hosted by the Transformers inference worker.
  */
 
 import type {
@@ -19,9 +18,9 @@ import type {
     RerankOptions,
     InferenceProgressCallback
 } from './types';
-import { createLogger } from '$lib/adapters/logger';
+import { WebLoggerAdapter } from '$lib/adapters/logger/web';
 
-const logger = createLogger('inference:transformers');
+const logger = new WebLoggerAdapter().createLogger('inference:transformers');
 
 // ─── Pipeline Cache ───────────────────────────────────────────────────────────
 
@@ -39,6 +38,14 @@ type CachedPipeline = ((...args: unknown[]) => Promise<unknown>) &
         tokenizer?: unknown;
         processor?: PipelineProcessor;
     };
+
+interface SequenceClassificationPipeline extends CachedPipeline {
+    tokenizer: (
+        texts: string[],
+        options: { text_pair: string[]; padding: boolean; truncation: boolean }
+    ) => unknown;
+    model: (inputs: unknown) => Promise<{ logits: { data: ArrayLike<number> } }>;
+}
 
 const runtimeCache = new Map<string, DisposableTransformersRuntime>();
 
@@ -111,6 +118,11 @@ async function getOrLoadPipeline(
     device: string,
     onProgress?: InferenceProgressCallback
 ): Promise<CachedPipeline> {
+    // Quantized Whisper/Moonshine decoder graphs can fail during ONNX Runtime's
+    // QDQ optimization before inference starts. Prefer the unquantized ASR graph;
+    // callers can still opt into another dtype explicitly through ModelSpec.
+    const dtype = spec.quantization ?? (task === 'automatic-speech-recognition' ? 'fp32' : 'q8');
+
     return getOrLoadTransformersRuntime(
         task,
         spec,
@@ -119,7 +131,7 @@ async function getOrLoadPipeline(
             const { pipeline } = await import('@huggingface/transformers');
             const loaded = await pipeline(task as Parameters<typeof pipeline>[0], spec.modelId, {
                 revision: spec.revision,
-                dtype: spec.quantization ?? 'q8',
+                dtype,
                 device: device as 'wasm' | 'webgpu',
                 progress_callback: progressCallback
             });
@@ -180,11 +192,33 @@ export async function* streamGeneratedText(
     }
 }
 
+export interface GenerationCancellation {
+    stoppingCriteria?: unknown;
+    dispose: () => void;
+}
+
+export async function createGenerationCancellation(
+    signal?: AbortSignal
+): Promise<GenerationCancellation> {
+    if (!signal) return { dispose: () => undefined };
+    signal.throwIfAborted();
+    const { InterruptableStoppingCriteria } = await import('@huggingface/transformers');
+    const stoppingCriteria = new InterruptableStoppingCriteria();
+    const interrupt = (): void => stoppingCriteria.interrupt();
+    signal.addEventListener('abort', interrupt, { once: true });
+    if (signal.aborted) interrupt();
+    return {
+        stoppingCriteria,
+        dispose: () => signal.removeEventListener('abort', interrupt)
+    };
+}
+
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
 export class TransformersInference {
     async embed(spec: ModelSpec, texts: string[], options?: EmbedOptions): Promise<Float32Array[]> {
         if (texts.length === 0) return [];
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'wasm';
         const extractor = await getOrLoadPipeline(
             'feature-extraction',
@@ -192,11 +226,13 @@ export class TransformersInference {
             device,
             options?.onProgress
         );
+        options?.signal?.throwIfAborted();
 
         const result = (await extractor(texts, {
             pooling: 'mean',
             normalize: true
         })) as { data: Float32Array };
+        options?.signal?.throwIfAborted();
 
         // result.data is a flat Float32Array; split into per-text vectors
         const data = result.data;
@@ -216,6 +252,7 @@ export class TransformersInference {
         text: string,
         options?: SynthesizeOptions
     ): Promise<SynthesizeResult> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'wasm';
         const synthesizer = await getOrLoadPipeline(
             'text-to-speech',
@@ -223,11 +260,13 @@ export class TransformersInference {
             device,
             options?.onProgress
         );
+        options?.signal?.throwIfAborted();
 
         const out = (await synthesizer(text, {})) as {
             audio: Float32Array;
             sampling_rate?: number;
         };
+        options?.signal?.throwIfAborted();
 
         // `out.audio` is a Float32Array of PCM samples returned as a single result.
         // Copy into a fresh ArrayBuffer to avoid SharedArrayBuffer incompatibility.
@@ -245,6 +284,7 @@ export class TransformersInference {
         messages: { role: string; content: string }[],
         options?: GenerateOptions
     ): AsyncIterable<string> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'webgpu';
         const generator = await getOrLoadPipeline(
             'text-generation',
@@ -252,23 +292,33 @@ export class TransformersInference {
             device,
             options?.onProgress
         );
+        options?.signal?.throwIfAborted();
 
         let resolvedMessages = messages;
         if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
             resolvedMessages = messages.slice(0, -1);
         }
 
-        yield* streamGeneratedText(generator.tokenizer, (streamer) =>
-            generator(resolvedMessages, {
-                streamer,
-                max_new_tokens: options?.max_new_tokens ?? 512,
-                temperature: options?.temperature ?? 0.7,
-                top_p: options?.top_p ?? 0.9,
-                top_k: options?.top_k ?? 50,
-                repetition_penalty: options?.repetition_penalty ?? 1.1,
-                do_sample: true
-            })
-        );
+        const cancellation = await createGenerationCancellation(options?.signal);
+        try {
+            yield* streamGeneratedText(generator.tokenizer, (streamer) =>
+                generator(resolvedMessages, {
+                    streamer,
+                    ...(cancellation.stoppingCriteria
+                        ? { stopping_criteria: cancellation.stoppingCriteria }
+                        : {}),
+                    max_new_tokens: options?.max_new_tokens ?? 512,
+                    temperature: options?.temperature ?? 0.7,
+                    top_p: options?.top_p ?? 0.9,
+                    top_k: options?.top_k ?? 50,
+                    repetition_penalty: options?.repetition_penalty ?? 1.1,
+                    do_sample: true
+                })
+            );
+            options?.signal?.throwIfAborted();
+        } finally {
+            cancellation.dispose();
+        }
     }
 
     async transcribe(
@@ -276,6 +326,7 @@ export class TransformersInference {
         audio: Blob | Float32Array,
         options?: TranscribeOptions
     ): Promise<TranscribeResult> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'wasm';
         const transcriber = await getOrLoadPipeline(
             'automatic-speech-recognition',
@@ -283,6 +334,7 @@ export class TransformersInference {
             device,
             options?.onProgress
         );
+        options?.signal?.throwIfAborted();
 
         // Convert Blob to Float32Array if needed
         let audioData: Blob | Float32Array = audio;
@@ -302,6 +354,7 @@ export class TransformersInference {
                 timestamp: [number | null, number | null];
             }>;
         };
+        options?.signal?.throwIfAborted();
 
         const segments = result.chunks?.map((chunk) => ({
             text: chunk.text,
@@ -321,26 +374,33 @@ export class TransformersInference {
         documents: string[],
         options?: RerankOptions
     ): Promise<number[]> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'wasm';
-        const classifier = await getOrLoadPipeline(
+        const classifier = (await getOrLoadPipeline(
             'text-classification',
             spec,
             device,
             options?.onProgress
+        )) as SequenceClassificationPipeline;
+        options?.signal?.throwIfAborted();
+
+        // A single-label text-classification pipeline applies softmax to one logit,
+        // which is always 1. Cross-encoder rerankers instead need paired tokenization
+        // and sigmoid-normalized raw logits.
+        const inputs = classifier.tokenizer(
+            documents.map(() => query),
+            {
+                text_pair: documents,
+                padding: true,
+                truncation: true
+            }
         );
-
-        const scores: number[] = [];
-        // Transformers.js 'text-classification' pipeline supports (text, text_pair) arguments
-        for (const doc of documents) {
-            const out = (await classifier(query, doc)) as
-                | { score: number }
-                | Array<{ score: number }>;
-            // Depending on the model, it might return an array of objects like [{ label: 'LABEL_0', score: 0.99 }]
-            // Rerankers typically just have one output score.
-            scores.push(out instanceof Array ? out[0].score : out.score);
+        const { logits } = await classifier.model(inputs);
+        options?.signal?.throwIfAborted();
+        if (logits.data.length !== documents.length) {
+            throw new Error('Reranker returned an unexpected number of scores');
         }
-
-        return scores;
+        return Array.from(logits.data, sigmoid);
     }
 
     async dispose(modelId: string): Promise<void> {
@@ -360,6 +420,12 @@ export class TransformersInference {
         }
         runtimeCache.clear();
     }
+}
+
+function sigmoid(value: number): number {
+    if (value >= 0) return 1 / (1 + Math.exp(-value));
+    const exponential = Math.exp(value);
+    return exponential / (1 + exponential);
 }
 
 export const transformers = new TransformersInference();

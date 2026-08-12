@@ -5,9 +5,19 @@ import type {
     ModelSpec,
     MultimodalGenerateMessage
 } from './types';
-import { getOrLoadTransformersRuntime, streamGeneratedText } from './transformers';
+import {
+    createGenerationCancellation,
+    getOrLoadTransformersRuntime,
+    streamGeneratedText
+} from './transformers';
 
 type Gemma4Content = { type: 'text'; text: string } | { type: 'image' } | { type: 'audio' };
+type Gemma4InputMessage = {
+    role: string;
+    content: Array<
+        MultimodalGenerateMessage['content'][number] | { type: 'audio'; samples: Float32Array }
+    >;
+};
 
 interface Gemma4Processor {
     (
@@ -71,10 +81,9 @@ async function getOrLoadGemma4(
 
 async function prepareInputs(
     processor: Gemma4Processor,
-    messages: MultimodalGenerateMessage[]
+    messages: Gemma4InputMessage[]
 ): Promise<Record<string, unknown>> {
     const { load_image } = await import('@huggingface/transformers');
-    const { decodeAudio } = await import('$lib/utils/audio');
     const images: unknown[] = [];
     const audio: Float32Array[] = [];
     const conversation: Array<{ role: string; content: Gemma4Content[] }> = [];
@@ -89,8 +98,10 @@ async function prepareInputs(
                 images.push(await load_image(blob));
                 content.push({ type: 'image' });
             } else {
-                const blob = new Blob([fromBase64(part.data)], { type: part.mimeType });
-                audio.push(await decodeAudio(await blob.arrayBuffer()));
+                if (!('samples' in part)) {
+                    throw new Error('Gemma 4 audio must be decoded before inference');
+                }
+                audio.push(part.samples);
                 content.push({ type: 'audio' });
             }
         }
@@ -112,25 +123,37 @@ async function prepareInputs(
 class Gemma4Inference {
     async *generate(
         spec: ModelSpec,
-        messages: MultimodalGenerateMessage[],
+        messages: Gemma4InputMessage[],
         options?: GenerateOptions
     ): AsyncIterable<string> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'webgpu';
         const { processor, model } = await getOrLoadGemma4(spec, device, options?.onProgress);
+        options?.signal?.throwIfAborted();
         const inputs = await prepareInputs(processor, messages);
+        options?.signal?.throwIfAborted();
 
-        yield* streamGeneratedText(processor.tokenizer, (streamer) =>
-            model.generate({
-                ...inputs,
-                streamer,
-                max_new_tokens: options?.max_new_tokens ?? 512,
-                temperature: options?.temperature ?? 1,
-                top_p: options?.top_p ?? 0.95,
-                top_k: options?.top_k ?? 64,
-                repetition_penalty: options?.repetition_penalty ?? 1.1,
-                do_sample: true
-            })
-        );
+        const cancellation = await createGenerationCancellation(options?.signal);
+        try {
+            yield* streamGeneratedText(processor.tokenizer, (streamer) =>
+                model.generate({
+                    ...inputs,
+                    streamer,
+                    ...(cancellation.stoppingCriteria
+                        ? { stopping_criteria: cancellation.stoppingCriteria }
+                        : {}),
+                    max_new_tokens: options?.max_new_tokens ?? 512,
+                    temperature: options?.temperature ?? 1,
+                    top_p: options?.top_p ?? 0.95,
+                    top_k: options?.top_k ?? 64,
+                    repetition_penalty: options?.repetition_penalty ?? 1.1,
+                    do_sample: true
+                })
+            );
+            options?.signal?.throwIfAborted();
+        } finally {
+            cancellation.dispose();
+        }
     }
 }
 

@@ -26,14 +26,11 @@ export class TransformersSTTHandler implements STTHandler {
     async transcribe(audio: Blob, signal?: AbortSignal): Promise<STTResult> {
         const result = await transformers.transcribe({ modelId: this.config.modelId }, audio, {
             device: 'wasm',
-            language: this.config.language
+            language: this.config.language,
+            signal
         });
 
-        // Respect abort signal — the adapter doesn't accept signal directly,
-        // but we can check before returning
-        if (signal?.aborted) {
-            return { text: '' };
-        }
+        signal?.throwIfAborted();
 
         return result;
     }

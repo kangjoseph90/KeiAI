@@ -23,7 +23,8 @@ export class TransformersTTSHandler implements TTSHandler {
     async synthesize(text: string, signal: AbortSignal): Promise<TTSResult> {
         signal.throwIfAborted();
         const result = await transformers.synthesize({ modelId: this.config.modelId }, text, {
-            device: 'wasm' // Using WASM as default for maximum compatibility
+            device: 'wasm', // Using WASM as default for maximum compatibility
+            signal
         });
         signal.throwIfAborted();
 

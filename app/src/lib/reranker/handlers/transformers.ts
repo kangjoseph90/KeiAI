@@ -1,9 +1,8 @@
 /**
  * Transformers Reranker Handler — KeiAI
  *
- * Implements RerankerHandler using local embedding + cosine similarity.
- * Bi-encoder approach: embed query and documents separately, then rank by similarity.
- * Less accurate than cross-encoder but works with any embedding model.
+ * Implements RerankerHandler with a local cross-encoder model.
+ * Scores each query-document pair and sorts by relevance.
  */
 
 import { transformers } from '$lib/inference';
@@ -33,7 +32,8 @@ export class TransformersRerankerHandler implements RerankerHandler {
             query,
             documents,
             {
-                device: 'wasm'
+                device: 'wasm',
+                signal
             }
         );
         signal.throwIfAborted();

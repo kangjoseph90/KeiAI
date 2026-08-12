@@ -32,15 +32,16 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
 
     async *stream(
         messages: LLMMessage[],
-        _signal: AbortSignal,
+        signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, options);
+        const rawStream = this.rawStream(messages, signal, options);
         yield* debounceStream(rawStream);
     }
 
     private async *rawStream(
         messages: LLMMessage[],
+        signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const parameters = options.parameters ?? {};
@@ -50,16 +51,19 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
             temperature: parameters['temperature'] as number | undefined,
             top_p: parameters['top_p'] as number | undefined,
             top_k: parameters['top_k'] as number | undefined,
-            repetition_penalty: parameters['frequency_penalty'] as number | undefined
+            repetition_penalty: parameters['frequency_penalty'] as number | undefined,
+            signal
         } as const;
         const stream = this.generate(messages, generationOptions);
 
         let fullContent = '';
         const shouldStream = options.stream ?? true;
         for await (const chunk of stream) {
+            signal.throwIfAborted();
             fullContent += chunk;
             if (shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
         }
+        signal.throwIfAborted();
         if (!shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
     }
 

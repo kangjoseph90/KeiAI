@@ -55,16 +55,19 @@ export type InferenceProgressCallback = (event: InferenceProgressEvent) => void;
 export interface EmbedOptions {
     device?: InferenceDevice;
     onProgress?: InferenceProgressCallback;
+    signal?: AbortSignal;
 }
 
 export interface SynthesizeOptions {
     device?: InferenceDevice;
     onProgress?: InferenceProgressCallback;
+    signal?: AbortSignal;
 }
 
 export interface GenerateOptions {
     device?: InferenceDevice;
     onProgress?: InferenceProgressCallback;
+    signal?: AbortSignal;
     max_new_tokens?: number;
     temperature?: number;
     top_p?: number;
@@ -85,6 +88,7 @@ export interface MultimodalGenerateMessage {
 export interface TranscribeOptions {
     device?: InferenceDevice;
     onProgress?: InferenceProgressCallback;
+    signal?: AbortSignal;
     /** Language code, e.g. "en", "ko". Default: auto-detect. */
     language?: string;
 }
@@ -92,6 +96,7 @@ export interface TranscribeOptions {
 export interface RerankOptions {
     device?: InferenceDevice;
     onProgress?: InferenceProgressCallback;
+    signal?: AbortSignal;
 }
 
 export interface TranscribeResult {

@@ -5,7 +5,11 @@ import type {
     ModelSpec,
     MultimodalGenerateMessage
 } from './types';
-import { getOrLoadTransformersRuntime, streamGeneratedText } from './transformers';
+import {
+    createGenerationCancellation,
+    getOrLoadTransformersRuntime,
+    streamGeneratedText
+} from './transformers';
 
 type Qwen35Content = { type: 'text'; text: string } | { type: 'image' };
 
@@ -107,22 +111,34 @@ class Qwen35Inference {
         messages: MultimodalGenerateMessage[],
         options?: GenerateOptions
     ): AsyncIterable<string> {
+        options?.signal?.throwIfAborted();
         const device = options?.device ?? 'webgpu';
         const { processor, model } = await getOrLoadQwen35(spec, device, options?.onProgress);
+        options?.signal?.throwIfAborted();
         const { inputs, hasImages } = await prepareInputs(processor, messages);
+        options?.signal?.throwIfAborted();
 
-        yield* streamGeneratedText(processor.tokenizer, (streamer) =>
-            model.generate({
-                ...inputs,
-                streamer,
-                max_new_tokens: options?.max_new_tokens ?? 512,
-                temperature: options?.temperature ?? (hasImages ? 0.7 : 1),
-                top_p: options?.top_p ?? (hasImages ? 0.8 : 1),
-                top_k: options?.top_k ?? 20,
-                repetition_penalty: options?.repetition_penalty ?? 1,
-                do_sample: true
-            })
-        );
+        const cancellation = await createGenerationCancellation(options?.signal);
+        try {
+            yield* streamGeneratedText(processor.tokenizer, (streamer) =>
+                model.generate({
+                    ...inputs,
+                    streamer,
+                    ...(cancellation.stoppingCriteria
+                        ? { stopping_criteria: cancellation.stoppingCriteria }
+                        : {}),
+                    max_new_tokens: options?.max_new_tokens ?? 512,
+                    temperature: options?.temperature ?? (hasImages ? 0.7 : 1),
+                    top_p: options?.top_p ?? (hasImages ? 0.8 : 1),
+                    top_k: options?.top_k ?? 20,
+                    repetition_penalty: options?.repetition_penalty ?? 1,
+                    do_sample: true
+                })
+            );
+            options?.signal?.throwIfAborted();
+        } finally {
+            cancellation.dispose();
+        }
     }
 }
 

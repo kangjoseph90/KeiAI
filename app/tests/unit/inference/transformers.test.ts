@@ -62,4 +62,42 @@ describe('TransformersInference', () => {
         expect(result).toEqual({ text: 'decoded text', segments: undefined });
         expect(processor.tokenizer).toBe(tokenizer);
     });
+
+    it('loads ASR pipelines as fp32 to avoid incompatible quantized decoder graphs', async () => {
+        const transcriber = vi.fn(async () => ({ text: 'decoded text' }));
+        mockPipeline.mockResolvedValue(transcriber);
+
+        const inference = new TransformersInference();
+        await inference.transcribe({ modelId: 'test/asr-fp32-default' }, new Float32Array([0]));
+
+        expect(mockPipeline).toHaveBeenCalledWith(
+            'automatic-speech-recognition',
+            'test/asr-fp32-default',
+            expect.objectContaining({ dtype: 'fp32', device: 'wasm' })
+        );
+    });
+
+    it('reranks paired query and documents from raw single-label logits', async () => {
+        const tokenized = { input_ids: new BigInt64Array([1n, 2n]) };
+        const tokenizer = vi.fn(() => tokenized);
+        const model = vi.fn(async () => ({ logits: { data: new Float32Array([0, 2, -2]) } }));
+        const classifier = Object.assign(vi.fn(), { tokenizer, model });
+        mockPipeline.mockResolvedValue(classifier);
+
+        const inference = new TransformersInference();
+        const scores = await inference.rerank({ modelId: 'test/cross-encoder' }, 'query', [
+            'first',
+            'second',
+            'third'
+        ]);
+
+        expect(tokenizer).toHaveBeenCalledWith(['query', 'query', 'query'], {
+            text_pair: ['first', 'second', 'third'],
+            padding: true,
+            truncation: true
+        });
+        expect(model).toHaveBeenCalledWith(tokenized);
+        expect(scores).toEqual([0.5, 1 / (1 + Math.exp(-2)), Math.exp(-2) / (1 + Math.exp(-2))]);
+        expect(classifier).not.toHaveBeenCalled();
+    });
 });

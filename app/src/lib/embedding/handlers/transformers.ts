@@ -18,11 +18,13 @@ export class TransformersEmbeddingHandler implements EmbeddingHandler {
         this.config = config;
     }
 
-    async embed(texts: string[], _signal?: AbortSignal): Promise<EmbeddingResult> {
+    async embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
+        signal?.throwIfAborted();
         if (texts.length === 0) return { vectors: [] };
 
         const vectors = await transformers.embed({ modelId: this.config.modelId }, texts, {
-            device: 'wasm' // Using WASM as default for maximum compatibility across Web/Tauri
+            device: 'wasm', // Using WASM as default for maximum compatibility across Web/Tauri
+            signal
         });
 
         return { vectors };
