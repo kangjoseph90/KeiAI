@@ -61,7 +61,7 @@ export function appAlert(options: AlertOptions): Promise<void> {
             type: 'alert',
             title: options.title,
             description: options.description,
-            confirmText: options.confirmText ?? 'OK',
+            confirmText: options.confirmText,
             resolve
         });
     });
@@ -91,8 +91,8 @@ export function appConfirm(options: ConfirmOptions, signal?: AbortSignal): Promi
             type: 'confirm',
             title: options.title,
             description: options.description,
-            confirmText: options.confirmText ?? 'Confirm',
-            cancelText: options.cancelText ?? 'Cancel',
+            confirmText: options.confirmText,
+            cancelText: options.cancelText,
             variant: options.variant ?? 'default',
             resolve: finish
         });
@@ -106,8 +106,8 @@ export function appPrompt(options: PromptOptions): Promise<string | null> {
             type: 'prompt',
             title: options.title,
             description: options.description,
-            confirmText: options.confirmText ?? 'OK',
-            cancelText: options.cancelText ?? 'Cancel',
+            confirmText: options.confirmText,
+            cancelText: options.cancelText,
             defaultValue: options.defaultValue ?? '',
             placeholder: options.placeholder,
             resolve

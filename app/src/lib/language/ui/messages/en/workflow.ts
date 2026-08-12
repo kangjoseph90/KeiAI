@@ -197,7 +197,14 @@ export const workflowMessages = {
     'workflow.input.connected': 'Connected',
     'workflow.input.numberPlaceholder': 'Number',
     'workflow.input.stringPlaceholder': 'String',
-    'workflow.input.linked': 'linked'
+    'workflow.input.linked': 'linked',
+    'workflow.toolApproval.title': 'Allow {:tool}?',
+    'workflow.toolApproval.allow': 'Allow',
+    'workflow.toolApproval.deny': "Don't allow",
+    'workflow.toolApproval.write': '{:agent} wants to write a file',
+    'workflow.toolApproval.run': '{:agent} wants to run this tool',
+    'workflow.toolApproval.target': 'Target',
+    'workflow.toolApproval.preview': 'Content preview'
 } as const;
 
 export type WorkflowMessageKey = keyof typeof workflowMessages;

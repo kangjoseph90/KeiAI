@@ -1,4 +1,6 @@
+import { get } from 'svelte/store';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
+import type { Translator } from '$lib/language';
 import type { LLMMediaPart, LLMStreamContent, LLMToolRequestPart } from '$lib/llm/types';
 import { resolveLLM } from '$lib/managers/llm';
 import { ToolCallService } from '$lib/services/content/tool';
@@ -26,7 +28,7 @@ import {
     type AgentToolCall
 } from './llm';
 import { buildPrompt } from './prompt';
-import { createChatInlay, getChat } from '$lib/stores';
+import { createChatInlay, getChat, t } from '$lib/stores';
 import { fromBase64 } from '$lib/crypto';
 import {
     getToolRuntimeContext,
@@ -375,12 +377,13 @@ function confirmToolCall(
     agentName: string,
     signal: AbortSignal
 ): Promise<boolean> {
+    const translate = get(t);
     return appConfirm(
         {
-            title: `Allow ${tool.label}?`,
-            description: formatToolApproval(toolCall, agentName),
-            confirmText: 'Allow',
-            cancelText: "Don't allow"
+            title: translate('workflow.toolApproval.title', { tool: tool.label }),
+            description: formatToolApproval(toolCall, agentName, translate),
+            confirmText: translate('workflow.toolApproval.allow'),
+            cancelText: translate('workflow.toolApproval.deny')
         },
         signal
     );
@@ -393,15 +396,22 @@ async function completeToolError(id: string, message: string): Promise<void> {
     });
 }
 
-function formatToolApproval(toolCall: ToolCallRequest, agentName: string): string {
+function formatToolApproval(
+    toolCall: ToolCallRequest,
+    agentName: string,
+    translate: Translator
+): string {
     const namespace = typeof toolCall.args.namespace === 'string' ? toolCall.args.namespace : '';
     const path = typeof toolCall.args.path === 'string' ? toolCall.args.path : '';
     const content = typeof toolCall.args.content === 'string' ? toolCall.args.content : '';
     const target = namespace && path ? `${namespace}:${path}` : toolCall.name;
-    const action = toolCall.name === 'file_write' ? 'write a file' : 'run this tool';
+    const action =
+        toolCall.name === 'file_write'
+            ? translate('workflow.toolApproval.write', { agent: agentName })
+            : translate('workflow.toolApproval.run', { agent: agentName });
     const preview = content.length > 500 ? `${content.slice(0, 500)}…` : content;
-    const lines = [`${agentName} wants to ${action}`, '', 'Target', target];
-    if (preview) lines.push('', 'Content preview', preview);
+    const lines = [action, '', translate('workflow.toolApproval.target'), target];
+    if (preview) lines.push('', translate('workflow.toolApproval.preview'), preview);
     return lines.join('\n');
 }
 

@@ -20,7 +20,7 @@ export type ModalRequest =
           type: 'alert';
           title: string;
           description?: string;
-          confirmText: string;
+          confirmText?: string;
           resolve: () => void;
       }
     | {
@@ -28,8 +28,8 @@ export type ModalRequest =
           type: 'confirm';
           title: string;
           description?: string;
-          confirmText: string;
-          cancelText: string;
+          confirmText?: string;
+          cancelText?: string;
           variant: ModalVariant;
           resolve: (confirmed: boolean) => void;
       }
@@ -38,8 +38,8 @@ export type ModalRequest =
           type: 'prompt';
           title: string;
           description?: string;
-          confirmText: string;
-          cancelText: string;
+          confirmText?: string;
+          cancelText?: string;
           defaultValue: string;
           placeholder?: string;
           resolve: (value: string | null) => void;

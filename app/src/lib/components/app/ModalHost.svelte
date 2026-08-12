@@ -4,6 +4,7 @@
     import * as Dialog from '$lib/components/ui/dialog';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
+    import { t } from '$lib/stores';
 
     const current = $derived($modalQueue[0]);
     let promptValue = $state('');
@@ -54,7 +55,7 @@
             >
                 {#if current.type !== 'alert'}
                     <Button type="button" variant="outline" onclick={() => cancelModal(current)}>
-                        {current.cancelText}
+                        {current.cancelText ?? $t('common.actions.cancel')}
                     </Button>
                 {/if}
                 <Button
@@ -64,7 +65,12 @@
                         : 'default'}
                     onclick={() => resolveModal(current, promptValue)}
                 >
-                    {current.confirmText}
+                    {current.confirmText ??
+                        $t(
+                            current.type === 'confirm'
+                                ? 'common.actions.confirm'
+                                : 'common.actions.ok'
+                        )}
                 </Button>
             </Dialog.Footer>
         </Dialog.Content>

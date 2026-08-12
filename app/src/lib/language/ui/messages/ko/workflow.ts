@@ -196,7 +196,14 @@ export const workflowMessages = {
     'workflow.input.connected': '연결됨',
     'workflow.input.numberPlaceholder': '숫자',
     'workflow.input.stringPlaceholder': '문자열',
-    'workflow.input.linked': '연결됨'
+    'workflow.input.linked': '연결됨',
+    'workflow.toolApproval.title': '{:tool}을(를) 허용하시겠습니까?',
+    'workflow.toolApproval.allow': '허용',
+    'workflow.toolApproval.deny': '허용 안 함',
+    'workflow.toolApproval.write': '{:agent}이(가) 파일을 작성하려고 합니다',
+    'workflow.toolApproval.run': '{:agent}이(가) 이 도구를 실행하려고 합니다',
+    'workflow.toolApproval.target': '대상',
+    'workflow.toolApproval.preview': '내용 미리보기'
 } as const;
 
 export type WorkflowMessageKey = keyof typeof workflowMessages;
