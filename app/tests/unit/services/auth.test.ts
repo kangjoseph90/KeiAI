@@ -170,6 +170,15 @@ vi.mock('$lib/services/sync', () => ({
 import { pb } from '$lib/adapters/pb';
 import { appKV } from '$lib/adapters/kv';
 import { UserService } from '$lib/services/user';
+import {
+    createRecoveryData,
+    deriveKeys,
+    fromBase64,
+    generateSalt,
+    importMasterKey,
+    unwrapMasterKeyRaw,
+    wrapMasterKey
+} from '$lib/crypto';
 
 function authKey(userId: string, serverUrl: string): string {
     return `pbAuth_${userId}_${encodeURIComponent(serverUrl.replace(/\/+$/, ''))}`;
@@ -336,5 +345,139 @@ describe('AuthService', () => {
 
         expect(sessionMocks.values.size).toBe(1);
         expect(sessionMocks.values.has(authKey('user-2', 'https://one.example.test'))).toBe(true);
+    });
+
+    describe('changePassword', () => {
+        const oldLoginKey = [21, 22];
+        const oldEncryptionKey = [23, 24];
+        const newLoginKey = [31, 32];
+        const newEncryptionKey = [33, 34];
+        const newSalt = new Uint8Array([41, 42]);
+        const rawMasterKey = [51, 52];
+        const masterKey = {} as CryptoKey;
+        const wrappedMasterKey = {
+            ciphertext: new Uint8Array([61, 62]),
+            iv: new Uint8Array([63, 64])
+        };
+        const recovery = {
+            encryptedRecoveryMasterKey: new Uint8Array([71, 72]),
+            encryptedRecoveryMasterKeyIV: new Uint8Array([73, 74]),
+            recoveryAuthTokenHash: new Uint8Array([75, 76]),
+            recoveryCode: {
+                fullCode: 'NEWRECOVERYCODE1234567890',
+                frontHalf: 'NEWRECOVERYC',
+                backHalf: 'ODE1234567890'
+            }
+        };
+        const storedRecord = {
+            id: 'user-123',
+            username: 'kei',
+            salt: 'b64:salt-bytes',
+            encryptedMasterKey: 'b64:wrapped-master',
+            masterKeyIv: 'b64:master-iv'
+        };
+
+        beforeEach(() => {
+            sessionMocks.authStore.save('active-token', storedRecord);
+            vi.mocked(fromBase64).mockImplementation((value: string) => {
+                if (value === storedRecord.salt) return new Uint8Array([11, 12]);
+                if (value === storedRecord.encryptedMasterKey) return new Uint8Array([13, 14]);
+                if (value === storedRecord.masterKeyIv) return new Uint8Array([15, 16]);
+                return new Uint8Array([1, 2, 3]);
+            });
+            vi.mocked(deriveKeys).mockImplementation((password: string) => {
+                const isOldPassword = password === 'old-pass';
+                return Promise.resolve({
+                    loginKey: new Uint8Array(isOldPassword ? oldLoginKey : newLoginKey),
+                    encryptionKey: new Uint8Array(
+                        isOldPassword ? oldEncryptionKey : newEncryptionKey
+                    )
+                });
+            });
+            vi.mocked(generateSalt).mockReturnValue(new Uint8Array(newSalt));
+            vi.mocked(unwrapMasterKeyRaw).mockResolvedValue(new Uint8Array(rawMasterKey));
+            vi.mocked(importMasterKey).mockResolvedValue(masterKey);
+            vi.mocked(wrapMasterKey).mockResolvedValue(wrappedMasterKey);
+            vi.mocked(createRecoveryData).mockResolvedValue(recovery);
+        });
+
+        it('re-wraps the existing master key under the new password and re-authenticates', async () => {
+            let unwrapInput: number[][] = [];
+            let importedRawKey: number[] = [];
+            let wrappedKey: CryptoKey | undefined;
+            let wrappingKey: number[] = [];
+            vi.mocked(unwrapMasterKeyRaw).mockImplementationOnce((ciphertext, iv, key) => {
+                unwrapInput = [Array.from(ciphertext), Array.from(iv), Array.from(key)];
+                return Promise.resolve(new Uint8Array(rawMasterKey));
+            });
+            vi.mocked(importMasterKey).mockImplementationOnce((raw) => {
+                importedRawKey = Array.from(raw);
+                return Promise.resolve(masterKey);
+            });
+            vi.mocked(wrapMasterKey).mockImplementationOnce((key, wrapping) => {
+                wrappedKey = key;
+                wrappingKey = Array.from(wrapping);
+                return Promise.resolve(wrappedMasterKey);
+            });
+
+            const newCode = await AuthService.changePassword('old-pass', 'new-pass');
+
+            expect(unwrapInput).toEqual([[13, 14], [15, 16], oldEncryptionKey]);
+            expect(importedRawKey).toEqual(rawMasterKey);
+            expect(importMasterKey).toHaveBeenCalledWith(expect.any(Uint8Array), true);
+            expect(wrappedKey).toBe(masterKey);
+            expect(wrappingKey).toEqual(newEncryptionKey);
+            expect(mockCollection.update).toHaveBeenCalledWith('user-123', {
+                oldPassword: '1516',
+                password: '1f20',
+                passwordConfirm: '1f20',
+                salt: 'b64:41,42',
+                encryptedMasterKey: 'b64:61,62',
+                masterKeyIv: 'b64:63,64',
+                encryptedRecoveryMasterKey: 'b64:71,72',
+                recoveryMasterKeyIv: 'b64:73,74',
+                recoveryAuthTokenHash: 'b64:75,76'
+            });
+            expect(mockCollection.authWithPassword).toHaveBeenCalledWith('kei', '1f20');
+            expect(newCode).toBe('NEWRECOVERYCODE1234567890');
+        });
+
+        it('rejects an incorrect current password before touching the server', async () => {
+            const loginKey = new Uint8Array([81, 82]);
+            const encryptionKey = new Uint8Array([83, 84]);
+            vi.mocked(deriveKeys).mockResolvedValueOnce({ loginKey, encryptionKey });
+            vi.mocked(unwrapMasterKeyRaw).mockRejectedValueOnce(new Error('decrypt failed'));
+
+            await expect(
+                AuthService.changePassword('wrong-pass', 'new-pass')
+            ).rejects.toMatchObject({
+                code: 'INVALID_CREDENTIALS'
+            });
+            expect(mockCollection.update).not.toHaveBeenCalled();
+            expect(mockCollection.authWithPassword).not.toHaveBeenCalled();
+            expect(pb.send).not.toHaveBeenCalled();
+            expect(Array.from(loginKey)).toEqual([0, 0]);
+            expect(Array.from(encryptionKey)).toEqual([0, 0]);
+        });
+
+        it('does not re-authenticate when the password update fails', async () => {
+            const updateError = new Error('update failed');
+            mockCollection.update.mockRejectedValueOnce(updateError);
+
+            await expect(AuthService.changePassword('old-pass', 'new-pass')).rejects.toBe(
+                updateError
+            );
+
+            expect(mockCollection.authWithPassword).not.toHaveBeenCalled();
+        });
+
+        it('refuses without a matching authenticated session', async () => {
+            sessionMocks.authStore.save('active-token', { ...storedRecord, id: 'someone-else' });
+
+            await expect(AuthService.changePassword('old-pass', 'new-pass')).rejects.toMatchObject({
+                code: 'NOT_AUTHENTICATED'
+            });
+            expect(mockCollection.update).not.toHaveBeenCalled();
+        });
     });
 });

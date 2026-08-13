@@ -606,7 +606,7 @@ function findAssetUsagesByUser(app, userId) {
  *
  * 1. Hard-delete user-scoped records (asset hooks fire)
  * 2. User-owned rooms: soft-delete index + hard-delete room records
- * 3. Non-owned memberships: status='left', clear encryptedRoomKey
+ * 3. Memberships: hard-delete every row for this user
  * 4. Cleanup asset_usage + asset_account
  * 5. Hard-delete user auth record
  */
@@ -639,7 +639,7 @@ function deleteUserCascade(userRecord) {
       txApp.save(ownedRooms[j]);
     }
 
-    // 3. Non-owned memberships: hard delete
+    // 3. Memberships: hard delete every row for this user
     var memberships = findMultiRoomMembershipsByUser(txApp, userId);
     for (var m = 0; m < memberships.length; m++) {
       txApp.delete(memberships[m]);

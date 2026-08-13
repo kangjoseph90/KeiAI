@@ -60,6 +60,13 @@ migrate(
     freshUsers.passwordAuth.enabled = true;
     freshUsers.passwordAuth.identityFields = ["username"];
     freshUsers.authToken.duration = 90 * 24 * 60 * 60;
+
+    // Keep keychain records self-only and route deletion through the cascade.
+    freshUsers.listRule = "id = @request.auth.id";
+    freshUsers.viewRule = "id = @request.auth.id";
+    freshUsers.createRule = "";
+    freshUsers.updateRule = "id = @request.auth.id";
+    freshUsers.deleteRule = null;
     app.save(freshUsers);
 
     // ─── 2. Enable batch API ─────────────────────────────────────────

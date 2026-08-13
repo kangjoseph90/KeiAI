@@ -201,6 +201,10 @@ routerAdd("GET", "/api/spec", (e) => {
 // Server clock upper bound for bounded remote pulls.
 routerAdd("GET", "/api/now", (e) => {
   var h = require(`${__hooks}/keiai.js`);
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":now", 60, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
   var timestamp = h.getServerTimestamp();
   return e.json(200, { now: timestamp });
 });
@@ -250,19 +254,10 @@ routerAdd("POST", "/api/recovery/lookup", (e) => {
   if (result.error) return result.error;
   var record = result.record;
 
+  // Recovery only needs the wrapped master key.
   return e.json(200, {
-    userId: record.id,
-    username: record.getString("username"),
-    email: record.getString("email"),
     encryptedRecoveryMasterKey: record.getString("encryptedRecoveryMasterKey"),
     encryptedRecoveryMasterKeyIV: record.getString("recoveryMasterKeyIv"),
-    identityPublicKey: record.getString("identityPublicKey"),
-    encryptedIdentityPrivateKey: record.getString(
-      "encryptedIdentityPrivateKey",
-    ),
-    identityPrivateKeyIv: record.getString("identityPrivateKeyIv"),
-    encryptedProfile: record.getString("encryptedProfile"),
-    encryptedProfileIV: record.getString("encryptedProfileIV"),
   });
 });
 
@@ -290,7 +285,11 @@ routerAdd("POST", "/api/recovery/delete", (e) => {
   var result = h.findRecoveryRecord(e, "recovery-delete", 3);
   if (result.error) return result.error;
 
-  h.deleteUserCascade(result.record);
+  try {
+    h.deleteUserCascade(result.record);
+  } catch (err) {
+    return e.json(500, { error: "Internal server error." });
+  }
   return e.json(200, { success: true });
 });
 
@@ -444,7 +443,12 @@ routerAdd("DELETE", "/api/multi-rooms/{roomId}", (e) => {
   }
 
   var roomId = e.request.pathValue("roomId");
-  var result = h.deleteMultiRoom(auth, roomId);
+  var result;
+  try {
+    result = h.deleteMultiRoom(auth, roomId);
+  } catch (err) {
+    return e.json(500, { error: "Internal server error." });
+  }
   return e.json(result.status, result.body);
 });
 
