@@ -106,6 +106,9 @@ describe('SettingsService', () => {
 
             expect(result.translation.workflow).toEqual({ nodes: {} });
             expect(result.chat.autoGenerateResponse).toBe(true);
+            expect(result.chat.showUserIdentityOnNarrow).toBe(false);
+            expect(result.chat.showTraceSummary).toBe(true);
+            expect(result.ui.showTaskCenter).toBe(true);
         });
 
         it('should add the default auto-generation setting to older records', async () => {
@@ -129,7 +132,9 @@ describe('SettingsService', () => {
             expect(result.chat).toEqual({
                 saveMessagesOnSwipe: false,
                 expandStepsOnGeneration: false,
-                autoGenerateResponse: true
+                autoGenerateResponse: true,
+                showUserIdentityOnNarrow: false,
+                showTraceSummary: true
             });
         });
     });

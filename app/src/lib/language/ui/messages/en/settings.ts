@@ -20,6 +20,8 @@ export const settingsMessages = {
     'settings.general.theme.system': 'System',
     'settings.general.theme.light': 'Light',
     'settings.general.theme.dark': 'Dark',
+    'settings.general.taskCenter': 'Show task center',
+    'settings.general.taskCenterHelp': 'Show the floating task center button and task list.',
     'settings.general.chatInterface.title': 'Chat Interface',
     'settings.general.chatInterface.description': 'Configure chat interface behaviors.',
     'settings.general.chatInterface.autoGenerate': 'Generate response after sending',
@@ -31,6 +33,13 @@ export const settingsMessages = {
     'settings.general.chatInterface.expandSteps': 'Expand trace steps during generation',
     'settings.general.chatInterface.expandStepsHelp':
         'Automatically expand reasoning steps when AI is generating responses.',
+    'settings.general.chatInterface.showTraceSummary': 'Show message trace steps',
+    'settings.general.chatInterface.showTraceSummaryHelp':
+        'Show the step summary and reasoning details in messages.',
+    'settings.general.chatInterface.showUserIdentity':
+        'Show your name and avatar on narrow screens',
+    'settings.general.chatInterface.showUserIdentityHelp':
+        'Show the active persona name and avatar beside your messages when the chat area is narrow.',
     'settings.general.inference.title': 'Chat Inference',
     'settings.general.inference.description':
         'Configure global workflows used for auxiliary chat inference.',

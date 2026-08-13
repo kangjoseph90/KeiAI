@@ -42,11 +42,14 @@ import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource'
 export interface AppSettingsContent {
     ui: {
         locale: UiLocale;
+        showTaskCenter: boolean;
     };
     chat: {
         saveMessagesOnSwipe: boolean;
         expandStepsOnGeneration: boolean;
         autoGenerateResponse: boolean;
+        showUserIdentityOnNarrow: boolean;
+        showTraceSummary: boolean;
     };
     translation: {
         targetLanguage: LanguageCode;
@@ -110,12 +113,15 @@ export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettings = {
     ui: {
-        locale: 'en'
+        locale: 'en',
+        showTaskCenter: true
     },
     chat: {
         saveMessagesOnSwipe: true,
         expandStepsOnGeneration: false,
-        autoGenerateResponse: true
+        autoGenerateResponse: true,
+        showUserIdentityOnNarrow: false,
+        showTraceSummary: true
     },
     translation: {
         targetLanguage: 'ko',

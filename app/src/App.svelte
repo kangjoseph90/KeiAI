@@ -135,7 +135,7 @@
         if (event.matches && !sidebarCollapsed && chatPanelOpen) {
             restoreRoomPanelAfterCompactConflict = true;
             sidebarCollapsed = true;
-        } else if (!event.matches && restoreRoomPanelAfterCompactConflict) {
+        } else if (!event.matches) {
             restoreRoomPanelAfterCompactConflict = false;
             sidebarCollapsed = false;
         }

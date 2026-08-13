@@ -20,6 +20,8 @@ export const settingsMessages = {
     'settings.general.theme.system': '시스템',
     'settings.general.theme.light': '라이트',
     'settings.general.theme.dark': '다크',
+    'settings.general.taskCenter': '작업 센터 표시',
+    'settings.general.taskCenterHelp': '화면에 떠 있는 작업 센터 버튼과 작업 목록을 표시합니다.',
     'settings.general.chatInterface.title': '채팅 인터페이스',
     'settings.general.chatInterface.description': '채팅 인터페이스 동작을 설정합니다.',
     'settings.general.chatInterface.autoGenerate': '보낸 후 응답 생성',
@@ -31,6 +33,12 @@ export const settingsMessages = {
     'settings.general.chatInterface.expandSteps': '생성 중 추적 단계 펼치기',
     'settings.general.chatInterface.expandStepsHelp':
         'AI가 응답을 생성할 때 추론 단계를 자동으로 펼칩니다.',
+    'settings.general.chatInterface.showTraceSummary': '메시지 추적 단계 표시',
+    'settings.general.chatInterface.showTraceSummaryHelp':
+        '메시지에 단계 요약과 추론 세부 내용을 표시합니다.',
+    'settings.general.chatInterface.showUserIdentity': '좁은 화면에서 내 이름과 아바타 표시',
+    'settings.general.chatInterface.showUserIdentityHelp':
+        '채팅 영역이 좁을 때 내 메시지 옆에 활성 페르소나 이름과 아바타를 표시합니다.',
     'settings.general.inference.title': '채팅 추론',
     'settings.general.inference.description':
         '보조 채팅 추론에 사용되는 전역 워크플로우를 설정합니다.',

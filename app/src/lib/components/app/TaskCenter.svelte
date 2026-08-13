@@ -12,7 +12,7 @@
     import { onMount } from 'svelte';
     import { Button } from '$lib/components/ui/button';
     import { pointerDrag } from '$lib/components/entitylist/pointer-drag';
-    import { collectedTasks, t, type CollectedTask } from '$lib/stores';
+    import { appSettings, collectedTasks, t, type CollectedTask } from '$lib/stores';
     import { navigate } from '$lib/router';
     import TaskErrorInfo from './TaskErrorInfo.svelte';
     import {
@@ -222,7 +222,9 @@
 </script>
 
 <div
-    class="pointer-events-none fixed z-60"
+    class="pointer-events-none fixed z-60 {$appSettings?.ui?.showTaskCenter === false
+        ? 'hidden'
+        : ''}"
     style={position
         ? `left: ${position.x}px; top: ${position.y}px`
         : `right: ${VIEWPORT_GAP}px; top: ${VIEWPORT_GAP}px`}

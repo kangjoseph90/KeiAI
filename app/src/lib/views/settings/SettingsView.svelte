@@ -209,6 +209,31 @@
                                             handleThemeChange(value as ThemePreference)}
                                     />
                                 </div>
+
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-task-center"
+                                            class="text-sm font-medium cursor-pointer"
+                                        >
+                                            {$t('settings.general.taskCenter')}
+                                        </Label>
+                                        <p class="text-xs text-muted-foreground">
+                                            {$t('settings.general.taskCenterHelp')}
+                                        </p>
+                                    </div>
+                                    <input
+                                        id="setting-task-center"
+                                        type="checkbox"
+                                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                                        checked={$appSettings?.ui?.showTaskCenter !== false}
+                                        disabled={settingsBusy}
+                                        onchange={(e) =>
+                                            updateSettingsSafely({
+                                                ui: { showTaskCenter: e.currentTarget.checked }
+                                            })}
+                                    />
+                                </div>
                             </div>
                         </section>
 
@@ -282,30 +307,95 @@
                                 <div class="flex items-center justify-between py-3.5">
                                     <div class="space-y-0.5 pr-4">
                                         <Label
-                                            for="setting-expand-steps"
+                                            for="setting-show-user-identity-narrow"
                                             class="text-sm font-medium cursor-pointer"
                                         >
-                                            {$t('settings.general.chatInterface.expandSteps')}
+                                            {$t('settings.general.chatInterface.showUserIdentity')}
                                         </Label>
                                         <p class="text-xs text-muted-foreground">
-                                            {$t('settings.general.chatInterface.expandStepsHelp')}
+                                            {$t(
+                                                'settings.general.chatInterface.showUserIdentityHelp'
+                                            )}
                                         </p>
                                     </div>
                                     <input
-                                        id="setting-expand-steps"
+                                        id="setting-show-user-identity-narrow"
                                         type="checkbox"
                                         class="size-5 shrink-0 rounded border-primary cursor-pointer"
-                                        checked={$appSettings?.chat?.expandStepsOnGeneration !==
-                                            false}
+                                        checked={$appSettings?.chat?.showUserIdentityOnNarrow ===
+                                            true}
                                         disabled={settingsBusy}
                                         onchange={(e) =>
                                             updateSettingsSafely({
                                                 chat: {
-                                                    expandStepsOnGeneration: e.currentTarget.checked
+                                                    showUserIdentityOnNarrow:
+                                                        e.currentTarget.checked
                                                 }
                                             })}
                                     />
                                 </div>
+
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-show-trace-summary"
+                                            class="text-sm font-medium cursor-pointer"
+                                        >
+                                            {$t('settings.general.chatInterface.showTraceSummary')}
+                                        </Label>
+                                        <p class="text-xs text-muted-foreground">
+                                            {$t(
+                                                'settings.general.chatInterface.showTraceSummaryHelp'
+                                            )}
+                                        </p>
+                                    </div>
+                                    <input
+                                        id="setting-show-trace-summary"
+                                        type="checkbox"
+                                        class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                                        checked={$appSettings?.chat?.showTraceSummary !== false}
+                                        disabled={settingsBusy}
+                                        onchange={(e) =>
+                                            updateSettingsSafely({
+                                                chat: {
+                                                    showTraceSummary: e.currentTarget.checked
+                                                }
+                                            })}
+                                    />
+                                </div>
+
+                                {#if $appSettings?.chat?.showTraceSummary !== false}
+                                    <div class="flex items-center justify-between py-3.5">
+                                        <div class="space-y-0.5 pr-4">
+                                            <Label
+                                                for="setting-expand-steps"
+                                                class="text-sm font-medium cursor-pointer"
+                                            >
+                                                {$t('settings.general.chatInterface.expandSteps')}
+                                            </Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                {$t(
+                                                    'settings.general.chatInterface.expandStepsHelp'
+                                                )}
+                                            </p>
+                                        </div>
+                                        <input
+                                            id="setting-expand-steps"
+                                            type="checkbox"
+                                            class="size-5 shrink-0 rounded border-primary cursor-pointer"
+                                            checked={$appSettings?.chat?.expandStepsOnGeneration !==
+                                                false}
+                                            disabled={settingsBusy}
+                                            onchange={(e) =>
+                                                updateSettingsSafely({
+                                                    chat: {
+                                                        expandStepsOnGeneration:
+                                                            e.currentTarget.checked
+                                                    }
+                                                })}
+                                        />
+                                    </div>
+                                {/if}
                             </div>
                         </section>
 

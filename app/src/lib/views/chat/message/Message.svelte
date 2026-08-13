@@ -128,6 +128,16 @@
     let translationMinHeight = $state(0);
     let translationMinWidth = $state(0);
     let translationLockKey = '';
+    let longPressUserMenuOpen = $state(false);
+    let longPressMenuAnchorEl = $state<HTMLSpanElement | null>(null);
+    let longPressMenuAnchorX = $state(0);
+    let longPressMenuAnchorY = $state(0);
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressPointerId: number | null = null;
+    let longPressStartX = 0;
+    let longPressStartY = 0;
+    const LONG_PRESS_DELAY_MS = 500;
+    const LONG_PRESS_MOVE_TOLERANCE = 10;
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -420,6 +430,82 @@
         }
     }
 
+    function handleTranslationAction(): void {
+        if (matchingTranslationTask?.status === 'generating') {
+            stopTranslation(message.id);
+            return;
+        }
+        if (cachedTranslation) {
+            showTranslation = !showTranslation;
+            return;
+        }
+        void handleTranslate();
+    }
+
+    let translationAction = $derived.by<
+        'translate' | 'show-translation' | 'show-original' | 'stop'
+    >(() => {
+        if (matchingTranslationTask?.status === 'generating') return 'stop';
+        if (!cachedTranslation) return 'translate';
+        return showTranslation ? 'show-original' : 'show-translation';
+    });
+
+    function cancelLongPress(): void {
+        if (longPressTimer) clearTimeout(longPressTimer);
+        longPressTimer = null;
+        longPressPointerId = null;
+    }
+
+    function isInteractiveTarget(target: EventTarget | null): boolean {
+        return target instanceof Element && Boolean(target.closest('button, a, input, textarea'));
+    }
+
+    function handleMessagePointerDown(event: PointerEvent): void {
+        if (
+            !isUser ||
+            message.displayStatus !== 'completed' ||
+            event.pointerType === 'mouse' ||
+            event.button !== 0 ||
+            isInteractiveTarget(event.target)
+        ) {
+            return;
+        }
+
+        cancelLongPress();
+        longPressPointerId = event.pointerId;
+        longPressStartX = event.clientX;
+        longPressStartY = event.clientY;
+        longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            longPressPointerId = null;
+            longPressMenuAnchorX = longPressStartX;
+            longPressMenuAnchorY = longPressStartY;
+            longPressUserMenuOpen = true;
+        }, LONG_PRESS_DELAY_MS);
+    }
+
+    function handleMessagePointerMove(event: PointerEvent): void {
+        if (event.pointerId !== longPressPointerId) return;
+        if (
+            Math.hypot(event.clientX - longPressStartX, event.clientY - longPressStartY) >
+            LONG_PRESS_MOVE_TOLERANCE
+        ) {
+            cancelLongPress();
+        }
+    }
+
+    function handleMessageContextMenu(event: MouseEvent): void {
+        const pointerType = (event as MouseEvent & { pointerType?: unknown }).pointerType;
+        if (
+            isUser &&
+            pointerType !== undefined &&
+            pointerType !== 'mouse' &&
+            !isInteractiveTarget(event.target)
+        ) {
+            event.preventDefault();
+        }
+    }
+
     // ── Render context (shared across text parts) ─────────────────────────────
 
     let renderContext = $derived.by(() => {
@@ -506,20 +592,30 @@
     /** Completed trace details state. Streaming renders raw parts without a trace wrapper. */
     let detailsOpen = $state(
         untrack(() => message.displayStatus === 'generating') &&
-            $appSettings?.chat?.expandStepsOnGeneration !== false
+            $appSettings?.chat?.expandStepsOnGeneration !== false &&
+            $appSettings?.chat?.showTraceSummary !== false
     );
     let lastDisplayStatus = $state<string | undefined>(untrack(() => message.displayStatus));
 
     $effect(() => {
         const status = message.displayStatus;
         if (status === 'generating' && lastDisplayStatus !== 'generating') {
-            if ($appSettings?.chat?.expandStepsOnGeneration !== false) {
+            if (
+                $appSettings?.chat?.expandStepsOnGeneration !== false &&
+                $appSettings?.chat?.showTraceSummary !== false
+            ) {
                 detailsOpen = true;
             }
         } else if (status === 'completed' && lastDisplayStatus === 'generating') {
             detailsOpen = false;
         }
         lastDisplayStatus = status;
+    });
+
+    $effect(() => {
+        if ($appSettings?.chat?.showTraceSummary === false) {
+            detailsOpen = false;
+        }
     });
 
     $effect(() => {
@@ -561,6 +657,7 @@
     });
 
     onDestroy(() => {
+        cancelLongPress();
         messageStyleVersion++;
     });
 </script>
@@ -569,13 +666,19 @@
 <div
     bind:this={messageElement}
     data-message-id={message.id}
-    class="chat-message group grid w-full max-w-5xl flex-none content-start self-center gap-x-2 {isUser
+    class="chat-message group relative grid w-full max-w-5xl flex-none content-start self-center gap-x-2 {isUser
         ? 'is-user grid-cols-[minmax(0,1fr)_2rem]'
         : 'grid-cols-[2rem_minmax(0,1fr)]'}"
+    data-show-user-identity-narrow={$appSettings?.chat?.showUserIdentityOnNarrow === true}
     role="group"
+    onpointerdown={handleMessagePointerDown}
+    onpointermove={handleMessagePointerMove}
+    onpointerup={cancelLongPress}
+    onpointercancel={cancelLongPress}
+    oncontextmenu={handleMessageContextMenu}
 >
     <div
-        class="row-start-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground {isUser
+        class="chat-message-avatar row-start-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground {isUser
             ? 'col-start-2'
             : 'col-start-1'}"
     >
@@ -599,7 +702,7 @@
 
     <!-- Content Column -->
     <div
-        class="chat-message-content col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%-1rem)] flex-none flex-col gap-1 {imageAttachments.length >
+        class="chat-message-content col-span-2 row-start-2 mt-2 flex min-w-0 max-w-[calc(100%-1rem)] flex-none flex-col gap-1 {imageAttachments.length >
             0 || audioAttachments.length > 0
             ? 'w-full'
             : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"
@@ -669,7 +772,7 @@
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
                     {@html messageStyleHtml}
 
-                    {#if traceCount > 0}
+                    {#if traceCount > 0 && $appSettings?.chat?.showTraceSummary !== false}
                         <button
                             type="button"
                             class="trace-summary-btn {detailsOpen ? 'is-open' : ''}"
@@ -793,7 +896,7 @@
                 />
             {/if}
 
-            <!-- Wide containers: hover/focus. Narrow containers and touch: always visible. -->
+            <!-- Hover-capable input: hover/focus. Touch user messages: long press menu. -->
             <div
                 class="chat-message-actions touch-action-row flex max-w-full flex-row flex-nowrap items-center gap-0.5 transition-opacity {message.displayStatus !==
                 'completed'
@@ -845,46 +948,35 @@
                     {/if}
                 </Button>
 
-                {#if matchingTranslationTask?.status === 'generating'}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="relative size-8 px-0 text-xs text-muted-foreground after:absolute after:-inset-1 after:content-['']"
-                        onclick={() => stopTranslation(message.id)}
-                        title={$t('chat.message.translation.stop')}
-                        aria-label={$t('chat.message.translation.stop')}
-                    >
-                        <Loader2 class="size-3.5 animate-spin" />
-                    </Button>
-                {:else}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="relative size-8 px-0 text-xs after:absolute after:-inset-1 after:content-[''] {showTranslation &&
-                        cachedTranslation
-                            ? 'bg-primary/15 text-primary hover:bg-primary/25'
-                            : 'text-muted-foreground'}"
-                        onclick={() => {
-                            if (cachedTranslation) {
-                                showTranslation = !showTranslation;
-                            } else {
-                                handleTranslate();
-                            }
-                        }}
-                        title={cachedTranslation
-                            ? showTranslation
-                                ? $t('chat.message.translation.showOriginalTitle')
-                                : $t('chat.message.translation.showTranslationTitle')
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="relative size-8 px-0 text-xs after:absolute after:-inset-1 after:content-[''] {translationAction ===
+                    'show-original'
+                        ? 'bg-primary/15 text-primary hover:bg-primary/25'
+                        : 'text-muted-foreground'}"
+                    onclick={handleTranslationAction}
+                    title={translationAction === 'stop'
+                        ? $t('chat.message.translation.stop')
+                        : translationAction === 'show-original'
+                          ? $t('chat.message.translation.showOriginalTitle')
+                          : translationAction === 'show-translation'
+                            ? $t('chat.message.translation.showTranslationTitle')
                             : $t('chat.message.translation.translateTitle')}
-                        aria-label={cachedTranslation
-                            ? showTranslation
-                                ? $t('chat.message.translation.showOriginal')
-                                : $t('chat.message.translation.showTranslated')
+                    aria-label={translationAction === 'stop'
+                        ? $t('chat.message.translation.stop')
+                        : translationAction === 'show-original'
+                          ? $t('chat.message.translation.showOriginal')
+                          : translationAction === 'show-translation'
+                            ? $t('chat.message.translation.showTranslated')
                             : $t('chat.message.translation.translateMessage')}
-                    >
+                >
+                    {#if translationAction === 'stop'}
+                        <Loader2 class="size-3.5 animate-spin" />
+                    {:else}
                         <Languages class="size-3.5" />
-                    </Button>
-                {/if}
+                    {/if}
+                </Button>
 
                 {#if !isUser && isLastMessage}
                     <Button
@@ -922,9 +1014,77 @@
             </div>
         {/if}
     </div>
+    {#if isUser}
+        <span
+            bind:this={longPressMenuAnchorEl}
+            class="long-press-menu-anchor"
+            style:left={`${longPressMenuAnchorX}px`}
+            style:top={`${longPressMenuAnchorY}px`}
+            aria-hidden="true"
+        ></span>
+        <MessageMoreMenu
+            {message}
+            {busyAction}
+            mode="long-press-user"
+            customAnchor={longPressMenuAnchorEl}
+            bind:open={longPressUserMenuOpen}
+            {translationAction}
+            onCopy={() => void handleCopy()}
+            onTranslationAction={handleTranslationAction}
+            onEdit={startEdit}
+            onEditTranslation={startTranslationEdit}
+            onFork={() => void handleFork()}
+            onDelete={() => void handleDelete()}
+        />
+    {/if}
 </div>
 
 <style>
+    @media (any-hover: none) {
+        .chat-message.is-user .chat-message-actions {
+            display: none !important;
+            opacity: 0 !important;
+        }
+    }
+
+    @media (any-hover: hover) {
+        .chat-message-actions {
+            opacity: 0;
+        }
+
+        .chat-message:hover .chat-message-actions,
+        .chat-message:focus-within .chat-message-actions,
+        .chat-message:has(:global([data-state='open'])) .chat-message-actions {
+            opacity: 1;
+        }
+    }
+
+    @container chat-messages (max-width: 31.99rem) {
+        .chat-message-content {
+            max-width: 100%;
+        }
+
+        .chat-message.is-user .chat-message-content {
+            max-width: 75%;
+        }
+
+        .chat-message.is-user:not([data-show-user-identity-narrow='true'])
+            > :is(.chat-message-avatar, .chat-message-mobile-name),
+        .chat-message.is-user:not([data-show-user-identity-narrow='true'])
+            > .chat-message-content
+            > .chat-message-desktop-name {
+            display: none;
+        }
+    }
+
+    .long-press-menu-anchor {
+        position: fixed;
+        z-index: -1;
+        width: 1px;
+        height: 1px;
+        pointer-events: none;
+    }
+
     @container chat-messages (min-width: 32rem) {
         .chat-message {
             display: flex;
@@ -945,6 +1105,10 @@
             max-width: 90%;
         }
 
+        .chat-message:not(.is-user) .chat-message-content {
+            max-width: calc(100% - 5.5rem);
+        }
+
         .chat-message.is-user .chat-message-content {
             max-width: 75%;
         }
@@ -955,13 +1119,6 @@
 
         .chat-message-actions {
             gap: 0.25rem;
-            opacity: 0;
-        }
-
-        .chat-message:hover .chat-message-actions,
-        .chat-message:focus-within .chat-message-actions,
-        .chat-message:has(:global([data-state='open'])) .chat-message-actions {
-            opacity: 1;
         }
     }
 

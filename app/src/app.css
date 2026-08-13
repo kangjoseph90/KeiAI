@@ -304,12 +304,16 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     .touch-visible {
         opacity: 1 !important;
     }
+}
 
+@media (any-hover: none) {
     .touch-action-row {
         display: flex !important;
         opacity: 1 !important;
     }
+}
 
+@media (pointer: coarse) {
     .touch-target {
         min-width: 2.75rem;
         min-height: 2.75rem;
