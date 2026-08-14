@@ -49,14 +49,30 @@ describe('Logger adapters', () => {
             expect(errorSpy).toHaveBeenCalledWith('[KeiAI][ERROR][sync:data] push failed');
         });
 
-        it('formats logs without namespace', () => {
+        it('notifies subscribers of new log entries', () => {
             const adapter = new WebLoggerAdapter();
-            const logger = adapter.createLogger();
-            const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+            const logger = adapter.createLogger('test:ns');
+            const entries: unknown[] = [];
+            const unsubscribe = adapter.subscribe((entry) => entries.push(entry));
 
-            logger.info('hello');
+            logger.info('event 1');
+            logger.error('event 2', { detail: 'error' });
 
-            expect(infoSpy).toHaveBeenCalledWith('[KeiAI][INFO] hello');
+            expect(entries).toHaveLength(2);
+            expect(entries[0]).toMatchObject({
+                level: 'INFO',
+                namespace: 'test:ns',
+                message: 'event 1'
+            });
+            expect(entries[1]).toMatchObject({
+                level: 'ERROR',
+                namespace: 'test:ns',
+                message: 'event 2 {"detail":"error"}'
+            });
+
+            unsubscribe();
+            logger.warn('event 3');
+            expect(entries).toHaveLength(2);
         });
     });
 
@@ -115,6 +131,22 @@ describe('Logger adapters', () => {
             // Only the new line is written (not concatenated with old content)
             expect(contentArg).toContain('[ERROR] new line');
             expect(optionArg).toEqual({ baseDir: 'AppData', append: true });
+        });
+
+        it('notifies subscribers of new log entries synchronously', () => {
+            const adapter = new TauriLoggerAdapter();
+            const logger = adapter.createLogger('tauri:ns');
+            const entries: unknown[] = [];
+            adapter.subscribe((entry) => entries.push(entry));
+
+            logger.info('tauri message');
+
+            expect(entries).toHaveLength(1);
+            expect(entries[0]).toMatchObject({
+                level: 'INFO',
+                namespace: 'tauri:ns',
+                message: 'tauri message'
+            });
         });
     });
 

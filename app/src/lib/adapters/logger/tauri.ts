@@ -1,6 +1,6 @@
 import { BaseDirectory } from '@tauri-apps/api/path';
 import { exists, mkdir, readDir, remove, writeTextFile } from '@tauri-apps/plugin-fs';
-import type { ILoggerAdapter, Logger, LogLevel } from './types';
+import type { ILoggerAdapter, LogEntry, Logger, LogListener, LogLevel } from './types';
 
 const LOG_DIR = 'logs';
 const RETENTION_DAYS = 7;
@@ -13,14 +13,11 @@ function getTimePart(date: Date): string {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}.${String(date.getMilliseconds()).padStart(3, '0')}`;
 }
 
-function formatLine(level: LogLevel, namespace: string | undefined, args: unknown[]): string {
-    const now = new Date();
-    const prefix = namespace
-        ? `[${getTimePart(now)}][${level}][${namespace}]`
-        : `[${getTimePart(now)}][${level}]`;
-    const text = args
+function formatArgs(args: unknown[]): string {
+    return args
         .map((arg) => {
             if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) return arg.stack || `${arg.name}: ${arg.message}`;
             try {
                 return JSON.stringify(arg);
             } catch {
@@ -28,6 +25,18 @@ function formatLine(level: LogLevel, namespace: string | undefined, args: unknow
             }
         })
         .join(' ');
+}
+
+function formatLine(
+    level: LogLevel,
+    namespace: string | undefined,
+    args: unknown[],
+    now: Date
+): string {
+    const prefix = namespace
+        ? `[${getTimePart(now)}][${level}][${namespace}]`
+        : `[${getTimePart(now)}][${level}]`;
+    const text = formatArgs(args);
     return `${prefix} ${text}`.trim();
 }
 
@@ -59,12 +68,40 @@ class TauriLogger implements Logger {
 }
 
 export class TauriLoggerAdapter implements ILoggerAdapter {
+    private readonly listeners = new Set<LogListener>();
+    private seq = 0;
     private retentionInitialized = false;
 
     createLogger(namespace?: string): Logger {
         return new TauriLogger(namespace, (level, ns, args) => {
-            void this.write(level, ns, args);
+            const now = new Date();
+            this.emit(level, ns, args, now);
+            void this.write(level, ns, args, now);
         });
+    }
+
+    subscribe(listener: LogListener): () => void {
+        this.listeners.add(listener);
+        return () => {
+            this.listeners.delete(listener);
+        };
+    }
+
+    private emit(level: LogLevel, namespace: string | undefined, args: unknown[], now: Date): void {
+        const entry: LogEntry = {
+            id: `${now.getTime()}-${++this.seq}`,
+            timestamp: now,
+            level,
+            namespace,
+            message: formatArgs(args)
+        };
+        for (const listener of this.listeners) {
+            try {
+                listener(entry);
+            } catch (err) {
+                console.error('[KeiAI][ERROR][logger] Tauri logger listener failed', err);
+            }
+        }
     }
 
     private async ensureLogDir(): Promise<void> {
@@ -105,10 +142,10 @@ export class TauriLoggerAdapter implements ILoggerAdapter {
     private async write(
         level: LogLevel,
         namespace: string | undefined,
-        args: unknown[]
+        args: unknown[],
+        now: Date
     ): Promise<void> {
-        const now = new Date();
-        const line = formatLine(level, namespace, args);
+        const line = formatLine(level, namespace, args, now);
         try {
             if (!this.retentionInitialized) {
                 await this.cleanupOldLogs(now);

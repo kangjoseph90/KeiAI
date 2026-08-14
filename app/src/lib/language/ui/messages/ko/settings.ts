@@ -118,7 +118,18 @@ export const settingsMessages = {
     'settings.system.maintenance.deleteUserBody':
         '이 사용자와 모든 로컬 데이터를 이 기기에서 영구적으로 삭제합니다. 원격 계정은 삭제되지 않습니다.',
     'settings.system.maintenance.maintenanceFailed': '유지 관리 실패',
+    'settings.system.logs.title': '시스템 로그',
+    'settings.system.logs.description':
+        '현재 세션 동안 발생한 시스템 로그를 실시간으로 확인합니다.',
+    'settings.system.logs.empty': '기록된 시스템 로그가 없습니다.',
+    'settings.system.logs.clear': '로그 비우기',
+    'settings.system.logs.copy': '로그 복사',
+    'settings.system.logs.copied': '로그가 클립보드에 복사되었습니다.',
+    'settings.system.logs.filterAll': '모든 레벨',
+    'settings.system.logs.searchPlaceholder': '로그 검색 (네임스페이스, 메시지)…',
+    'settings.system.logs.scrollToBottom': '최신 로그',
     'settings.language.interface.title': '표시 언어',
+
     'settings.language.interface.description': '앱 UI에 사용할 언어를 선택하세요.',
     'settings.language.translation.title': '번역',
     'settings.language.translation.description': '자동 메시지 번역과 대상 언어를 설정합니다.',

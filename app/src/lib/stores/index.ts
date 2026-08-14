@@ -68,6 +68,7 @@ export const recordAudioTasks = readonly(StoreState.recordAudioTasks);
 export const chatDrafts = readonly(StoreState.chatDrafts);
 export const collectedTasks = readonly(StoreState.collectedTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
+export const systemLogs = readonly(StoreState.systemLogs);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
     appLocale,
@@ -138,3 +139,4 @@ export * from './sync';
 export * from './init';
 export * from './theme';
 export * from './locale';
+export * from './logs';

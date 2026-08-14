@@ -6,6 +6,7 @@
  */
 
 import { derived, writable } from 'svelte/store';
+import type { LogEntry } from '$lib/adapters/logger';
 import type {
     AppSettings,
     User,
@@ -368,3 +369,6 @@ export const chatAssetsMap = derived(
         return resolverMap;
     }
 );
+
+// ─── System Logs ───────────────────────────────────────────────────
+export const systemLogs = writable<LogEntry[]>([]);

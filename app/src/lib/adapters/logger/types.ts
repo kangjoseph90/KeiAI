@@ -7,6 +7,17 @@ export interface Logger {
     error(...args: unknown[]): void;
 }
 
+export interface LogEntry {
+    id: string;
+    timestamp: Date;
+    level: LogLevel;
+    namespace?: string;
+    message: string;
+}
+
+export type LogListener = (entry: LogEntry) => void;
+
 export interface ILoggerAdapter {
     createLogger(namespace?: string): Logger;
+    subscribe(listener: LogListener): () => void;
 }

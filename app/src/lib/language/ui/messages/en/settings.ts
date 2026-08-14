@@ -118,7 +118,18 @@ export const settingsMessages = {
     'settings.system.maintenance.deleteUserBody':
         'This permanently deletes this user and all of their local data from this device. The remote account is not deleted.',
     'settings.system.maintenance.maintenanceFailed': 'Maintenance failed',
+    'settings.system.logs.title': 'System Logs',
+    'settings.system.logs.description':
+        'View real-time system logs generated during the current session.',
+    'settings.system.logs.empty': 'No system logs recorded.',
+    'settings.system.logs.clear': 'Clear logs',
+    'settings.system.logs.copy': 'Copy logs',
+    'settings.system.logs.copied': 'Logs copied to clipboard.',
+    'settings.system.logs.filterAll': 'All Levels',
+    'settings.system.logs.searchPlaceholder': 'Search logs (namespace, message)…',
+    'settings.system.logs.scrollToBottom': 'Latest logs',
     'settings.language.interface.title': 'Interface Language',
+
     'settings.language.interface.description': 'Choose the language used by the app.',
     'settings.language.translation.title': 'Translation',
     'settings.language.translation.description':
