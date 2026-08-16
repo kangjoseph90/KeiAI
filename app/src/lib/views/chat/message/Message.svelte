@@ -450,10 +450,37 @@
         return showTranslation ? 'show-original' : 'show-translation';
     });
 
+    function isLongPressEnabled(): boolean {
+        if (!isUser || message.displayStatus !== 'completed' || !messageElement) return false;
+        const canHover = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+        if (canHover) return false;
+
+        const container = messageElement.closest('.chat-messages-container');
+        const width = container ? container.clientWidth : messageElement.offsetWidth;
+        return width < 512;
+    }
+
+    let selectionCleanup: (() => void) | null = null;
+
+    function clearSelection(): void {
+        try {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+                sel.removeAllRanges();
+            }
+        } catch {
+            // Ignore selection errors
+        }
+    }
+
     function cancelLongPress(): void {
         if (longPressTimer) clearTimeout(longPressTimer);
         longPressTimer = null;
         longPressPointerId = null;
+        if (selectionCleanup) {
+            selectionCleanup();
+            selectionCleanup = null;
+        }
     }
 
     function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -462,8 +489,7 @@
 
     function handleMessagePointerDown(event: PointerEvent): void {
         if (
-            !isUser ||
-            message.displayStatus !== 'completed' ||
+            !isLongPressEnabled() ||
             event.pointerType === 'mouse' ||
             event.button !== 0 ||
             isInteractiveTarget(event.target)
@@ -472,12 +498,25 @@
         }
 
         cancelLongPress();
+        clearSelection();
+
+        const onSelectionChange = () => clearSelection();
+        document.addEventListener('selectionchange', onSelectionChange);
+        selectionCleanup = () => {
+            document.removeEventListener('selectionchange', onSelectionChange);
+        };
+
         longPressPointerId = event.pointerId;
         longPressStartX = event.clientX;
         longPressStartY = event.clientY;
         longPressTimer = setTimeout(() => {
             longPressTimer = null;
             longPressPointerId = null;
+            clearSelection();
+            if (selectionCleanup) {
+                selectionCleanup();
+                selectionCleanup = null;
+            }
             longPressMenuAnchorX = longPressStartX;
             longPressMenuAnchorY = longPressStartY;
             longPressUserMenuOpen = true;
@@ -495,13 +534,19 @@
     }
 
     function handleMessageContextMenu(event: MouseEvent): void {
-        const pointerType = (event as MouseEvent & { pointerType?: unknown }).pointerType;
-        if (
-            isUser &&
-            pointerType !== undefined &&
-            pointerType !== 'mouse' &&
-            !isInteractiveTarget(event.target)
-        ) {
+        if (!isLongPressEnabled() || isInteractiveTarget(event.target)) {
+            return;
+        }
+        event.preventDefault();
+        cancelLongPress();
+        clearSelection();
+        longPressMenuAnchorX = event.clientX || longPressStartX;
+        longPressMenuAnchorY = event.clientY || longPressStartY;
+        longPressUserMenuOpen = true;
+    }
+
+    function handleMessageSelectStart(event: Event): void {
+        if (isLongPressEnabled() && !isInteractiveTarget(event.target)) {
             event.preventDefault();
         }
     }
@@ -676,6 +721,7 @@
     onpointerup={cancelLongPress}
     onpointercancel={cancelLongPress}
     oncontextmenu={handleMessageContextMenu}
+    onselectstart={handleMessageSelectStart}
 >
     <div
         class="chat-message-avatar row-start-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground {isUser
@@ -756,7 +802,7 @@
         {:else}
             <!-- Bubble -->
             <div
-                class="relative flex min-w-0 max-w-full flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
+                class="chat-message-bubble relative flex min-w-0 max-w-full flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
                     ? 'bg-user-message text-foreground'
                     : 'bg-muted text-foreground'}"
                 use:hydrateAssets={messageStyleHtml}
@@ -1040,22 +1086,59 @@
 </div>
 
 <style>
-    @media (any-hover: none) {
-        .chat-message.is-user .chat-message-actions {
-            display: none !important;
-            opacity: 0 !important;
-        }
+    .chat-message-avatar,
+    .chat-message-mobile-name,
+    .chat-message-desktop-name,
+    .chat-message-actions {
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
     }
 
-    @media (any-hover: hover) {
+    @media (hover: hover) and (pointer: fine) {
         .chat-message-actions {
             opacity: 0;
+            transition: opacity 150ms ease-in-out;
         }
 
         .chat-message:hover .chat-message-actions,
         .chat-message:focus-within .chat-message-actions,
         .chat-message:has(:global([data-state='open'])) .chat-message-actions {
             opacity: 1;
+        }
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        .chat-message-actions {
+            opacity: 1;
+        }
+
+        @container chat-messages (max-width: 31.99rem) {
+            .chat-message.is-user .chat-message-actions {
+                display: none !important;
+            }
+
+            .chat-message.is-user {
+                user-select: none;
+                -webkit-user-select: none;
+                -webkit-touch-callout: none;
+                touch-action: pan-y;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            .chat-message.is-user .chat-message-bubble {
+                transition: filter 120ms ease;
+            }
+
+            .chat-message.is-user:active .chat-message-bubble {
+                filter: brightness(0.96);
+            }
+
+            .chat-message.is-user :global(textarea),
+            .chat-message.is-user :global(input) {
+                user-select: text;
+                -webkit-user-select: text;
+            }
         }
     }
 
