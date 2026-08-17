@@ -14,7 +14,7 @@
     import type { Plugin } from '$lib/services';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import {
@@ -401,8 +401,15 @@
 
                             <!-- 2. Code -->
                             <div class="space-y-1.5">
-                                <Label class="text-xs">{$t('settings.plugins.source')}</Label>
-                                <Textarea
+                                <Label for={`plugin-${plugin.id}-source`} class="text-xs"
+                                    >{$t('settings.plugins.source')}</Label
+                                >
+                                <SyntaxTextarea
+                                    id={`plugin-${plugin.id}-source`}
+                                    ariaLabel={$t('settings.plugins.source')}
+                                    language="javascript"
+                                    showLineNumbers
+                                    minRows={5}
                                     class="min-h-32 text-xs font-mono bg-background"
                                     placeholder={$t('common.label.code')}
                                     value={plugin.code}

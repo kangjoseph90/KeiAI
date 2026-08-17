@@ -76,6 +76,8 @@ export const componentsMessages = {
     'components.participantMenu.openStudio': 'Open studio',
     'components.participantMenu.setDefault': 'Set default',
     'components.textarea.message': 'Message',
+    'components.textarea.code': 'JavaScript code editor',
+    'components.textarea.template': 'Markdown and template editor',
     'components.toast.unsavedTitle': 'Changes are not saved',
     'components.toast.unsavedBody':
         'Your changes are kept in memory. Retry before closing the app.',

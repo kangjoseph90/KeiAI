@@ -6,7 +6,7 @@
      */
     import type { DisplayMessage } from '$lib/stores';
     import { Button } from '$lib/components/ui/button';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import {
         Check,
         GitBranch,
@@ -749,7 +749,9 @@
     <!-- Content Column -->
     <div
         class="chat-message-content col-span-2 row-start-2 mt-2 flex min-w-0 max-w-[calc(100%-1rem)] flex-none flex-col gap-1 {imageAttachments.length >
-            0 || audioAttachments.length > 0
+            0 ||
+        audioAttachments.length > 0 ||
+        isEditing
             ? 'w-full'
             : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"
     >
@@ -759,12 +761,26 @@
 
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}
-            <div class="flex w-full flex-col gap-2">
-                <Textarea
+            <div class="flex w-full min-w-[min(100%,20rem)] md:w-[60%] flex-col gap-2">
+                <SyntaxTextarea
                     bind:ref={textareaEl}
                     bind:value={editText}
-                    class="min-h-16 w-full"
+                    ariaLabel={$t('chat.message.edit')}
+                    minRows={3}
+                    autoResize
+                    language="markdown"
+                    template
+                    class="w-full text-sm leading-relaxed"
                     disabled={actionsDisabled}
+                    onkeydown={(e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelEdit();
+                        } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            void saveEdit();
+                        }
+                    }}
                 />
                 <div class="flex justify-end gap-2">
                     <Button

@@ -2,7 +2,7 @@
     import { Input } from '$lib/components/ui/input';
     import { t } from '$lib/stores';
     import { Label } from '$lib/components/ui/label';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import type { Module, ModuleContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -28,9 +28,11 @@
 
     <div class="grid gap-1.5">
         <Label for="module-description">{$t('module.profile.descriptionLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="module-description"
-            rows={3}
+            ariaLabel={$t('module.profile.descriptionLabel')}
+            minRows={6}
+            language="markdown"
             value={module.description}
             oninput={(e) => onUpdate({ description: e.currentTarget.value })}
             placeholder={$t('module.profile.descriptionPlaceholder')}

@@ -5,7 +5,7 @@
     import { Button } from '$lib/components/ui/button';
     import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import {
@@ -177,8 +177,14 @@
             />
         </div>
         <div class="space-y-1.5">
-            <Label class="text-xs">{$t('module.scriptItem.replacementLabel')}</Label>
-            <Textarea
+            <Label for={`script-${item.id}-replacement`} class="text-xs"
+                >{$t('module.scriptItem.replacementLabel')}</Label
+            >
+            <SyntaxTextarea
+                id={`script-${item.id}-replacement`}
+                ariaLabel={$t('module.scriptItem.replacementLabel')}
+                minRows={4}
+                template
                 disabled={busy}
                 class="bg-background text-sm font-mono leading-relaxed min-h-25"
                 value={item.replacement}

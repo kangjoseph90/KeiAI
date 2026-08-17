@@ -47,7 +47,9 @@
     import type { WorkflowNodeCategory } from '$lib/workflow';
     import { listAgentTools } from '$lib/workflow/agent/tool';
     import { t } from '$lib/stores';
+    import { Label } from '$lib/components/ui/label';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import WorkflowInputRow from './WorkflowInputRow.svelte';
 
     type AgentNumberField =
@@ -359,16 +361,25 @@
                     </div>
                 </div>
             {:else if data.node.class === 'String'}
-                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                    {$t('workflow.node.content')}
-                    <textarea
-                        class="nodrag min-h-20 resize-y rounded-md border bg-background p-2 text-xs leading-relaxed text-foreground"
+                <div class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    <Label
+                        for={`node-${data.node.id}-content`}
+                        class="text-[10px] text-muted-foreground"
+                        >{$t('workflow.node.content')}</Label
+                    >
+                    <SyntaxTextarea
+                        id={`node-${data.node.id}-content`}
+                        ariaLabel={$t('workflow.node.content')}
+                        language="markdown"
+                        template
+                        minRows={3}
+                        class="nodrag min-h-20 resize-y text-xs leading-relaxed"
                         value={data.node.content}
                         placeholder={$t('workflow.node.contentPlaceholder')}
                         onchange={(event) =>
                             data.onUpdateNode(data.node.id, { content: event.currentTarget.value })}
-                    ></textarea>
-                </label>
+                    />
+                </div>
             {:else if data.node.class === 'Number'}
                 <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                     {$t('workflow.node.value')}

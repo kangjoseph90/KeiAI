@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Label } from '$lib/components/ui/label';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { t } from '$lib/stores';
     import type { Module, ModuleContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
@@ -17,9 +17,11 @@
 <div class="space-y-4">
     <div class="grid gap-1.5">
         <Label for="module-background-html">{$t('module.display.backgroundLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="module-background-html"
-            rows={12}
+            minRows={10}
+            language="html"
+            template
             value={module.backgroundHTML}
             oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
             placeholder={$t('module.display.backgroundPlaceholder')}
@@ -30,9 +32,11 @@
 
     <div class="grid gap-1.5">
         <Label for="module-message-css">{$t('module.display.cssLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="module-message-css"
-            rows={12}
+            minRows={10}
+            language="css"
+            template
             value={module.messageCSS}
             oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}
             placeholder={$t('module.display.cssPlaceholder')}

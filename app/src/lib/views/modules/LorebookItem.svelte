@@ -6,7 +6,7 @@
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Label } from '$lib/components/ui/label';
     import {
         ChevronDown,
@@ -235,8 +235,15 @@
         {/if}
 
         <div class="space-y-1.5">
-            <Label class="text-xs">{$t('module.lorebookItem.contentLabel')}</Label>
-            <Textarea
+            <Label for={`lorebook-${item.id}-content`} class="text-xs"
+                >{$t('module.lorebookItem.contentLabel')}</Label
+            >
+            <SyntaxTextarea
+                id={`lorebook-${item.id}-content`}
+                ariaLabel={$t('module.lorebookItem.contentLabel')}
+                minRows={5}
+                language="markdown"
+                template
                 disabled={busy}
                 class="text-sm min-h-25 font-sans bg-background"
                 value={item.content}

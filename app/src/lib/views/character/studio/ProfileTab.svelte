@@ -2,7 +2,7 @@
     import { UserRound, Upload } from 'lucide-svelte';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Button } from '$lib/components/ui/button';
     import AssetView from '$lib/components/AssetView.svelte';
     import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
@@ -170,9 +170,11 @@
 
     <div class="grid gap-1.5">
         <Label for="character-description">{$t('character.profile.descriptionLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="character-description"
-            rows={3}
+            minRows={10}
+            language="markdown"
+            template
             value={character.description}
             oninput={(e) => onUpdate({ description: e.currentTarget.value })}
             placeholder={$t('character.profile.descriptionPlaceholder')}
@@ -181,9 +183,11 @@
 
     <div class="grid gap-1.5">
         <Label for="character-note">{$t('character.profile.noteLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="character-note"
-            rows={15}
+            minRows={10}
+            language="markdown"
+            template
             value={character.characterNote}
             oninput={(e) => onUpdate({ characterNote: e.currentTarget.value })}
             placeholder={$t('character.profile.notePlaceholder')}

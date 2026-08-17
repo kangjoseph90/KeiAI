@@ -23,7 +23,7 @@
     import { Label } from '$lib/components/ui/label';
     import { Badge } from '$lib/components/ui/badge';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
     import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
@@ -459,9 +459,15 @@
                         </div>
 
                         <div class="grid gap-1.5">
-                            <Label>{$t('persona.profile.descriptionLabel')}</Label>
-                            <Textarea
-                                rows={5}
+                            <Label for="persona-description"
+                                >{$t('persona.profile.descriptionLabel')}</Label
+                            >
+                            <SyntaxTextarea
+                                id="persona-description"
+                                ariaLabel={$t('persona.profile.descriptionLabel')}
+                                minRows={10}
+                                language="markdown"
+                                template
                                 value={$activePersona.description}
                                 oninput={(e) =>
                                     updatePersona($activePersona!.id, {

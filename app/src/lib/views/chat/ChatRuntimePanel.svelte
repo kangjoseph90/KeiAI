@@ -20,7 +20,7 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
         activeChat,
@@ -434,9 +434,11 @@
                         <FileText class="size-3" />
                         {$t('chat.runtime.section.chatNote')}
                     </Label>
-                    <Textarea
+                    <SyntaxTextarea
                         id="chat-note"
-                        rows={4}
+                        minRows={4}
+                        language="markdown"
+                        template
                         class="text-xs bg-background"
                         placeholder={$t('chat.runtime.note.placeholder')}
                         value={$activeChat.chatNote}

@@ -4,7 +4,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import SuggestedInput from '$lib/components/SuggestedInput.svelte';
     import { appSettings, updateSettings, t } from '$lib/stores';
@@ -1311,11 +1311,13 @@
                             onChange={(value) => updateField(field, value)}
                         />
                     {:else if field.multiline}
-                        <Textarea
+                        <SyntaxTextarea
                             id={fieldId}
                             value={field.value}
                             placeholder={field.placeholder}
                             disabled={saving}
+                            language="json"
+                            minRows={8}
                             class="min-h-48 font-mono text-xs"
                             onchange={(event) => updateField(field, event.currentTarget.value)}
                         />

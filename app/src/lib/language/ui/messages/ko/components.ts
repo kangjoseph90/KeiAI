@@ -75,6 +75,8 @@ export const componentsMessages = {
     'components.participantMenu.openStudio': '스튜디오 열기',
     'components.participantMenu.setDefault': '기본으로 설정',
     'components.textarea.message': '메시지',
+    'components.textarea.code': 'JavaScript 코드 편집기',
+    'components.textarea.template': '마크다운 및 템플릿 편집기',
     'components.toast.unsavedTitle': '변경 사항이 저장되지 않음',
     'components.toast.unsavedBody':
         '변경 사항이 메모리에 보관됩니다. 앱을 닫기 전에 다시 시도하세요.',

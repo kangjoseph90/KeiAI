@@ -25,7 +25,7 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import OptionSelect from '$lib/components/OptionSelect.svelte';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
@@ -649,15 +649,21 @@
                                             </div>
 
                                             <div class="flex flex-col gap-1.5">
-                                                <Label class="text-xs"
+                                                <Label
+                                                    for={`workflow-block-${block.id}-content`}
+                                                    class="text-xs"
                                                     >{$t('workflow.agent.content')}</Label
                                                 >
-                                                <Textarea
+                                                <SyntaxTextarea
+                                                    id={`workflow-block-${block.id}-content`}
+                                                    ariaLabel={$t('workflow.agent.content')}
+                                                    language="markdown"
+                                                    template
                                                     value={block.content ?? ''}
                                                     placeholder={$t(
                                                         'workflow.agent.contentPlaceholder'
                                                     )}
-                                                    rows={6}
+                                                    minRows={6}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
                                                         applyBlockEdit(block.id, {
@@ -670,14 +676,12 @@
                                                 <WorkflowStringField
                                                     label={$t('workflow.agent.start')}
                                                     value={block.start}
-                                                    inputmode="numeric"
                                                     onchange={(value) =>
                                                         applyBlockEdit(block.id, { start: value })}
                                                 />
                                                 <WorkflowStringField
                                                     label={$t('workflow.agent.end')}
                                                     value={block.end}
-                                                    inputmode="numeric"
                                                     onchange={(value) =>
                                                         applyBlockEdit(block.id, { end: value })}
                                                 />
@@ -721,6 +725,7 @@
                                             </div>
                                             <div class="flex flex-col gap-1.5">
                                                 <Label
+                                                    for={`workflow-block-${block.id}-format`}
                                                     class="text-xs flex items-center justify-between"
                                                 >
                                                     <span>{$t('workflow.agent.messageFormat')}</span
@@ -730,12 +735,16 @@
                                                         >{$t('common.state.optional')}</span
                                                     >
                                                 </Label>
-                                                <Textarea
+                                                <SyntaxTextarea
+                                                    id={`workflow-block-${block.id}-format`}
+                                                    ariaLabel={$t('workflow.agent.messageFormat')}
+                                                    language="markdown"
+                                                    template
                                                     value={block.format ?? ''}
                                                     placeholder={$t(
                                                         'workflow.agent.formatPlaceholder'
                                                     )}
-                                                    rows={5}
+                                                    minRows={5}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
                                                         applyBlockEdit(block.id, {
@@ -777,6 +786,7 @@
                                             >
                                             <div class="flex flex-col gap-1.5">
                                                 <Label
+                                                    for={`workflow-block-${block.id}-entry-format`}
                                                     class="text-xs flex items-center justify-between"
                                                 >
                                                     <span>{$t('workflow.agent.entryFormat')}</span>
@@ -785,12 +795,16 @@
                                                         >{$t('common.state.optional')}</span
                                                     >
                                                 </Label>
-                                                <Textarea
+                                                <SyntaxTextarea
+                                                    id={`workflow-block-${block.id}-entry-format`}
+                                                    ariaLabel={$t('workflow.agent.entryFormat')}
+                                                    language="markdown"
+                                                    template
                                                     value={block.format ?? ''}
                                                     placeholder={$t(
                                                         'workflow.agent.formatPlaceholder'
                                                     )}
-                                                    rows={5}
+                                                    minRows={5}
                                                     class="resize-y bg-background font-mono text-xs leading-relaxed"
                                                     oninput={(e) =>
                                                         applyBlockEdit(block.id, {

@@ -24,6 +24,8 @@ code.hljs {
     --highlight-addition-background: #f0fff4;
     --highlight-deletion: #b31d28;
     --highlight-deletion-background: #ffeef0;
+    --template-macro: #0284c7;
+    --template-block: #7c3aed;
 }
 
 .dark {
@@ -41,6 +43,8 @@ code.hljs {
     --highlight-addition-background: #033a16;
     --highlight-deletion: #ffdcd7;
     --highlight-deletion-background: #67060c;
+    --template-macro: #38bdf8;
+    --template-block: #c084fc;
 }
 
 .hljs {

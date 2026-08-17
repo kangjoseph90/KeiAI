@@ -4,7 +4,7 @@
     import { Button } from '$lib/components/ui/button';
     import EditableListItem from '$lib/components/entitylist/EditableListItem.svelte';
     import { Input } from '$lib/components/ui/input';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Label } from '$lib/components/ui/label';
     import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from 'lucide-svelte';
     import { appConfirm, toast } from '$lib/ui';
@@ -135,9 +135,16 @@
 
     {#snippet details()}
         <div class="space-y-1.5">
-            <Label class="text-xs">{$t('module.charjsItem.codeLabel')}</Label>
-            <Textarea
+            <Label for={`charjs-${item.id}-code`} class="text-xs"
+                >{$t('module.charjsItem.codeLabel')}</Label
+            >
+            <SyntaxTextarea
+                id={`charjs-${item.id}-code`}
+                ariaLabel={$t('module.charjsItem.codeLabel')}
+                language="javascript"
+                showLineNumbers
                 disabled={busy}
+                minRows={8}
                 class="min-h-48 resize-y bg-background font-mono text-sm leading-relaxed"
                 value={item.code}
                 placeholder={$t('module.charjsItem.codePlaceholder')}

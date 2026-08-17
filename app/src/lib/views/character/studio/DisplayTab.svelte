@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Label } from '$lib/components/ui/label';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { t } from '$lib/stores';
@@ -17,9 +17,11 @@
 <div class="space-y-4">
     <div class="grid gap-1.5">
         <Label for="character-background-html">{$t('character.display.backgroundLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="character-background-html"
-            rows={12}
+            minRows={10}
+            language="html"
+            template
             value={character.backgroundHTML}
             oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
             placeholder={$t('character.display.backgroundPlaceholder')}
@@ -30,9 +32,11 @@
 
     <div class="grid gap-1.5">
         <Label for="character-message-css">{$t('character.display.cssLabel')}</Label>
-        <Textarea
+        <SyntaxTextarea
             id="character-message-css"
-            rows={12}
+            minRows={10}
+            language="css"
+            template
             value={character.messageCSS}
             oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}
             placeholder={$t('character.display.cssPlaceholder')}

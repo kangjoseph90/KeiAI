@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Plus, Trash2, ChevronDown, ChevronRight, GripVertical } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Textarea } from '$lib/components/ui/textarea';
+    import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { generateSortOrder } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
@@ -190,8 +190,12 @@
 
                 <!-- 펼쳐지는 바디 영역 -->
                 {#snippet details()}
-                    <Textarea
-                        rows={6}
+                    <SyntaxTextarea
+                        id={`greeting-${g.id}-content`}
+                        ariaLabel={$t('character.greetings.placeholder')}
+                        minRows={6}
+                        language="markdown"
+                        template
                         value={g.content}
                         disabled={busyAction !== null}
                         placeholder={$t('character.greetings.placeholder')}
