@@ -184,7 +184,7 @@ describe('SyncManager', () => {
     });
 
     describe('startAutoSync', () => {
-        it('should start subscriptions and set poll timer', () => {
+        it('should start subscriptions and set poll timer', async () => {
             SyncManager.startAutoSync();
 
             expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
@@ -194,10 +194,11 @@ describe('SyncManager', () => {
             expect(MultiRecordSyncEngine.trigger).not.toHaveBeenCalled();
 
             expect(DataRecordSyncEngine.trigger).not.toHaveBeenCalled();
-            vi.advanceTimersByTime(300_000);
+            await vi.advanceTimersByTimeAsync(300_000);
             expect(DataRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
-            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(2);
             expect(MultiRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
+            expect(UserRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(2);
 
             expect(window.addEventListener).toHaveBeenCalledWith('online', expect.any(Function));
             expect(document.addEventListener).toHaveBeenCalledWith(

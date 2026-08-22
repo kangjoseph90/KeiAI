@@ -45,13 +45,11 @@ export class SyncManager {
         if (typeof window === 'undefined' || this.started) return;
         this.started = true;
 
-        void this.ensureRealtimeSubscriptions().catch(() => undefined);
+        void this.ensureRealtimeSubscriptions();
         void AssetSyncEngine.start();
 
         const pollTimer = setInterval(() => {
-            void DataRecordSyncEngine.trigger();
-            void AssetSyncEngine.start();
-            void MultiRecordSyncEngine.trigger();
+            void this.syncAll();
         }, this.FALLBACK_POLL_INTERVAL_MS);
 
         const onlineListener = () => {
@@ -121,11 +119,12 @@ export class SyncManager {
     }
 
     /**
-     * Full data sync. Called on boot and after login.
+     * Full data sync. Never rejects — failures surface through the sync
+     * status stores. Called on boot and after login.
      */
     static async syncAll(): Promise<void> {
-        await this.ensureRealtimeSubscriptions();
         await Promise.all([
+            this.ensureRealtimeSubscriptions(),
             DataRecordSyncEngine.trigger(),
             MultiRecordSyncEngine.trigger(),
             UserRecordSyncEngine.trigger()
@@ -159,6 +158,8 @@ export class SyncManager {
 
     private static async ensureRealtimeSubscriptions(): Promise<void> {
         if (this.realtimeSetup) {
+            // Wait for the in-flight batch, then fall through so a repair
+            // request (online/visibility) still fixes engines that failed.
             await this.realtimeSetup;
         }
 

@@ -17,7 +17,7 @@ import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '../session';
 import { appUser, type UserWriteEvent } from '$lib/adapters/user';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
-import { normalizeTimestamp, isReadyToSync } from './utils';
+import { normalizeTimestamp, isReadyToSync, toErrorState } from './utils';
 import { decrypt, encrypt, fromBase64, toBase64 } from '$lib/crypto';
 import { createLogger } from '$lib/adapters/logger';
 import { clock } from '$lib/utils/clock';
@@ -131,7 +131,8 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
             });
         } catch (err) {
             await this.unsubscribeRealtime();
-            throw err;
+            this.updateStatus({ state: toErrorState(err) });
+            return;
         }
 
         this.subscribed = true;

@@ -319,7 +319,7 @@
             await clock.init(appKV);
             const { user, needsInitialization } = await UserService.restoreOrCreateUser();
             await AuthService.restorePbAuth(user.id);
-            await AuthService.refreshPbAuth();
+            void AuthService.refreshPbAuth();
             AuthService.startAutoRefresh();
             if (needsInitialization) {
                 await initDefaultContents();
@@ -329,7 +329,7 @@
             await loadGlobalState();
             startSyncStoreBindings();
             SyncManager.startAutoSync();
-            await SyncManager.syncAll();
+            void SyncManager.syncAll();
             const initialRoute = getCurrentHashRoute();
             await restoreRoute(initialRoute);
             _cleanupLocaleCache = startLocalePreferenceCache();

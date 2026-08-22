@@ -28,6 +28,7 @@ import {
     getServerNow,
     getSyncCursorIdentity,
     isReadyToSync,
+    toErrorState,
     type RealtimeEvent
 } from './utils';
 import { normalizeUrl } from '$lib/utils/url';
@@ -70,7 +71,8 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             });
         } catch (err) {
             await this.unsubscribeRealtime();
-            throw err;
+            this.updateStatus({ state: toErrorState(err) });
+            return;
         }
 
         this.subscribed = true;

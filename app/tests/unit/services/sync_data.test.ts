@@ -126,6 +126,15 @@ describe('DataRecordSyncEngine', () => {
             expect(mockCollection.subscribe).toHaveBeenCalled();
         });
 
+        it('should record error status instead of throwing when the server is unreachable', async () => {
+            vi.mocked(mockCollection.subscribe).mockRejectedValue(new Error('ECONNREFUSED'));
+
+            await expect(DataRecordSyncEngine.subscribeRealtime()).resolves.toBeUndefined();
+
+            expect(DataRecordSyncEngine.isSubscribed).toBe(false);
+            expect(DataRecordSyncEngine.getState().state).toBe('network_error');
+        });
+
         it('should handle unsubscribe', async () => {
             (DataRecordSyncEngine as unknown as { subscribed: boolean }).subscribed = true;
             await DataRecordSyncEngine.unsubscribeRealtime();

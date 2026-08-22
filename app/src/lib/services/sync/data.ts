@@ -37,7 +37,8 @@ import {
     getRealtimeScope,
     type SyncScope,
     type RealtimeEvent,
-    isReadyToSync
+    isReadyToSync,
+    toErrorState
 } from './utils';
 import type { AssetEntries } from '$lib/types/asset';
 import {
@@ -108,7 +109,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             }
         } catch (err) {
             await this.unsubscribeRealtime();
-            throw err;
+            this.updateStatus({ state: toErrorState(err) });
+            return;
         }
         this.subscribed = true;
     }
