@@ -60,6 +60,19 @@ function normalizePromptBlock(block: PromptBlock, id: string = block.id): Prompt
             const normalized = deepMerge({ ...common, type: 'lorebook' as const }, block);
             return { ...normalized, id, type: 'lorebook' };
         }
+        case 'memory': {
+            const normalized = deepMerge(
+                {
+                    ...common,
+                    type: 'memory' as const,
+                    algorithmId: 'mock',
+                    importance: 1,
+                    role: 'system' as const
+                },
+                block
+            );
+            return { ...normalized, id, type: 'memory' };
+        }
     }
 }
 

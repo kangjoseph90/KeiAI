@@ -2,6 +2,7 @@
     import {
         Bot,
         BookOpen,
+        Brain,
         Check,
         ChevronDown,
         ChevronRight,
@@ -171,6 +172,13 @@
                 return applyBlockEdit(blockId, { type, historyMode: 'visible' });
             case 'lorebook':
                 return applyBlockEdit(blockId, { type });
+            case 'memory':
+                return applyBlockEdit(blockId, {
+                    type,
+                    algorithmId: 'mock',
+                    importance: 1,
+                    role: 'system'
+                });
         }
     }
 
@@ -540,6 +548,8 @@
                                                 <MessagesSquare class="size-3.5" />
                                             {:else if block.type === 'lorebook'}
                                                 <BookOpen class="size-3.5" />
+                                            {:else if block.type === 'memory'}
+                                                <Brain class="size-3.5" />
                                             {/if}
                                         </DropdownMenu.Trigger>
                                         <DropdownMenu.Content align="start">
@@ -563,6 +573,12 @@
                                             >
                                                 <BookOpen class="mr-2 size-4 text-amber-500" />
                                                 <span>{$t('workflow.agent.blockLorebook')}</span>
+                                            </DropdownMenu.Item>
+                                            <DropdownMenu.Item
+                                                onclick={() => changeBlockType(block.id, 'memory')}
+                                            >
+                                                <Brain class="mr-2 size-4 text-emerald-500" />
+                                                <span>{$t('workflow.agent.blockMemory')}</span>
                                             </DropdownMenu.Item>
                                         </DropdownMenu.Content>
                                     </DropdownMenu.Root>
@@ -720,6 +736,115 @@
                                                                 | 'visible'
                                                                 | 'last_text'
                                                                 | 'full_trace'
+                                                        })}
+                                                />
+                                            </div>
+                                            <div class="flex flex-col gap-1.5">
+                                                <Label
+                                                    for={`workflow-block-${block.id}-format`}
+                                                    class="text-xs flex items-center justify-between"
+                                                >
+                                                    <span>{$t('workflow.agent.messageFormat')}</span
+                                                    >
+                                                    <span
+                                                        class="text-[10px] text-muted-foreground font-normal"
+                                                        >{$t('common.state.optional')}</span
+                                                    >
+                                                </Label>
+                                                <SyntaxTextarea
+                                                    id={`workflow-block-${block.id}-format`}
+                                                    ariaLabel={$t('workflow.agent.messageFormat')}
+                                                    language="markdown"
+                                                    template
+                                                    value={block.format ?? ''}
+                                                    placeholder={$t(
+                                                        'workflow.agent.formatPlaceholder'
+                                                    )}
+                                                    minRows={5}
+                                                    class="resize-y bg-background font-mono text-xs leading-relaxed"
+                                                    oninput={(e) =>
+                                                        applyBlockEdit(block.id, {
+                                                            format:
+                                                                e.currentTarget.value || undefined
+                                                        })}
+                                                />
+                                            </div>
+                                        {:else if block.type === 'memory'}
+                                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <WorkflowStringField
+                                                    label={$t('workflow.agent.start')}
+                                                    value={block.start}
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, { start: value })}
+                                                />
+                                                <WorkflowStringField
+                                                    label={$t('workflow.agent.end')}
+                                                    value={block.end}
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, { end: value })}
+                                                />
+                                            </div>
+                                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <div class="flex flex-col gap-1.5">
+                                                    <Label class="text-xs"
+                                                        >{$t(
+                                                            'workflow.agent.memoryAlgorithm'
+                                                        )}</Label
+                                                    >
+                                                    <OptionSelect
+                                                        id={`workflow-block-${block.id}-memory-algorithm`}
+                                                        class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                                                        value={block.algorithmId}
+                                                        options={[
+                                                            {
+                                                                value: 'mock',
+                                                                label: $t(
+                                                                    'workflow.agent.memoryAlgorithmMock'
+                                                                )
+                                                            }
+                                                        ]}
+                                                        onChange={(value) =>
+                                                            applyBlockEdit(block.id, {
+                                                                algorithmId: value
+                                                            })}
+                                                    />
+                                                </div>
+                                                <WorkflowNumberField
+                                                    label={$t('workflow.agent.importance')}
+                                                    value={block.importance}
+                                                    onchange={(value) =>
+                                                        applyBlockEdit(block.id, {
+                                                            importance: value ?? 1
+                                                        })}
+                                                />
+                                            </div>
+                                            <div class="flex flex-col gap-1.5">
+                                                <Label class="text-xs"
+                                                    >{$t('workflow.agent.role')}</Label
+                                                >
+                                                <OptionSelect
+                                                    id={`workflow-block-${block.id}-role`}
+                                                    class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                                                    value={block.role}
+                                                    options={[
+                                                        {
+                                                            value: 'system',
+                                                            label: $t('workflow.agent.roleSystem')
+                                                        },
+                                                        {
+                                                            value: 'user',
+                                                            label: $t('workflow.agent.roleUser')
+                                                        },
+                                                        {
+                                                            value: 'assistant',
+                                                            label: $t(
+                                                                'workflow.agent.roleAssistant'
+                                                            )
+                                                        }
+                                                    ]}
+                                                    onChange={(value) =>
+                                                        applyBlockEdit(block.id, {
+                                                            role: value as LLMRole
                                                         })}
                                                 />
                                             </div>

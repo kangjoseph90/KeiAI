@@ -91,6 +91,7 @@ export async function executeAgentNode({
         messages,
         tokenizer: llm.tokenizer,
         ctx,
+        signal,
         localMacros: agentMacros
     });
 

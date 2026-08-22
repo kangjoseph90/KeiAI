@@ -204,8 +204,17 @@ function risuPromptToKeiBlock(
     if (item.type === 'postEverything') {
         return { name, type: 'lorebook', maxDepth: 0 };
     }
-    // TODO: Map Risu memory blocks when KeiAI has a workflow prompt block or macro for memory.
-    if (item.type === 'memory') return null;
+    if (item.type === 'memory') {
+        const format = normalizeOptionalTemplate(item.innerFormat);
+        return {
+            name,
+            type: 'memory',
+            algorithmId: 'mock',
+            importance: 1,
+            role: 'system',
+            ...(format ? { format } : {})
+        };
+    }
     if (item.type === 'authornote')
         return {
             name,

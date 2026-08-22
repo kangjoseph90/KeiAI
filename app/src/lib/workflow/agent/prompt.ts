@@ -28,7 +28,14 @@ import { resolveAgentTools } from './tool';
 import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { RuntimeContext } from '$lib/types/context';
-import type { LorebookPromptBlock, PromptBlock } from '../types';
+import type {
+    HistoryPromptBlock,
+    LorebookPromptBlock,
+    MemoryPromptBlock,
+    MessagePromptBlock,
+    PromptBlock
+} from '../types';
+import { resolveMemoryAlgorithm } from './memory';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +46,7 @@ export interface PromptInput {
     messages: PagedMessages;
     tokenizer: LLMTokenizer;
     ctx: RuntimeContext;
+    signal: AbortSignal;
     localMacros?: ReadonlyMap<string, Macro>;
 }
 
@@ -69,25 +77,35 @@ type LorebookBucketEntry = {
     message: LLMMessage;
 };
 
+interface ResolvedBlockRange<TBlock extends HistoryPromptBlock | MemoryPromptBlock> {
+    block: TBlock;
+    start: number;
+    end: number;
+}
+
+interface HistoryPlan {
+    results: Map<string, PromptBlockResult>;
+    tokens: number;
+    cutoff: number;
+}
+
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 export async function buildPrompt(input: PromptInput): Promise<LLMMessage[]> {
     const blocks = getEnabledPromptBlocks(input.agent.promptBlocks);
+    const historyRanges = await resolveBlockRanges(blocks.filter(isHistoryBlock), input);
+    const memoryRanges = await resolveBlockRanges(blocks.filter(isMemoryBlock), input);
 
     const budget = createPromptBudget(input.agent);
-    budget.used += await countToolDefinitions(input.agent.toolIds, input.tokenizer);
+    const toolTokens = await countToolDefinitions(input.agent.toolIds, input.tokenizer);
+    budget.used += toolTokens;
     if (budget.used > budget.input) {
         throw new AppError('INVALID_INPUT', 'Tool definitions exceed the prompt input budget');
     }
     const result = new Map<string, PromptBlockResult>();
-    const unboundedHistoryBlocks = blocks.filter(isUnboundedHistoryBlock);
 
-    if (unboundedHistoryBlocks.length > 1) {
-        throw new AppError('INVALID_INPUT', 'Prompt can only have one unbounded history block');
-    }
-
-    for (const block of blocks.filter(isFixedBlock)) {
-        const res = await buildFixedBlock(block, input);
+    for (const block of blocks.filter(isMessageBlock)) {
+        const res = await buildMessageBlock(block, input);
 
         if (budget.used + res.tokens > budget.input) {
             throw new AppError(
@@ -119,71 +137,60 @@ export async function buildPrompt(input: PromptInput): Promise<LLMMessage[]> {
         budget.used += tokens;
     }
 
-    for (const block of unboundedHistoryBlocks) {
-        const remainingBudget = Math.max(0, budget.input - budget.used);
-        const res = await buildUnboundedHistoryBlock(block, input, remainingBudget);
-
-        result.set(block.id, res);
-        budget.used += res.tokens;
+    const available = Math.max(0, budget.input - budget.used);
+    const hasConfiguredMemory = memoryRanges.some(
+        ({ block, start, end }) =>
+            start < end && Number.isFinite(block.importance) && block.importance > 0
+    );
+    const memoryBudget = hasConfiguredMemory ? Math.min(budget.memoryCap, available) : 0;
+    const historyBudget = available - memoryBudget;
+    const historyPlan = await buildHistoryBlocks(historyRanges, input, historyBudget);
+    for (const [blockId, res] of historyPlan.results) {
+        result.set(blockId, res);
     }
+    budget.used += historyPlan.tokens;
 
-    return flattenBlocks(blocks, result);
+    const effectiveMemoryRanges = memoryRanges
+        .map(({ block, start, end }) => ({
+            block,
+            start,
+            end: Math.min(end, historyPlan.cutoff)
+        }))
+        .filter(
+            ({ block, start, end }) =>
+                start < end && Number.isFinite(block.importance) && block.importance > 0
+        );
+    const memoryResults = await buildMemoryBlocks(effectiveMemoryRanges, input, memoryBudget);
+    for (const [blockId, res] of memoryResults) {
+        result.set(blockId, res);
+    }
+    budget.used += sumBlockTokens(memoryResults);
+
+    const prompt = flattenBlocks(blocks, result);
+    const finalTokens = toolTokens + (await countMessages(prompt, input.tokenizer));
+    if (finalTokens > budget.input) {
+        throw new AppError('INVALID_INPUT', 'Final prompt exceeds the prompt input budget');
+    }
+    return prompt;
 }
 
 // ─── Block Builders ─────────────────────────────────────────────────────────
 
-async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<PromptBlockResult> {
+async function buildMessageBlock(
+    block: MessagePromptBlock,
+    input: PromptInput
+): Promise<PromptBlockResult> {
     let messages: LLMMessage[] = [];
     const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
 
-    switch (block.type) {
-        case 'message': {
-            const content = (
-                await runTemplate(
-                    block.content,
-                    toRoleContext(input.ctx, block.role),
-                    templateMacros
-                )
-            ).trim();
-            messages = await agentPartsToLLMMessages(
-                deserializeAgentParts(content),
-                block.role,
-                input.chat
-            );
-            break;
-        }
-
-        case 'history': {
-            const start = await resolveHistoryIndex(
-                block.start,
-                input.ctx,
-                templateMacros,
-                'start',
-                block.name
-            );
-            const end = await resolveHistoryIndex(
-                block.end,
-                input.ctx,
-                templateMacros,
-                'end',
-                block.name
-            );
-            const slice = await input.messages.slice(start, end);
-            for (const { message, index } of slice) {
-                const rendered = await renderHistoryMessage(
-                    message,
-                    index,
-                    input.ctx,
-                    input.chat,
-                    block.historyMode,
-                    block.format,
-                    input.localMacros
-                );
-                messages.push(...rendered);
-            }
-            break;
-        }
-    }
+    const content = (
+        await runTemplate(block.content, toRoleContext(input.ctx, block.role), templateMacros)
+    ).trim();
+    messages = await agentPartsToLLMMessages(
+        deserializeAgentParts(content),
+        block.role,
+        input.chat
+    );
 
     const tokens = await countMessages(messages, input.tokenizer);
     return { messages, tokens };
@@ -255,63 +262,155 @@ async function buildLorebookBlocks(
     return result;
 }
 
-async function buildUnboundedHistoryBlock(
-    block: PromptBlock,
+async function buildHistoryBlocks(
+    ranges: ResolvedBlockRange<HistoryPromptBlock>[],
     input: PromptInput,
-    remainingBudget: number
-): Promise<PromptBlockResult> {
-    if (block.type !== 'history') return { messages: [], tokens: 0 };
-
-    const messages: LLMMessage[] = [];
-    let remaining = Math.max(0, remainingBudget);
-    let sawRenderableMessage = false;
+    historyBudget: number
+): Promise<HistoryPlan> {
+    const results = new Map<string, PromptBlockResult>(
+        ranges.map(({ block }) => [block.id, { messages: [], tokens: 0 }])
+    );
+    let used = 0;
+    let failedIndex: number | undefined;
+    let oldestSelectedIndex: number | undefined;
 
     for (let index = input.messages.length - 1; index >= 0; index -= 1) {
+        const covering = ranges.filter(({ start, end }) => start <= index && index < end);
+        if (covering.length === 0) continue;
+
         const indexed = await input.messages.at(index);
         if (!indexed) continue;
 
-        const rendered = await renderHistoryMessage(
-            indexed.message,
-            indexed.index,
-            input.ctx,
-            input.chat,
-            block.historyMode,
-            block.format,
-            input.localMacros
-        );
-        if (rendered.length === 0) continue;
+        const layer: Array<{ blockId: string; messages: LLMMessage[]; tokens: number }> = [];
+        let layerTokens = 0;
+        for (const { block } of covering) {
+            const messages = await renderHistoryMessage(
+                indexed.message,
+                indexed.index,
+                input.ctx,
+                input.chat,
+                block.historyMode,
+                block.format,
+                input.localMacros
+            );
+            if (messages.length === 0) continue;
+            const tokens = await countMessages(messages, input.tokenizer);
+            if (tokens === 0) continue;
+            layer.push({ blockId: block.id, messages, tokens });
+            layerTokens += tokens;
+        }
+        if (layer.length === 0) continue;
 
-        sawRenderableMessage = true;
-        const tokens = await countMessages(rendered, input.tokenizer);
-        if (tokens > remaining) {
-            if (messages.length === 0) {
-                throw new AppError(
-                    'INVALID_INPUT',
-                    `Latest history message does not fit in prompt budget: ${block.name}`
-                );
-            }
+        if (used + layerTokens > historyBudget) {
+            failedIndex = index;
             break;
         }
 
-        messages.unshift(...rendered);
-        remaining -= tokens;
+        for (const contribution of layer) {
+            const bucket = results.get(contribution.blockId);
+            if (!bucket) continue;
+            bucket.messages.unshift(...contribution.messages);
+            bucket.tokens += contribution.tokens;
+        }
+        used += layerTokens;
+        oldestSelectedIndex = index;
     }
 
-    if (sawRenderableMessage && messages.length === 0) {
-        throw new AppError(
-            'INVALID_INPUT',
-            `Latest history message does not fit in prompt budget: ${block.name}`
-        );
+    const cutoff =
+        failedIndex !== undefined
+            ? failedIndex + 1
+            : (oldestSelectedIndex ?? input.messages.length);
+    return { results, tokens: used, cutoff };
+}
+
+async function buildMemoryBlocks(
+    ranges: ResolvedBlockRange<MemoryPromptBlock>[],
+    input: PromptInput,
+    memoryBudget: number
+): Promise<Map<string, PromptBlockResult>> {
+    const results = new Map<string, PromptBlockResult>(
+        ranges.map(({ block }) => [block.id, { messages: [], tokens: 0 }])
+    );
+    const blockBudgets = allocateMemoryBudgets(ranges, memoryBudget);
+
+    for (const { block, start, end } of ranges) {
+        const blockBudget = blockBudgets.get(block.id) ?? 0;
+        if (blockBudget <= 0) continue;
+
+        const phrases = await resolveMemoryAlgorithm(block.algorithmId, {
+            messages: input.messages,
+            start,
+            end,
+            config: block.algorithmConfig ?? {},
+            ctx: input.ctx,
+            signal: input.signal
+        });
+        const ordered = phrases
+            .map((phrase, index) => ({ phrase, index }))
+            .filter(
+                ({ phrase }) =>
+                    phrase.content.trim().length > 0 && Number.isFinite(phrase.importance)
+            )
+            .sort((a, b) => b.phrase.importance - a.phrase.importance || a.index - b.index);
+        const bucket = results.get(block.id);
+        if (!bucket) continue;
+        let remaining = blockBudget;
+
+        for (const { phrase } of ordered) {
+            const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
+            const content = await renderWithFormat(
+                phrase.content,
+                block.format,
+                toRoleContext(input.ctx, block.role),
+                undefined,
+                templateMacros
+            );
+            const messages = makeMessage(block.role, content);
+            const tokens = await countMessages(messages, input.tokenizer);
+            if (messages.length === 0 || tokens === 0) continue;
+            if (tokens > remaining) continue;
+
+            bucket.messages.push(...messages);
+            bucket.tokens += tokens;
+            remaining -= tokens;
+        }
     }
 
-    const totalTokens = await countMessages(messages, input.tokenizer);
-    return { messages, tokens: totalTokens };
+    return results;
+}
+
+function allocateMemoryBudgets(
+    ranges: ResolvedBlockRange<MemoryPromptBlock>[],
+    memoryBudget: number
+): Map<string, number> {
+    const budgets = new Map<string, number>();
+    if (memoryBudget <= 0 || ranges.length === 0) return budgets;
+
+    const totalWeight = ranges.reduce((sum, { block }) => sum + block.importance, 0);
+    if (totalWeight <= 0) return budgets;
+
+    let allocated = 0;
+    for (const { block } of ranges) {
+        const budget = Math.floor((memoryBudget * block.importance) / totalWeight);
+        budgets.set(block.id, budget);
+        allocated += budget;
+    }
+
+    let remainder = memoryBudget - allocated;
+    for (const { block } of ranges) {
+        if (remainder <= 0) break;
+        budgets.set(block.id, (budgets.get(block.id) ?? 0) + 1);
+        remainder -= 1;
+    }
+    return budgets;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getEnabledPromptBlocks(blocks: Record<string, PromptBlock>): PromptBlock[] {
-    return Object.values(blocks).filter((block) => block.enabled);
+    return Object.values(blocks)
+        .filter((block) => block.enabled)
+        .sort(comparePromptBlocks);
 }
 
 function flattenBlocks(
@@ -319,8 +418,12 @@ function flattenBlocks(
     result: ReadonlyMap<string, PromptBlockResult>
 ): LLMMessage[] {
     return [...blocks]
-        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
+        .sort(comparePromptBlocks)
         .flatMap((block) => result.get(block.id)?.messages ?? []);
+}
+
+function comparePromptBlocks(a: PromptBlock, b: PromptBlock): number {
+    return compareSortOrder(a.sortOrder, b.sortOrder) || a.id.localeCompare(b.id);
 }
 
 function makeMessage(role: LLMRole, content: string): LLMMessage[] {
@@ -347,17 +450,16 @@ function isLorebookBlock(block: PromptBlock): block is LorebookPromptBlock {
     return block.type === 'lorebook';
 }
 
-function isBoundedHistory(block: PromptBlock): boolean {
-    return block.type === 'history' && block.start !== undefined;
+function isMessageBlock(block: PromptBlock): block is MessagePromptBlock {
+    return block.type === 'message';
 }
 
-function isUnboundedHistoryBlock(block: PromptBlock): boolean {
-    return block.type === 'history' && block.start === undefined;
+function isHistoryBlock(block: PromptBlock): block is HistoryPromptBlock {
+    return block.type === 'history';
 }
 
-function isFixedBlock(block: PromptBlock): boolean {
-    if (block.type === 'history') return isBoundedHistory(block);
-    return block.type !== 'lorebook';
+function isMemoryBlock(block: PromptBlock): block is MemoryPromptBlock {
+    return block.type === 'memory';
 }
 
 function getLorebookBudget(budget: PromptBudget): number {
@@ -465,12 +567,42 @@ async function renderHistoryText(
     return runTemplate(processed, messageCtx, templateMacros);
 }
 
-async function resolveHistoryIndex(
+async function resolveBlockRanges<TBlock extends HistoryPromptBlock | MemoryPromptBlock>(
+    blocks: TBlock[],
+    input: PromptInput
+): Promise<ResolvedBlockRange<TBlock>[]> {
+    const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
+    return Promise.all(
+        blocks.map(async (block) => {
+            const rawStart = await resolveBlockIndex(
+                block.start,
+                input.ctx,
+                templateMacros,
+                'start',
+                block
+            );
+            const rawEnd = await resolveBlockIndex(
+                block.end,
+                input.ctx,
+                templateMacros,
+                'end',
+                block
+            );
+            return {
+                block,
+                start: input.messages.normalizeIndex(rawStart ?? 0),
+                end: input.messages.normalizeIndex(rawEnd ?? input.messages.length)
+            };
+        })
+    );
+}
+
+async function resolveBlockIndex(
     value: string | undefined,
     ctx: RuntimeContext,
     templateMacros: ReadonlyMap<string, Macro>,
     label: string,
-    blockName: string
+    block: HistoryPromptBlock | MemoryPromptBlock
 ): Promise<number | undefined> {
     if (value === undefined) return undefined;
     const resolved = (await runTemplate(value, ctx, templateMacros)).trim();
@@ -479,7 +611,7 @@ async function resolveHistoryIndex(
     if (!Number.isFinite(parsed)) {
         throw new AppError(
             'INVALID_INPUT',
-            `History block "${blockName}" ${label} must resolve to a number: "${value}"`
+            `${block.type === 'history' ? 'History' : 'Memory'} block "${block.name}" ${label} must resolve to a number: "${value}"`
         );
     }
     return parsed;

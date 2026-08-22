@@ -14,14 +14,16 @@ const {
     mockRunPipeline,
     mockTokenCount,
     mockReadBytes,
-    mockGetToolCall
+    mockGetToolCall,
+    mockResolveMemoryAlgorithm
 } = vi.hoisted(() => ({
     mockCollectTemplateMacros: vi.fn(),
     mockRunTemplate: vi.fn(),
     mockRunPipeline: vi.fn(),
     mockTokenCount: vi.fn(),
     mockReadBytes: vi.fn(),
-    mockGetToolCall: vi.fn()
+    mockGetToolCall: vi.fn(),
+    mockResolveMemoryAlgorithm: vi.fn()
 }));
 
 // collectTemplateMacros / runTemplate are impure; the rest of $lib/template is pure.
@@ -50,6 +52,10 @@ vi.mock('$lib/services/asset', () => ({
 
 vi.mock('$lib/services/content/tool', () => ({
     ToolCallService: { get: mockGetToolCall }
+}));
+
+vi.mock('$lib/workflow/agent/memory', () => ({
+    resolveMemoryAlgorithm: mockResolveMemoryAlgorithm
 }));
 
 const character: Character = {
@@ -132,7 +138,24 @@ function makeMessage(
     };
 }
 
-type BuildTestPromptInput = Omit<PromptInput, 'agent' | 'tokenizer' | 'ctx'> & {
+function makePagedMessages(
+    entries: Array<{ message: Message; index: number }> = [],
+    length: number = entries.reduce((max, entry) => Math.max(max, entry.index + 1), 0)
+): PagedMessages {
+    const byIndex = new Map(entries.map((entry) => [entry.index, entry]));
+    return {
+        length,
+        normalizeIndex: vi.fn((value: number) => {
+            const integer = Number.isNaN(value) ? 0 : Math.trunc(value);
+            if (integer === Infinity) return length;
+            if (integer === -Infinity) return 0;
+            return Math.min(length, Math.max(0, integer < 0 ? length + integer : integer));
+        }),
+        at: vi.fn(async (index: number) => byIndex.get(index) ?? null)
+    } as unknown as PagedMessages;
+}
+
+type BuildTestPromptInput = Omit<PromptInput, 'agent' | 'tokenizer' | 'ctx' | 'signal'> & {
     agent?: AgentPromptConfig;
     preset?: AgentPromptConfig;
     ctx?: RuntimeContext;
@@ -150,7 +173,8 @@ function buildTestPrompt(input: BuildTestPromptInput) {
         ...input,
         agent,
         ctx: input.ctx ?? defaultContext,
-        tokenizer: 'o200k_base'
+        tokenizer: 'o200k_base',
+        signal: new AbortController().signal
     });
 }
 
@@ -178,14 +202,18 @@ describe('buildPrompt', () => {
         mockTokenCount.mockImplementation(async (text: string) => text.length);
         mockGetToolCall.mockResolvedValue(null);
         mockReadBytes.mockResolvedValue(null);
+        mockResolveMemoryAlgorithm.mockImplementation(
+            async (_algorithmId: string, input: { start: number; end: number }) => [
+                { content: `Memory range: [${input.start}, ${input.end})`, importance: 1 }
+            ]
+        );
     });
 
     it('loads history from PagedMessages only when processing history entries', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([
+        const messages = makePagedMessages([
             { message: makeMessage('msg-1', 'user', 'hello'), index: 0 },
             { message: makeMessage('msg-2', 'assistant', 'hi'), index: 1 }
         ]);
-        const messages = { slice } as unknown as PagedMessages;
         const preset = makePreset({
             text: {
                 id: 'text',
@@ -202,7 +230,6 @@ describe('buildPrompt', () => {
                 type: 'history',
                 historyMode: 'visible',
                 start: '-10',
-                end: '-1',
                 sortOrder: 'b',
                 enabled: true
             }
@@ -221,7 +248,10 @@ describe('buildPrompt', () => {
             ctx
         });
 
-        expect(slice).toHaveBeenCalledWith(-10, -1);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(-10);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(2);
+        expect(messages.at).toHaveBeenNthCalledWith(1, 1);
+        expect(messages.at).toHaveBeenNthCalledWith(2, 0);
         expect(mockRunPipeline).toHaveBeenCalledTimes(2);
         expect(toTextMessages(prompt)).toEqual([
             { role: 'system', content: 'rules' },
@@ -231,7 +261,7 @@ describe('buildPrompt', () => {
     });
 
     it('deserializes AgentParts produced by a message block template', async () => {
-        const messages = { slice: vi.fn() } as unknown as PagedMessages;
+        const messages = makePagedMessages();
         const chatWithInlay: Chat = {
             ...chat,
             inlays: {
@@ -287,8 +317,7 @@ describe('buildPrompt', () => {
     });
 
     it('defaults history end to the end of the completed history view', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages([], 10);
         const preset = makePreset({
             history: {
                 id: 'history',
@@ -308,12 +337,12 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).toHaveBeenCalledWith(-10, undefined);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(-10);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(10);
     });
 
     it('does not touch PagedMessages when the template has no history entries', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages();
         const preset = makePreset({
             text: {
                 id: 'text',
@@ -342,7 +371,8 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).not.toHaveBeenCalled();
+        expect(messages.normalizeIndex).not.toHaveBeenCalled();
+        expect(messages.at).not.toHaveBeenCalled();
         expect(toTextMessages(prompt)).toEqual([
             { role: 'system', content: '{{character}}\n{{characternote}}\n{{chatnote}}' },
             { role: 'system', content: 'static' }
@@ -350,12 +380,9 @@ describe('buildPrompt', () => {
     });
 
     it('runs history content through template, request handlers, then template again', async () => {
-        const slice = vi
-            .fn<PagedMessages['slice']>()
-            .mockResolvedValue([
-                { message: makeMessage('msg-1', 'user', '{{char}} says hi'), index: 0 }
-            ]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages([
+            { message: makeMessage('msg-1', 'user', '{{char}} says hi'), index: 0 }
+        ]);
         const preset = makePreset({
             history: {
                 id: 'history',
@@ -439,7 +466,7 @@ describe('buildPrompt', () => {
                   }
                 : null
         );
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
+        const messages = makePagedMessages([{ message, index: 0 }]);
         const prompt = await buildTestPrompt({
             chat,
             preset: makePreset({
@@ -454,7 +481,7 @@ describe('buildPrompt', () => {
                 }
             }),
             lorebooks: [],
-            messages: { slice } as unknown as PagedMessages
+            messages
         });
 
         expect(prompt).toEqual([
@@ -501,7 +528,7 @@ describe('buildPrompt', () => {
             { type: 'text', text: 'Final answer.' },
             { type: 'inlay', ids: ['also-ignored'] }
         ];
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
+        const messages = makePagedMessages([{ message, index: 0 }]);
 
         const prompt = await buildTestPrompt({
             chat,
@@ -517,7 +544,7 @@ describe('buildPrompt', () => {
                 }
             }),
             lorebooks: [],
-            messages: { slice } as unknown as PagedMessages
+            messages
         });
 
         expect(prompt).toEqual([
@@ -541,8 +568,7 @@ describe('buildPrompt', () => {
             { type: 'text', text: 'Describe this media.' },
             { type: 'inlay', ids: ['inlay-audio', 'inlay-video'] }
         ];
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages([{ message, index: 0 }]);
         const chatWithInlay: Chat = {
             ...chat,
             inlays: {
@@ -621,7 +647,7 @@ describe('buildPrompt', () => {
     });
 
     it('uses bare slot only for the formatted content and delegates named slots', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([
+        const messages = makePagedMessages([
             {
                 message: makeMessage('msg-1', 'assistant', 'hello', {
                     id: 'char-2',
@@ -630,7 +656,6 @@ describe('buildPrompt', () => {
                 index: 0
             }
         ]);
-        const messages = { slice } as unknown as PagedMessages;
         const preset = makePreset({
             history: {
                 id: 'history',
@@ -638,7 +663,6 @@ describe('buildPrompt', () => {
                 type: 'history',
                 historyMode: 'visible',
                 start: '-10',
-                end: '-1',
                 format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
                 sortOrder: 'a',
                 enabled: true
@@ -699,16 +723,18 @@ describe('buildPrompt', () => {
     });
 
     it('injects assistant speaker context while rendering history messages', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([
-            {
-                message: makeMessage('msg-1', 'assistant', '{{char}} says hi', {
-                    id: 'char-2',
-                    name: 'Beta'
-                }),
-                index: 7
-            }
-        ]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages(
+            [
+                {
+                    message: makeMessage('msg-1', 'assistant', '{{char}} says hi', {
+                        id: 'char-2',
+                        name: 'Beta'
+                    }),
+                    index: 7
+                }
+            ],
+            8
+        );
         const preset = makePreset({
             history: {
                 id: 'history',
@@ -743,7 +769,7 @@ describe('buildPrompt', () => {
     });
 
     it('throws when required fixed blocks exceed the prompt input budget', async () => {
-        const messages = { slice: vi.fn<PagedMessages['slice']>() } as unknown as PagedMessages;
+        const messages = makePagedMessages();
         const preset = {
             ...makePreset({
                 text: {
@@ -770,46 +796,173 @@ describe('buildPrompt', () => {
         ).rejects.toThrow('Prompt budget exceeded');
     });
 
-    it('treats bounded history as required and throws when it exceeds budget', async () => {
-        const slice = vi
-            .fn<PagedMessages['slice']>()
-            .mockResolvedValue([{ message: makeMessage('msg-1', 'user', 'too long'), index: 0 }]);
-        const messages = { slice } as unknown as PagedMessages;
+    it('runs explicit memory before a fully retained bounded history range', async () => {
+        const messages = makePagedMessages([
+            { message: makeMessage('msg-1', 'user', 'old one'), index: 0 },
+            { message: makeMessage('msg-2', 'assistant', 'old two'), index: 1 },
+            { message: makeMessage('msg-3', 'user', 'recent one'), index: 2 },
+            { message: makeMessage('msg-4', 'assistant', 'recent two'), index: 3 }
+        ]);
         const preset = {
             ...makePreset({
+                memory: {
+                    id: 'memory',
+                    name: 'Memory',
+                    type: 'memory',
+                    end: '-2',
+                    algorithmId: 'mock',
+                    importance: 1,
+                    role: 'system',
+                    sortOrder: 'a',
+                    enabled: true
+                },
                 history: {
                     id: 'history',
                     name: 'History',
                     type: 'history',
                     historyMode: 'visible',
-                    start: '-1',
-                    sortOrder: 'a',
+                    start: '-2',
+                    sortOrder: 'b',
                     enabled: true
                 }
             }),
-            maxContext: 10,
-            maxResponse: 3
+            maxContext: 100,
+            maxResponse: 0,
+            memoryRatio: 0.5
         };
 
-        await expect(
-            buildTestPrompt({
-                chat,
-                preset,
-                lorebooks: [],
-                messages
-            })
-        ).rejects.toThrow('Prompt budget exceeded');
+        const prompt = await buildTestPrompt({ chat, preset, lorebooks: [], messages });
+
+        expect(mockResolveMemoryAlgorithm).toHaveBeenCalledWith(
+            'mock',
+            expect.objectContaining({ messages, start: 0, end: 2 })
+        );
+        expect(toTextMessages(prompt)).toEqual([
+            { role: 'system', content: 'Memory range: [0, 2)' },
+            { role: 'user', content: 'recent one' },
+            { role: 'assistant', content: 'recent two' }
+        ]);
     });
 
-    it('truncates unbounded history to the remaining budget from newest to oldest', async () => {
+    it('splits memory budget by importance and skips oversized phrases', async () => {
+        const messages = makePagedMessages([], 10);
+        mockResolveMemoryAlgorithm.mockImplementation(
+            async (_algorithmId: string, input: { config: Record<string, unknown> }) => {
+                if (input.config.label === 'small') {
+                    return [
+                        { content: 'aaa', importance: 2 },
+                        { content: 'b', importance: 1 }
+                    ];
+                }
+                return [
+                    { content: '12345678', importance: 3 },
+                    { content: '1234', importance: 2 },
+                    { content: 'xyz', importance: 1 }
+                ];
+            }
+        );
+        const preset = {
+            ...makePreset({
+                smallMemory: {
+                    id: 'smallMemory',
+                    name: 'Small Memory',
+                    type: 'memory',
+                    algorithmId: 'mock',
+                    algorithmConfig: { label: 'small' },
+                    importance: 1,
+                    role: 'system',
+                    sortOrder: 'a',
+                    enabled: true
+                },
+                largeMemory: {
+                    id: 'largeMemory',
+                    name: 'Large Memory',
+                    type: 'memory',
+                    algorithmId: 'mock',
+                    algorithmConfig: { label: 'large' },
+                    importance: 3,
+                    role: 'user',
+                    sortOrder: 'b',
+                    enabled: true
+                }
+            }),
+            maxContext: 20,
+            maxResponse: 0,
+            memoryRatio: 0.5
+        };
+
+        const prompt = await buildTestPrompt({ chat, preset, lorebooks: [], messages });
+
+        expect(mockResolveMemoryAlgorithm).toHaveBeenCalledTimes(2);
+        expect(toTextMessages(prompt)).toEqual([
+            { role: 'system', content: 'aaa' },
+            { role: 'user', content: '1234' },
+            { role: 'user', content: 'xyz' }
+        ]);
+    });
+
+    it('plans every history block as atomic layers and cuts off at the first failed index', async () => {
+        const messages = makePagedMessages([
+            { message: makeMessage('msg-1', 'user', 'cc'), index: 0 },
+            { message: makeMessage('msg-2', 'assistant', 'bbbb'), index: 1 },
+            { message: makeMessage('msg-3', 'user', 'aa'), index: 2 }
+        ]);
+        const preset = {
+            ...makePreset({
+                firstHistory: {
+                    id: 'firstHistory',
+                    name: 'First History',
+                    type: 'history',
+                    historyMode: 'visible',
+                    sortOrder: 'a',
+                    enabled: true
+                },
+                secondHistory: {
+                    id: 'secondHistory',
+                    name: 'Second History',
+                    type: 'history',
+                    historyMode: 'visible',
+                    sortOrder: 'b',
+                    enabled: true
+                },
+                memory: {
+                    id: 'memory',
+                    name: 'Memory',
+                    type: 'memory',
+                    algorithmId: 'mock',
+                    importance: 1,
+                    role: 'system',
+                    sortOrder: 'c',
+                    enabled: true
+                }
+            }),
+            maxContext: 20,
+            maxResponse: 0,
+            memoryRatio: 0.7
+        };
+
+        const prompt = await buildTestPrompt({ chat, preset, lorebooks: [], messages });
+
+        expect(messages.at).toHaveBeenCalledTimes(2);
+        expect(messages.at).toHaveBeenNthCalledWith(1, 2);
+        expect(messages.at).toHaveBeenNthCalledWith(2, 1);
+        expect(mockResolveMemoryAlgorithm).toHaveBeenCalledWith(
+            'mock',
+            expect.objectContaining({ start: 0, end: 2 })
+        );
+        expect(toTextMessages(prompt)).toEqual([
+            { role: 'user', content: 'aa' },
+            { role: 'user', content: 'aa' }
+        ]);
+    });
+
+    it('truncates all history blocks to the remaining budget from newest to oldest', async () => {
         const oldest = makeMessage('msg-1', 'user', 'older message');
         const newest = makeMessage('msg-2', 'assistant', 'ok');
-        const at = vi.fn<PagedMessages['at']>(async (index) => {
-            if (index === 0) return { message: oldest, index: 0 };
-            if (index === 1) return { message: newest, index: 1 };
-            return null;
-        });
-        const messages = { length: 2, at } as unknown as PagedMessages;
+        const messages = makePagedMessages([
+            { message: oldest, index: 0 },
+            { message: newest, index: 1 }
+        ]);
         const preset = {
             ...makePreset({
                 history: {
@@ -832,17 +985,14 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(at).toHaveBeenCalledWith(1);
-        expect(at).toHaveBeenCalledWith(0);
+        expect(messages.at).toHaveBeenCalledWith(1);
+        expect(messages.at).toHaveBeenCalledWith(0);
         expect(toTextMessages(prompt)).toEqual([{ role: 'assistant', content: 'ok' }]);
     });
 
-    it('throws when unbounded history has messages but the latest does not fit', async () => {
+    it('returns no history when the newest atomic layer does not fit', async () => {
         const latest = makeMessage('msg-1', 'user', 'too long');
-        const at = vi.fn<PagedMessages['at']>(async (index) =>
-            index === 0 ? { message: latest, index: 0 } : null
-        );
-        const messages = { length: 1, at } as unknown as PagedMessages;
+        const messages = makePagedMessages([{ message: latest, index: 0 }]);
         const preset = {
             ...makePreset({
                 history: {
@@ -858,21 +1008,14 @@ describe('buildPrompt', () => {
             maxResponse: 3
         };
 
-        await expect(
-            buildTestPrompt({
-                chat,
-                preset,
-                lorebooks: [],
-                messages
-            })
-        ).rejects.toThrow('Latest history message does not fit');
+        await expect(buildTestPrompt({ chat, preset, lorebooks: [], messages })).resolves.toEqual(
+            []
+        );
     });
 
-    it('throws when more than one unbounded history block is enabled', async () => {
-        const messages = {
-            length: 0,
-            at: vi.fn<PagedMessages['at']>()
-        } as unknown as PagedMessages;
+    it('supports multiple full-range history blocks', async () => {
+        const message = makeMessage('msg-1', 'user', 'hello');
+        const messages = makePagedMessages([{ message, index: 0 }]);
         const preset = makePreset({
             firstHistory: {
                 id: 'firstHistory',
@@ -892,19 +1035,15 @@ describe('buildPrompt', () => {
             }
         });
 
-        await expect(
-            buildTestPrompt({
-                chat,
-                preset,
-                lorebooks: [],
-                messages
-            })
-        ).rejects.toThrow('Prompt can only have one unbounded history block');
+        const prompt = await buildTestPrompt({ chat, preset, lorebooks: [], messages });
+        expect(toTextMessages(prompt)).toEqual([
+            { role: 'user', content: 'hello' },
+            { role: 'user', content: 'hello' }
+        ]);
     });
 
-    it('resolves start/end as template expressions into numeric slice bounds', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
-        const messages = { slice } as unknown as PagedMessages;
+    it('resolves start/end templates through PagedMessages normalization', async () => {
+        const messages = makePagedMessages([], 10);
         mockRunTemplate.mockImplementation(async (text: string) => {
             if (text === '{{getvar::startIdx}}') return '2';
             if (text === '{{getvar::endIdx}}') return '5';
@@ -929,12 +1068,15 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).toHaveBeenCalledWith(2, 5);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(2);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(5);
+        expect(messages.at).toHaveBeenCalledTimes(3);
+        expect(messages.at).toHaveBeenNthCalledWith(1, 4);
+        expect(messages.at).toHaveBeenNthCalledWith(3, 2);
     });
 
-    it('treats a blank template result as "to the end" (undefined)', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
-        const messages = { slice } as unknown as PagedMessages;
+    it('treats a blank end template as the PagedMessages length', async () => {
+        const messages = makePagedMessages([], 10);
         mockRunTemplate.mockImplementation(async (text: string) => {
             if (text === '{{getvar::empty}}') return '';
             if (text === '{{getvar::startIdx}}') return '3';
@@ -959,12 +1101,12 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).toHaveBeenCalledWith(3, undefined);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(3);
+        expect(messages.normalizeIndex).toHaveBeenCalledWith(10);
     });
 
     it('throws when a history index template does not resolve to a number', async () => {
-        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
-        const messages = { slice } as unknown as PagedMessages;
+        const messages = makePagedMessages();
         mockRunTemplate.mockImplementation(async () => 'not-a-number');
 
         await expect(

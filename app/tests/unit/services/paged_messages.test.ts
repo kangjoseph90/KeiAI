@@ -155,6 +155,17 @@ describe('PagedMessages', () => {
         await expect(paged.at(-11)).resolves.toBeNull();
     });
 
+    it('normalizes range indexes against the fixed view length', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
+
+        expect(paged.normalizeIndex(3.9)).toBe(3);
+        expect(paged.normalizeIndex(-1)).toBe(9);
+        expect(paged.normalizeIndex(-10)).toBe(0);
+        expect(paged.normalizeIndex(-11)).toBe(0);
+        expect(paged.normalizeIndex(10)).toBe(10);
+        expect(paged.normalizeIndex(11)).toBe(10);
+    });
+
     it('slices across page boundaries with negative bounds', async () => {
         const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 

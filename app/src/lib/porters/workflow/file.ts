@@ -117,7 +117,10 @@ function assertAgentConfiguration(value: Record<string, unknown>): void {
             ([id, block]) =>
                 isRecord(block) &&
                 block.id === id &&
-                (block.type === 'message' || block.type === 'history' || block.type === 'lorebook')
+                (block.type === 'message' ||
+                    block.type === 'history' ||
+                    block.type === 'lorebook' ||
+                    block.type === 'memory')
         )
     ) {
         throw invalidPackage('agent');

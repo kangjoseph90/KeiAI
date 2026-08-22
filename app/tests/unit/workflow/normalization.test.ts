@@ -82,6 +82,45 @@ describe('normalizeWorkflow', () => {
         expect(normalizeWorkflow(workflow).nodes.agent).toEqual(workflow.nodes.agent);
     });
 
+    it('hydrates memory prompt block defaults', () => {
+        const stored = {
+            nodes: {
+                agent: {
+                    id: 'agent',
+                    name: 'Agent',
+                    class: 'Agent',
+                    position: { x: 0, y: 0 },
+                    promptBlocks: {
+                        memory: {
+                            id: 'memory',
+                            name: 'Memory',
+                            type: 'memory',
+                            sortOrder: 'a',
+                            enabled: true
+                        }
+                    },
+                    inputs: {},
+                    inputValues: {}
+                }
+            }
+        };
+
+        const normalized = normalizeWorkflow(stored as unknown as WorkflowDefinition);
+        const agent = normalized.nodes.agent;
+        if (agent.class !== 'Agent') throw new Error('Expected Agent node');
+
+        expect(agent.promptBlocks.memory).toEqual({
+            id: 'memory',
+            name: 'Memory',
+            type: 'memory',
+            algorithmId: 'mock',
+            importance: 1,
+            role: 'system',
+            sortOrder: 'a',
+            enabled: true
+        });
+    });
+
     it('removes legacy literal values from connection-only inputs', () => {
         const workflow: WorkflowDefinition = {
             nodes: {

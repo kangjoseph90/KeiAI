@@ -31,22 +31,11 @@ function toArrayInteger(value: number): number {
     return Math.trunc(value);
 }
 
-function normalizeIndex(index: number, length: number): number | null {
+function normalizeElementIndex(index: number, length: number): number | null {
     const normalized = toArrayInteger(index);
     if (!Number.isFinite(normalized)) return null;
     const resolved = normalized < 0 ? length + normalized : normalized;
     if (resolved < 0 || resolved >= length) return null;
-    return resolved;
-}
-
-function normalizeSliceBound(value: number | undefined, length: number, fallback: number): number {
-    if (value === undefined) return fallback;
-    const normalized = toArrayInteger(value);
-    if (normalized === Infinity) return length;
-    if (normalized === -Infinity) return 0;
-    const resolved = normalized < 0 ? length + normalized : normalized;
-    if (resolved < 0) return 0;
-    if (resolved > length) return length;
     return resolved;
 }
 
@@ -117,7 +106,7 @@ export class PagedMessages {
     }
 
     async at(index: number): Promise<IndexedMessage | null> {
-        const resolved = normalizeIndex(index, this.length);
+        const resolved = normalizeElementIndex(index, this.length);
         if (resolved === null) return null;
 
         if (this.lastMessageId && resolved === this.pagedLength) {
@@ -134,8 +123,8 @@ export class PagedMessages {
     }
 
     async slice(start?: number, end?: number): Promise<IndexedMessage[]> {
-        const resolvedStart = normalizeSliceBound(start, this.length, 0);
-        const resolvedEnd = normalizeSliceBound(end, this.length, this.length);
+        const resolvedStart = this.normalizeIndex(start ?? 0);
+        const resolvedEnd = this.normalizeIndex(end ?? this.length);
         if (resolvedStart >= resolvedEnd) return [];
 
         const beforeEnd = Math.min(resolvedEnd, this.pagedLength);
@@ -158,8 +147,18 @@ export class PagedMessages {
         return this.slice();
     }
 
+    normalizeIndex(index: number): number {
+        const normalized = toArrayInteger(index);
+        if (normalized === Infinity) return this.length;
+        if (normalized === -Infinity) return 0;
+        const resolved = normalized < 0 ? this.length + normalized : normalized;
+        if (resolved < 0) return 0;
+        if (resolved > this.length) return this.length;
+        return resolved;
+    }
+
     invalidate(index: number): void {
-        const resolved = normalizeIndex(index, this.length);
+        const resolved = normalizeElementIndex(index, this.length);
         if (resolved === null) return;
 
         if (this.lastMessageId && resolved === this.pagedLength) {

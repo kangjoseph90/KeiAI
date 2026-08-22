@@ -29,10 +29,23 @@ export type HistoryPromptBlockFields = {
     historyMode: 'last_text' | 'visible' | 'full_trace';
 };
 
+export type MemoryPromptBlockFields = {
+    name: string;
+    type: 'memory';
+    start?: string;
+    end?: string;
+    algorithmId: string;
+    algorithmConfig?: Record<string, unknown>;
+    importance: number;
+    role: LLMRole;
+    format?: string;
+};
+
 export type PromptBlockFields =
     | MessagePromptBlockFields
     | LorebookPromptBlockFields
-    | HistoryPromptBlockFields;
+    | HistoryPromptBlockFields
+    | MemoryPromptBlockFields;
 
 type PromptBlockMetadata = {
     id: string;
@@ -43,7 +56,12 @@ type PromptBlockMetadata = {
 export type MessagePromptBlock = MessagePromptBlockFields & PromptBlockMetadata;
 export type LorebookPromptBlock = LorebookPromptBlockFields & PromptBlockMetadata;
 export type HistoryPromptBlock = HistoryPromptBlockFields & PromptBlockMetadata;
-export type PromptBlock = MessagePromptBlock | LorebookPromptBlock | HistoryPromptBlock;
+export type MemoryPromptBlock = MemoryPromptBlockFields & PromptBlockMetadata;
+export type PromptBlock =
+    | MessagePromptBlock
+    | LorebookPromptBlock
+    | HistoryPromptBlock
+    | MemoryPromptBlock;
 
 export type WorkflowNode =
     | AgentNode
