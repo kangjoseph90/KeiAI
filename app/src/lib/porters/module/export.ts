@@ -4,12 +4,15 @@ import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import { getSessionScope } from '$lib/services/session';
 import type { KeiModulePackageV1 } from './types';
+import type { PorterProgressReporter } from '../progress';
 import { exportAssetPayload, exportEntityList, type KeiPackageExportMode } from '../utils';
 
 export async function exportModulePackage(
     moduleId: string,
-    assetMode: KeiPackageExportMode
+    assetMode: KeiPackageExportMode,
+    onProgress?: PorterProgressReporter
 ): Promise<KeiModulePackageV1> {
+    onProgress?.({ phase: 'preparing', completed: 0, total: 0 });
     const module = await ModuleService.get(moduleId);
     if (!module) {
         throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
@@ -43,10 +46,16 @@ export async function exportModulePackage(
 
     // Export list asset blobs
     const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
-    for (const [layoutId, ref] of Object.entries(module.assets.refs)) {
+    const assetEntries = Object.entries(module.assets.refs);
+    const total = assetEntries.length;
+    let completed = 0;
+    onProgress?.({ phase: 'processing-assets', completed, total });
+    for (const [layoutId, ref] of assetEntries) {
         const portableId = assetMap[layoutId];
         if (!portableId) continue;
         assets[portableId] = await exportAssetPayload(ref, owner, assetMode);
+        completed += 1;
+        onProgress?.({ phase: 'processing-assets', completed, total });
     }
 
     return {

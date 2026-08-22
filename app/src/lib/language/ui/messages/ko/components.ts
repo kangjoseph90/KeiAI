@@ -82,7 +82,18 @@ export const componentsMessages = {
         '변경 사항이 메모리에 보관됩니다. 앱을 닫기 전에 다시 시도하세요.',
     'components.toast.retrySave': '저장 다시 시도',
     'components.toast.working': '작업 중…',
-    'components.toast.dismiss': '알림 닫기'
+    'components.toast.dismiss': '알림 닫기',
+    'components.porterProgress.importTitle': '{:entity} 가져오기',
+    'components.porterProgress.exportTitle': '{:entity} 내보내기',
+    'components.porterProgress.character': '캐릭터',
+    'components.porterProgress.persona': '페르소나',
+    'components.porterProgress.module': '모듈',
+    'components.porterProgress.phasePreparing': '준비 중…',
+    'components.porterProgress.phaseProcessingData': '데이터 처리 중…',
+    'components.porterProgress.phaseProcessingAssets': '에셋 처리 중…',
+    'components.porterProgress.phaseFinalizing': '마무리 중…',
+    'components.porterProgress.assetsCount': '에셋 {:current} / {:total}',
+    'components.porterProgress.failed': '실패'
 } as const;
 
 export type ComponentsMessageKey = keyof typeof componentsMessages;

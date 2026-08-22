@@ -13,6 +13,7 @@ import {
     importCharacterPackage as importCharacterPackagePorter,
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
+import type { PorterProgressReporter } from '$lib/porters/progress';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -149,12 +150,14 @@ export async function importCharacterPackage(
     options: {
         allowLightAssets?: boolean;
         select?: boolean;
+        onProgress?: PorterProgressReporter;
     } = {}
 ): Promise<Character> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
     const characterId = await importCharacterPackagePorter(pkg, {
         scopeType,
-        allowLightAssets: options.allowLightAssets
+        allowLightAssets: options.allowLightAssets,
+        onProgress: options.onProgress
     });
 
     const character = await CharacterService.get(characterId);

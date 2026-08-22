@@ -1,6 +1,7 @@
 import { ModuleService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiModulePackageV1 } from './types';
+import type { PorterProgressReporter } from '../progress';
 import {
     importAssetPayloads,
     importEntityList,
@@ -10,6 +11,7 @@ import {
 
 export interface ImportModuleOptions {
     allowLightAssets?: boolean;
+    onProgress?: PorterProgressReporter;
 }
 
 function assertPackage(pkg: KeiModulePackageV1): void {
@@ -23,9 +25,11 @@ export async function importModulePackage(
     options: ImportModuleOptions = {}
 ): Promise<string> {
     assertPackage(pkg);
+    const { onProgress } = options;
 
     let moduleId: string | undefined = undefined;
     try {
+        onProgress?.({ phase: 'processing-data', completed: 0, total: 0 });
         const module = await ModuleService.create({
             name: pkg.module.name,
             description: pkg.module.description,
@@ -44,9 +48,16 @@ export async function importModulePackage(
 
         const assetInputs = importAssetPayloads(pkg.assets, options.allowLightAssets ?? true);
 
+        const assetEntries = Object.entries(pkg.module.assets.refs).filter(
+            ([portableKey]) => assetInputs[portableKey]
+        );
+        const total = assetEntries.length;
+        let completed = 0;
+        onProgress?.({ phase: 'processing-assets', completed, total });
+
         const layoutIdMap: Record<string, string> = {};
         const knownAssetIds = new Set<string>();
-        for (const [portableKey, pkgRef] of Object.entries(pkg.module.assets.refs)) {
+        for (const [portableKey, pkgRef] of assetEntries) {
             const imported = assetInputs[portableKey];
             if (!imported) continue;
 
@@ -66,8 +77,11 @@ export async function importModulePackage(
                 knownAssetIds.add(newId);
                 layoutIdMap[portableKey] = newId;
             }
+            completed += 1;
+            onProgress?.({ phase: 'processing-assets', completed, total });
         }
 
+        onProgress?.({ phase: 'finalizing', completed, total });
         const current = await ModuleService.get(module.id);
         if (current) {
             const fixed = remapImportedAssetFolders({

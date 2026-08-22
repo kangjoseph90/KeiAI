@@ -52,7 +52,7 @@
     import type { AssetRef } from '$lib/types/refs';
     import { IMAGE_ASSET_EXTENSIONS, MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { appDialog } from '$lib/adapters/dialog';
-    import { appConfirm, toast } from '$lib/ui';
+    import { appConfirm, runPorterOperation, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import { listItems } from '$lib/utils/ordering';
 
@@ -220,11 +220,13 @@
             | { kind: 'risu'; format: 'png' }
             | { kind: 'keipersona'; assetMode: 'light' | 'baked' }
     ) {
-        if (!$activePersona || exporting) return;
-        const targetId = $activePersona.id;
+        const persona = $activePersona;
+        if (!persona || exporting) return;
         exporting = id;
         try {
-            await exportPersonaFile(targetId, request);
+            await runPorterOperation({ kind: 'export', entity: 'persona' }, (onProgress) =>
+                exportPersonaFile(persona.id, request, onProgress)
+            );
         } catch (error) {
             toast.error({
                 title: $t('persona.toast.export'),

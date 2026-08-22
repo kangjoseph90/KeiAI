@@ -2,6 +2,7 @@ import type { DataScopeType } from '$lib/adapters/db';
 import { PersonaService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiPersonaPackageV1 } from './types';
+import type { PorterProgressReporter } from '../progress';
 import {
     importAssetPayload,
     importAssetPayloads,
@@ -12,6 +13,7 @@ import {
 export interface ImportPersonaOptions {
     scopeType?: DataScopeType;
     allowLightAssets?: boolean;
+    onProgress?: PorterProgressReporter;
 }
 
 function assertPackage(pkg: KeiPersonaPackageV1): void {
@@ -26,9 +28,11 @@ export async function importPersonaPackage(
 ): Promise<string> {
     assertPackage(pkg);
     const scopeType = options.scopeType ?? 'user';
+    const { onProgress } = options;
 
     let personaId: string | undefined = undefined;
     try {
+        onProgress?.({ phase: 'processing-data', completed: 0, total: 0 });
         const persona = await PersonaService.create(
             {
                 name: pkg.persona.name,
@@ -41,6 +45,13 @@ export async function importPersonaPackage(
 
         const assetInputs = importAssetPayloads(pkg.assets, options.allowLightAssets ?? true);
 
+        const assetEntries = Object.entries(pkg.persona.assets.refs).filter(
+            ([portableKey]) => assetInputs[portableKey]
+        );
+        const total = assetEntries.length + (pkg.avatar ? 1 : 0);
+        let completed = 0;
+        onProgress?.({ phase: 'processing-assets', completed, total });
+
         if (pkg.avatar) {
             const avatarInput = materializeImportedAsset(
                 importAssetPayload('avatar', pkg.avatar, options.allowLightAssets ?? true),
@@ -52,11 +63,13 @@ export async function importPersonaPackage(
                 }
             );
             await PersonaService.updateAvatar(persona.id, avatarInput);
+            completed += 1;
+            onProgress?.({ phase: 'processing-assets', completed, total });
         }
 
         const layoutIdMap: Record<string, string> = {};
         const knownAssetIds = new Set<string>();
-        for (const [portableKey, pkgRef] of Object.entries(pkg.persona.assets.refs)) {
+        for (const [portableKey, pkgRef] of assetEntries) {
             const imported = assetInputs[portableKey];
             if (!imported) continue;
 
@@ -76,8 +89,11 @@ export async function importPersonaPackage(
                 knownAssetIds.add(newId);
                 layoutIdMap[portableKey] = newId;
             }
+            completed += 1;
+            onProgress?.({ phase: 'processing-assets', completed, total });
         }
 
+        onProgress?.({ phase: 'finalizing', completed, total });
         const current = await PersonaService.get(persona.id);
         if (current) {
             const fixed = remapImportedAssetFolders({

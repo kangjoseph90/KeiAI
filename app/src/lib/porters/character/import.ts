@@ -2,6 +2,7 @@ import type { DataScopeType } from '$lib/adapters/db';
 import { CharacterService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiCharacterPackageV1 } from './types';
+import type { PorterProgressReporter } from '../progress';
 import {
     importAssetPayload,
     importAssetPayloads,
@@ -13,6 +14,7 @@ import {
 export interface ImportCharacterOptions {
     scopeType?: DataScopeType;
     allowLightAssets?: boolean;
+    onProgress?: PorterProgressReporter;
 }
 
 function assertPackage(pkg: KeiCharacterPackageV1): void {
@@ -27,9 +29,11 @@ export async function importCharacterPackage(
 ): Promise<string> {
     assertPackage(pkg);
     const scopeType = options.scopeType ?? 'user';
+    const { onProgress } = options;
 
     let characterId: string | undefined = undefined;
     try {
+        onProgress?.({ phase: 'processing-data', completed: 0, total: 0 });
         const character = await CharacterService.create(
             {
                 name: pkg.character.name,
@@ -51,6 +55,13 @@ export async function importCharacterPackage(
 
         const assetInputs = importAssetPayloads(pkg.assets, options.allowLightAssets ?? true);
 
+        const assetEntries = Object.entries(pkg.character.assets.refs).filter(
+            ([portableKey]) => assetInputs[portableKey]
+        );
+        const total = assetEntries.length + (pkg.avatar ? 1 : 0);
+        let completed = 0;
+        onProgress?.({ phase: 'processing-assets', completed, total });
+
         if (pkg.avatar) {
             const avatarInput = materializeImportedAsset(
                 importAssetPayload('avatar', pkg.avatar, options.allowLightAssets ?? true),
@@ -62,11 +73,13 @@ export async function importCharacterPackage(
                 }
             );
             await CharacterService.updateAvatar(character.id, avatarInput);
+            completed += 1;
+            onProgress?.({ phase: 'processing-assets', completed, total });
         }
 
         const layoutIdMap: Record<string, string> = {};
         const knownAssetIds = new Set<string>();
-        for (const [portableKey, pkgRef] of Object.entries(pkg.character.assets.refs)) {
+        for (const [portableKey, pkgRef] of assetEntries) {
             const imported = assetInputs[portableKey];
             if (!imported) continue;
 
@@ -86,8 +99,11 @@ export async function importCharacterPackage(
                 knownAssetIds.add(newId);
                 layoutIdMap[portableKey] = newId;
             }
+            completed += 1;
+            onProgress?.({ phase: 'processing-assets', completed, total });
         }
 
+        onProgress?.({ phase: 'finalizing', completed, total });
         const current = await CharacterService.get(character.id);
         if (current) {
             const fixed = remapImportedAssetFolders({

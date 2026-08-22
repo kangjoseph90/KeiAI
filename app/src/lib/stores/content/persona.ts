@@ -4,6 +4,7 @@ import {
     importPersonaPackage as importPersonaPackagePorter,
     type KeiPersonaPackageV1
 } from '$lib/porters/persona';
+import type { PorterProgressReporter } from '$lib/porters/progress';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
@@ -114,12 +115,14 @@ export async function importPersonaPackage(
     options: {
         allowLightAssets?: boolean;
         select?: boolean;
+        onProgress?: PorterProgressReporter;
     } = {}
 ): Promise<Persona> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
     const personaId = await importPersonaPackagePorter(pkg, {
         scopeType,
-        allowLightAssets: options.allowLightAssets
+        allowLightAssets: options.allowLightAssets,
+        onProgress: options.onProgress
     });
 
     const persona = await PersonaService.get(personaId);

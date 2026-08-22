@@ -3,6 +3,7 @@ import type { AssetOwner } from '$lib/adapters/asset';
 import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import type { KeiCharacterPackageV1, KeiCharacterPayload } from './types';
+import type { PorterProgressReporter } from '../progress';
 import { exportAssetPayload, exportEntityList, type KeiPackageExportMode } from '../utils';
 
 export type CharacterCardV3Format = 'png' | 'charx';
@@ -12,8 +13,10 @@ export type CharacterFileExport =
 
 export async function exportCharacterPackage(
     characterId: string,
-    assetMode: KeiPackageExportMode
+    assetMode: KeiPackageExportMode,
+    onProgress?: PorterProgressReporter
 ): Promise<KeiCharacterPackageV1> {
+    onProgress?.({ phase: 'preparing', completed: 0, total: 0 });
     const character = await CharacterService.get(characterId);
     if (!character) {
         throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
@@ -48,16 +51,24 @@ export async function exportCharacterPackage(
 
     // Export list asset blobs keyed by portable layoutId
     const assets = new Map<string, { data?: Uint8Array; hash?: string; encKey?: string }>();
-    for (const [layoutId, ref] of Object.entries(character.assets.refs)) {
+    const assetEntries = Object.entries(character.assets.refs);
+    const total = assetEntries.length + (character.avatar ? 1 : 0);
+    let completed = 0;
+    onProgress?.({ phase: 'processing-assets', completed, total });
+    for (const [layoutId, ref] of assetEntries) {
         const portableId = assetMap[layoutId];
         if (!portableId) continue;
         assets.set(portableId, await exportAssetPayload(ref, owner, assetMode));
+        completed += 1;
+        onProgress?.({ phase: 'processing-assets', completed, total });
     }
 
     // Export avatar blob separately
     let avatar: { data?: Uint8Array; hash?: string; encKey?: string } | undefined;
     if (character.avatar) {
         avatar = await exportAssetPayload(character.avatar, owner, assetMode);
+        completed += 1;
+        onProgress?.({ phase: 'processing-assets', completed, total });
     }
 
     return {

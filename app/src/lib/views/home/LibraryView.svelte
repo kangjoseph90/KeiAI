@@ -36,7 +36,7 @@
         t,
         updateGlobalFolder
     } from '$lib/stores';
-    import { libraryTab, toast } from '$lib/ui';
+    import { libraryTab, runPorterOperation, toast } from '$lib/ui';
     import {
         importCharacterFile,
         navigateToCharacterStudio,
@@ -176,20 +176,30 @@
 
     async function handleImportModule() {
         await runHomeAction('import-module', $t('library.toast.importModule'), async () => {
-            const mod = await importModuleFile({
-                allowLightAssets: isKeiServer(),
-                select: true
-            });
+            const mod = await runPorterOperation(
+                { kind: 'import', entity: 'module' },
+                (onProgress) =>
+                    importModuleFile({
+                        allowLightAssets: isKeiServer(),
+                        select: true,
+                        onProgress
+                    })
+            );
             if (mod && !destroyed) await navigateToModuleStudio(mod.id);
         });
     }
 
     async function handleImportCharacter() {
         await runHomeAction('import-character', $t('library.toast.importCharacter'), async () => {
-            const character = await importCharacterFile({
-                allowLightAssets: isKeiServer(),
-                select: true
-            });
+            const character = await runPorterOperation(
+                { kind: 'import', entity: 'character' },
+                (onProgress) =>
+                    importCharacterFile({
+                        allowLightAssets: isKeiServer(),
+                        select: true,
+                        onProgress
+                    })
+            );
             if (character && !destroyed) {
                 await navigateToCharacterStudio(character.id);
             }
@@ -198,10 +208,15 @@
 
     async function handleImportPersona() {
         await runHomeAction('import-persona', $t('library.toast.importPersona'), async () => {
-            const persona = await importPersonaFile({
-                allowLightAssets: isKeiServer(),
-                select: true
-            });
+            const persona = await runPorterOperation(
+                { kind: 'import', entity: 'persona' },
+                (onProgress) =>
+                    importPersonaFile({
+                        allowLightAssets: isKeiServer(),
+                        select: true,
+                        onProgress
+                    })
+            );
             if (persona && !destroyed) await navigateToPersonaStudio(persona.id);
         });
     }

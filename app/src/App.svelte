@@ -58,6 +58,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { createLogger } from '$lib/adapters/logger';
     import ModalHost from '$lib/components/app/ModalHost.svelte';
+    import PorterProgressDialog from '$lib/components/app/PorterProgressDialog.svelte';
     import ToastHost from '$lib/components/app/ToastHost.svelte';
     import TaskCenter from '$lib/components/app/TaskCenter.svelte';
     import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
@@ -494,5 +495,6 @@
 </main>
 
 <ModalHost />
+<PorterProgressDialog />
 <TaskCenter />
 <ToastHost />

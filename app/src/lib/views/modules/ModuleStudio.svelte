@@ -37,7 +37,7 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { ModuleContent } from '$lib/services';
     import type { ModuleFileExport } from '$lib/porters/module';
-    import { appConfirm, toast } from '$lib/ui';
+    import { appConfirm, runPorterOperation, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import { t } from '$lib/stores';
 
@@ -108,10 +108,13 @@
     }
 
     async function handleExport(id: ExportButton, request: ModuleFileExport) {
-        if (!$activeModule || exporting) return;
+        const mod = $activeModule;
+        if (!mod || exporting) return;
         exporting = id;
         try {
-            await exportModuleFile($activeModule.id, request);
+            await runPorterOperation({ kind: 'export', entity: 'module' }, (onProgress) =>
+                exportModuleFile(mod.id, request, onProgress)
+            );
         } catch (error) {
             toast.error({ title: $t('module.toast.export'), description: getErrorMessage(error) });
         } finally {

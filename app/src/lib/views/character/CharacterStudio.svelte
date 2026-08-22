@@ -42,7 +42,7 @@
     } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { CharacterContent, Greeting } from '$lib/services';
-    import { appConfirm, toast } from '$lib/ui';
+    import { appConfirm, runPorterOperation, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
     // Tab Components
@@ -128,10 +128,13 @@
     }
 
     async function handleExport(id: ExportButton, request: ExportCharacterFileRequest) {
-        if (!$activeCharacter || exporting) return;
+        const character = $activeCharacter;
+        if (!character || exporting) return;
         exporting = id;
         try {
-            await exportCharacterFile($activeCharacter.id, request);
+            await runPorterOperation({ kind: 'export', entity: 'character' }, (onProgress) =>
+                exportCharacterFile(character.id, request, onProgress)
+            );
         } catch (error) {
             toast.error({
                 title: $t('character.toast.export'),

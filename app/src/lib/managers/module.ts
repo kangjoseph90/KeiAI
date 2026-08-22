@@ -6,28 +6,42 @@ import {
     type ModuleFileExport
 } from '$lib/porters/module';
 import { importModulePackage as importModulePackageToStore } from '$lib/stores';
+import type { PorterProgressReporter } from '$lib/porters/progress';
+import { trackPorterProgress } from '$lib/porters/progress';
 import type { Module } from '$lib/services';
 import { sanitizeFileName } from '$lib/utils/file';
 import { appDialog } from '$lib/adapters/dialog';
 
 export async function importModuleFile(
-    options: { allowLightAssets?: boolean; select?: boolean } = {}
+    options: {
+        allowLightAssets?: boolean;
+        select?: boolean;
+        onProgress?: PorterProgressReporter;
+    } = {}
 ): Promise<Module | null> {
     const file = await appDialog.openFile({
         title: 'Import Module',
         filters: [{ name: 'Module files', extensions: ['charx', 'risum', 'keimodule', 'json'] }]
     });
     if (!file) return null;
+    options.onProgress?.({ phase: 'preparing', completed: 0, total: 0 });
     const pkg = await readModuleFile(file);
     return importModulePackageToStore(pkg, {
         allowLightAssets: options.allowLightAssets ?? false,
-        select: options.select
+        select: options.select,
+        onProgress: options.onProgress
     });
 }
 
-export async function exportModuleFile(moduleId: string, request: ModuleFileExport): Promise<void> {
+export async function exportModuleFile(
+    moduleId: string,
+    request: ModuleFileExport,
+    onProgress?: PorterProgressReporter
+): Promise<void> {
     const assetMode = request.kind === 'keimodule' ? request.assetMode : 'baked';
-    const pkg = await exportModulePackage(moduleId, assetMode);
+    const tracked = trackPorterProgress(onProgress);
+    const pkg = await exportModulePackage(moduleId, assetMode, tracked?.report);
+    tracked?.report({ ...tracked.last(), phase: 'finalizing' });
     const bytes = await writeModuleFile(pkg, request);
     const extension = moduleFileExtension(request);
     await appDialog.saveBytes({

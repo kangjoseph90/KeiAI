@@ -11,6 +11,7 @@ import {
     importModulePackage as importModulePackagePorter,
     type KeiModulePackageV1
 } from '$lib/porters/module';
+import type { PorterProgressReporter } from '$lib/porters/progress';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { modules, activeModule, activeModuleId } from '../state';
@@ -101,10 +102,12 @@ export async function importModulePackage(
     options: {
         allowLightAssets?: boolean;
         select?: boolean;
+        onProgress?: PorterProgressReporter;
     } = {}
 ): Promise<Module> {
     const moduleId = await importModulePackagePorter(pkg, {
-        allowLightAssets: options.allowLightAssets
+        allowLightAssets: options.allowLightAssets,
+        onProgress: options.onProgress
     });
 
     const mod = await ModuleService.get(moduleId);

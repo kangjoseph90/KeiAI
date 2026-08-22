@@ -83,7 +83,18 @@ export const componentsMessages = {
         'Your changes are kept in memory. Retry before closing the app.',
     'components.toast.retrySave': 'Retry save',
     'components.toast.working': 'Working…',
-    'components.toast.dismiss': 'Dismiss notification'
+    'components.toast.dismiss': 'Dismiss notification',
+    'components.porterProgress.importTitle': 'Import {:entity}',
+    'components.porterProgress.exportTitle': 'Export {:entity}',
+    'components.porterProgress.character': 'Character',
+    'components.porterProgress.persona': 'Persona',
+    'components.porterProgress.module': 'Module',
+    'components.porterProgress.phasePreparing': 'Preparing…',
+    'components.porterProgress.phaseProcessingData': 'Processing data…',
+    'components.porterProgress.phaseProcessingAssets': 'Processing assets…',
+    'components.porterProgress.phaseFinalizing': 'Finalizing…',
+    'components.porterProgress.assetsCount': 'Assets {:current} / {:total}',
+    'components.porterProgress.failed': 'Failed'
 } as const;
 
 export type ComponentsMessageKey = keyof typeof componentsMessages;

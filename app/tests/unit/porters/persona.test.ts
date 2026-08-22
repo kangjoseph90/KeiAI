@@ -6,6 +6,7 @@ import {
     writePersonaFile,
     type KeiPersonaPackageV1
 } from '$lib/porters/persona';
+import type { PorterProgress } from '$lib/porters/progress';
 import { AssetService } from '$lib/services/asset';
 import { PersonaService, type Persona } from '$lib/services';
 
@@ -176,6 +177,88 @@ describe('persona porters', () => {
             expect.any(File),
             'a'
         );
+    });
+
+    it('reports asset progress while exporting', async () => {
+        vi.mocked(PersonaService.get).mockResolvedValue(persona);
+        vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
+
+        const events: PorterProgress[] = [];
+        await exportPersonaPackage('persona-real', 'baked', (progress) => events.push(progress));
+
+        expect(events).toEqual([
+            { phase: 'preparing', completed: 0, total: 0 },
+            { phase: 'processing-assets', completed: 0, total: 3 },
+            { phase: 'processing-assets', completed: 1, total: 3 },
+            { phase: 'processing-assets', completed: 2, total: 3 },
+            { phase: 'processing-assets', completed: 3, total: 3 }
+        ]);
+    });
+
+    it('reports asset progress while importing', async () => {
+        const pkg = makePackage({
+            avatar: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' },
+            assets: {
+                asset_0: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            }
+        });
+
+        vi.mocked(PersonaService.create).mockResolvedValue({
+            ...persona,
+            id: 'persona-new',
+            avatar: undefined,
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(PersonaService.updateAvatar).mockResolvedValue({
+            ...persona,
+            id: 'persona-new'
+        });
+        vi.mocked(PersonaService.createAsset).mockResolvedValue({
+            ...persona,
+            id: 'persona-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
+        vi.mocked(PersonaService.get).mockResolvedValue({
+            ...persona,
+            id: 'persona-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
+        vi.mocked(PersonaService.update).mockResolvedValue({ ...persona, id: 'persona-new' });
+
+        const events: PorterProgress[] = [];
+        await importPersonaPackage(pkg, { onProgress: (progress) => events.push(progress) });
+
+        expect(events).toEqual([
+            { phase: 'processing-data', completed: 0, total: 0 },
+            { phase: 'processing-assets', completed: 0, total: 2 },
+            { phase: 'processing-assets', completed: 1, total: 2 },
+            { phase: 'processing-assets', completed: 2, total: 2 },
+            { phase: 'finalizing', completed: 2, total: 2 }
+        ]);
     });
 });
 
