@@ -23,6 +23,7 @@
         dropOlderMessages,
         dropNewerMessages,
         consumeCompletedTasks,
+        motionEnabled,
         t
     } from '$lib/stores';
     import { createLogger } from '$lib/adapters/logger';
@@ -394,7 +395,7 @@
         if (scrollContainerEl) {
             scrollContainerEl.scrollTo({
                 top: scrollContainerEl.scrollHeight,
-                behavior: 'smooth'
+                behavior: motionEnabled() ? 'smooth' : 'auto'
             });
         }
     }
@@ -403,6 +404,14 @@
         const element = scrollContainerEl;
         if (!element) {
             cancelGenerationScroll();
+            return;
+        }
+
+        if (!motionEnabled()) {
+            cancelGenerationScroll();
+            element.scrollTop = element.scrollHeight;
+            previousBottomOffset = getDistanceFromBottom(element);
+            showScrollToBottom = false;
             return;
         }
 
@@ -722,7 +731,7 @@
         width: 0;
         overflow: hidden;
         pointer-events: none;
-        transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+        transition: width var(--motion-duration, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .app-chat-panel-stage[data-open='true'] {
@@ -735,7 +744,7 @@
         opacity: 0;
         pointer-events: none;
         transition:
-            right 240ms cubic-bezier(0.22, 1, 0.36, 1),
+            right var(--motion-duration, 240ms) cubic-bezier(0.22, 1, 0.36, 1),
             opacity 120ms ease-out;
     }
 
@@ -772,7 +781,7 @@
                 22.75rem
             );
             transform: translateX(100%);
-            transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+            transition: transform var(--motion-duration, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .app-chat-panel-stage[data-open='true'] {

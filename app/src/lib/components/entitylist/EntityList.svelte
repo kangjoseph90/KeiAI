@@ -1,6 +1,6 @@
 <script lang="ts" generics="T extends { id: string }">
     import { getContext, setContext, tick, type Snippet } from 'svelte';
-    import { flip } from 'svelte/animate';
+    import { flip } from '$lib/stores';
     import {
         COLOR_CLASSES,
         COLOR_BG_CLASSES,

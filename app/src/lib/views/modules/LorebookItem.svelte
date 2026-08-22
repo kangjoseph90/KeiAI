@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { slide } from 'svelte/transition';
+    import { slide } from '$lib/stores';
     import type { Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';

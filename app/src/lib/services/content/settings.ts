@@ -39,10 +39,14 @@ import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource'
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
+/** 'minimal' drops decorative motion; 'none' makes state changes immediate. */
+export type AnimationLevel = 'full' | 'minimal' | 'none';
+
 export interface AppSettingsContent {
     ui: {
         locale: UiLocale;
         showTaskCenter: boolean;
+        animationLevel: AnimationLevel;
     };
     chat: {
         saveMessagesOnSwipe: boolean;
@@ -114,7 +118,8 @@ export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 export const defaultSettings: AppSettings = {
     ui: {
         locale: 'en',
-        showTaskCenter: true
+        showTaskCenter: true,
+        animationLevel: 'full'
     },
     chat: {
         saveMessagesOnSwipe: true,

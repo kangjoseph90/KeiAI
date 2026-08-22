@@ -1,6 +1,6 @@
 <script lang="ts">
     import { ChevronDown, ChevronRight } from 'lucide-svelte';
-    import { slide } from 'svelte/transition';
+    import { slide } from '$lib/stores';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { appSettings, modules, selectActiveModules, updatePreset, t } from '$lib/stores';

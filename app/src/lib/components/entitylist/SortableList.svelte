@@ -1,6 +1,6 @@
 <script lang="ts" generics="T extends { id: string; sortOrder?: string }">
     import { type Snippet } from 'svelte';
-    import { flip } from 'svelte/animate';
+    import { flip } from '$lib/stores';
     import { compareSortOrder } from '$lib/utils/ordering';
     import { generateKeyBetween } from 'fractional-indexing';
     import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';

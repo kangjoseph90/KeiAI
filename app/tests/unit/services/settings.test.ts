@@ -109,6 +109,7 @@ describe('SettingsService', () => {
             expect(result.chat.showUserIdentityOnNarrow).toBe(false);
             expect(result.chat.showTraceSummary).toBe(true);
             expect(result.ui.showTaskCenter).toBe(true);
+            expect(result.ui.animationLevel).toBe('full');
         });
 
         it('should add the default auto-generation setting to older records', async () => {
@@ -136,6 +137,7 @@ describe('SettingsService', () => {
                 showUserIdentityOnNarrow: false,
                 showTraceSummary: true
             });
+            expect(result.ui.animationLevel).toBe('full');
         });
     });
 

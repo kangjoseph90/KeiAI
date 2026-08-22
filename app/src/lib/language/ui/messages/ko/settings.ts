@@ -20,6 +20,12 @@ export const settingsMessages = {
     'settings.general.theme.system': '시스템',
     'settings.general.theme.light': '라이트',
     'settings.general.theme.dark': '다크',
+    'settings.general.animation.label': '애니메이션 수준',
+    'settings.general.animation.description':
+        '성능이 낮은 기기에서 리소스를 아끼도록 UI 애니메이션을 줄입니다.',
+    'settings.general.animation.full': '전체',
+    'settings.general.animation.minimal': '최소',
+    'settings.general.animation.none': '없음',
     'settings.general.taskCenter': '작업 센터 표시',
     'settings.general.taskCenterHelp': '화면에 떠 있는 작업 센터 버튼과 작업 목록을 표시합니다.',
     'settings.general.chatInterface.title': '채팅 인터페이스',

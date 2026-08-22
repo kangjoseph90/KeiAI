@@ -72,6 +72,7 @@ export const systemLogs = readonly(StoreState.systemLogs);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
     appLocale,
+    animationLevel,
     t,
     activePreset,
     isChatRunning,
@@ -138,5 +139,6 @@ export * from './user';
 export * from './sync';
 export * from './init';
 export * from './theme';
+export * from './animation';
 export * from './locale';
 export * from './logs';

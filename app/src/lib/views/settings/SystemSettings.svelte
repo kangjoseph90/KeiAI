@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from 'svelte';
     import { SvelteSet } from 'svelte/reactivity';
-    import { scale, slide } from 'svelte/transition';
+    import { motionEnabled, scale, slide } from '$lib/stores';
     import {
         ArrowDown,
         Copy,
@@ -94,7 +94,10 @@
 
     function scrollToBottom(): void {
         if (!logContainer) return;
-        logContainer.scrollTo({ top: logContainer.scrollHeight, behavior: 'smooth' });
+        logContainer.scrollTo({
+            top: logContainer.scrollHeight,
+            behavior: motionEnabled() ? 'smooth' : 'auto'
+        });
         isAtBottom = true;
         hasNewLogs = false;
     }

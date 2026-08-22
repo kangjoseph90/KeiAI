@@ -33,10 +33,13 @@
         activeRoom,
         themePreference,
         appLocale,
+        animationLevel,
         loadThemePreference,
         loadLocalePreference,
         startLocalePreferenceCache,
         applyTheme,
+        applyAnimationLevel,
+        setPrefersReducedMotion,
         initDefaultContents,
         selectModule
     } from '$lib/stores';
@@ -73,8 +76,10 @@
     // Match Tailwind's `max-lg` range, including fractional CSS viewport widths.
     const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
     const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
+    const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
     let compactShellMedia: MediaQueryList | undefined;
     const systemThemeMedia = window.matchMedia(SYSTEM_THEME_QUERY);
+    const reducedMotionMedia = window.matchMedia(REDUCED_MOTION_QUERY);
     let systemThemeDark = $state(systemThemeMedia.matches);
     let shellTransitionFrame: number | undefined;
     let shellTransitionRestoreFrame: number | undefined;
@@ -145,8 +150,16 @@
         systemThemeDark = event.matches;
     }
 
+    function handleReducedMotionChange(event: MediaQueryListEvent): void {
+        setPrefersReducedMotion(event.matches);
+    }
+
     $effect(() => {
         applyTheme(document.documentElement, $themePreference, systemThemeDark);
+    });
+
+    $effect(() => {
+        applyAnimationLevel(document.documentElement, $animationLevel);
     });
 
     $effect(() => {
@@ -290,6 +303,8 @@
 
     onMount(async () => {
         systemThemeMedia.addEventListener('change', handleSystemThemeChange);
+        setPrefersReducedMotion(reducedMotionMedia.matches);
+        reducedMotionMedia.addEventListener('change', handleReducedMotionChange);
 
         try {
             if (environmentIssue) return;
@@ -338,6 +353,7 @@
         stopSyncStoreBindings();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);
         systemThemeMedia?.removeEventListener('change', handleSystemThemeChange);
+        reducedMotionMedia.removeEventListener('change', handleReducedMotionChange);
         if (shellTransitionFrame !== undefined) cancelAnimationFrame(shellTransitionFrame);
         if (shellTransitionRestoreFrame !== undefined) {
             cancelAnimationFrame(shellTransitionRestoreFrame);

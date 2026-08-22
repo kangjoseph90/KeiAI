@@ -317,14 +317,42 @@ video[src^='data:image/gif;base64,'][src*='#keiai-asset:'] {
     }
 }
 
+/* Animation level policy: CSS keys off html[data-animation-level] (set in
+   stores/animation.ts). 0.01ms instead of 0 so animation/transition end
+   events still fire and presence components unmount. */
+html[data-animation-level='none'],
+html[data-animation-level='none'] *,
+html[data-animation-level='none'] *::before,
+html[data-animation-level='none'] *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+}
+
+/* minimal: keep short color/opacity feedback, drop decorative motion */
+html[data-animation-level='minimal'] {
+    --motion-duration: 0ms;
+}
+
+html[data-animation-level='minimal'] :is(.animate-in, .animate-out, .animate-pulse) {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
         scroll-behavior: auto !important;
         animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+        transition-delay: 0ms !important;
     }
 }
 

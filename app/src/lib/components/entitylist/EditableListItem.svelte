@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Snippet } from 'svelte';
-    import { slide } from 'svelte/transition';
+    import { slide } from '$lib/stores';
 
     interface Props {
         header: Snippet;

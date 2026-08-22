@@ -567,7 +567,7 @@
 
 <style>
     .app-sidebar {
-        transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+        transition: transform var(--motion-duration, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .app-sidebar[data-panel-open='true'] {
@@ -577,7 +577,7 @@
     .app-room-panel-stage {
         width: 360px;
         overflow: hidden;
-        transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+        transition: width var(--motion-duration, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .app-sidebar-backdrop {

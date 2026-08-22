@@ -55,6 +55,7 @@ import { createTranslator, isUiLocale, type UiLocale } from '$lib/language';
 export const appSettings = writable<AppSettings | null>(null);
 export const deviceLocale = writable<UiLocale>('en');
 export const themePreference = writable<ThemePreference>('system');
+export const prefersReducedMotion = writable(false);
 export const activeUser = writable<User | null>(null);
 export const localUsers = writable<User[]>([]);
 
@@ -69,6 +70,11 @@ export const serverTransitionProgress = writable<ConnectionChangeProgress | null
 
 export const appLocale = derived([appSettings, deviceLocale], ([settings, fallback]) =>
     isUiLocale(settings?.ui.locale) ? settings.ui.locale : fallback
+);
+
+/** Effective animation level; OS reduced-motion always escalates to 'none'. */
+export const animationLevel = derived([appSettings, prefersReducedMotion], ([settings, reduced]) =>
+    reduced ? 'none' : (settings?.ui.animationLevel ?? 'full')
 );
 const pseudoLocaleEnabled =
     import.meta.env.DEV &&

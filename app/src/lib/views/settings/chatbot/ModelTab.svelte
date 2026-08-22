@@ -1,6 +1,6 @@
 <script lang="ts">
     import { ChevronDown, ChevronRight } from 'lucide-svelte';
-    import { slide } from 'svelte/transition';
+    import { slide } from '$lib/stores';
     import { Badge } from '$lib/components/ui/badge';
     import ModelConfigCard from './ModelConfigCard.svelte';
     import { appSettings, modules, selectActiveModules, updatePreset, t } from '$lib/stores';

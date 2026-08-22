@@ -1,5 +1,6 @@
 <script lang="ts">
     import { untrack } from 'svelte';
+    import { animationLevel } from '$lib/stores';
 
     interface Props {
         text: string;
@@ -15,11 +16,13 @@
 
     $effect(() => {
         const currentText = text;
+        const level = $animationLevel;
         const prev = untrack(() => previousText);
         previousText = currentText;
 
-        if (currentText === prev) {
+        if (currentText === prev || level !== 'full') {
             displayText = currentText;
+            isTyping = false;
             return;
         }
 

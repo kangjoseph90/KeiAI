@@ -21,7 +21,7 @@
         Upload,
         X
     } from 'lucide-svelte';
-    import { slide } from 'svelte/transition';
+    import { slide } from '$lib/stores';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';

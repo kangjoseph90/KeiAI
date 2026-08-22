@@ -41,6 +41,7 @@
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import type { ThemePreference } from '$lib/stores';
+    import type { AnimationLevel } from '$lib/stores';
     import WorkflowSummaryCard from '$lib/views/workflow/WorkflowSummaryCard.svelte';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
 
@@ -207,6 +208,44 @@
                                         ]}
                                         onChange={(value) =>
                                             handleThemeChange(value as ThemePreference)}
+                                    />
+                                </div>
+
+                                <div class="flex items-center justify-between py-3.5">
+                                    <div class="space-y-0.5 pr-4">
+                                        <Label
+                                            for="setting-animation-level"
+                                            class="text-sm font-medium"
+                                        >
+                                            {$t('settings.general.animation.label')}
+                                        </Label>
+                                        <p class="text-xs text-muted-foreground">
+                                            {$t('settings.general.animation.description')}
+                                        </p>
+                                    </div>
+                                    <OptionSelect
+                                        id="setting-animation-level"
+                                        class="w-auto min-w-28"
+                                        value={$appSettings?.ui?.animationLevel ?? 'full'}
+                                        disabled={settingsBusy}
+                                        options={[
+                                            {
+                                                value: 'full',
+                                                label: $t('settings.general.animation.full')
+                                            },
+                                            {
+                                                value: 'minimal',
+                                                label: $t('settings.general.animation.minimal')
+                                            },
+                                            {
+                                                value: 'none',
+                                                label: $t('settings.general.animation.none')
+                                            }
+                                        ]}
+                                        onChange={(value) =>
+                                            updateSettingsSafely({
+                                                ui: { animationLevel: value as AnimationLevel }
+                                            })}
                                     />
                                 </div>
 

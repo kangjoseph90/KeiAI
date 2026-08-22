@@ -20,6 +20,12 @@ export const settingsMessages = {
     'settings.general.theme.system': 'System',
     'settings.general.theme.light': 'Light',
     'settings.general.theme.dark': 'Dark',
+    'settings.general.animation.label': 'Animation Level',
+    'settings.general.animation.description':
+        'Reduce interface animation to save resources on slower devices.',
+    'settings.general.animation.full': 'Full',
+    'settings.general.animation.minimal': 'Minimal',
+    'settings.general.animation.none': 'None',
     'settings.general.taskCenter': 'Show task center',
     'settings.general.taskCenterHelp': 'Show the floating task center button and task list.',
     'settings.general.chatInterface.title': 'Chat Interface',

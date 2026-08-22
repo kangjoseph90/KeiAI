@@ -96,7 +96,7 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         max-height: 1.25rem;
-        transition: max-height 150ms cubic-bezier(0.4, 0, 0.2, 1);
+        transition: max-height var(--motion-duration, 150ms) cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     /* Apply line-clamp ONLY when fully closed and not animating */

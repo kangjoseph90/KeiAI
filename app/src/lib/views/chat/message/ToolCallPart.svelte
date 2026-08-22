@@ -124,7 +124,7 @@
         grid-template-rows: 0fr;
         opacity: 0;
         transition:
-            grid-template-rows 150ms cubic-bezier(0.4, 0, 0.2, 1),
+            grid-template-rows var(--motion-duration, 150ms) cubic-bezier(0.4, 0, 0.2, 1),
             opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 
