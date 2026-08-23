@@ -226,3 +226,47 @@ describe('Markdown dollar delimiters in CJK text', () => {
         expect(parseMarkdown('값은\\(x^2\\)이다')).toContain('<span class="katex');
     });
 });
+
+describe('Markdown spoilers', () => {
+    it('wraps spoiler content in a marker span', () => {
+        const rendered = parseMarkdown('결말은 ||hero dies|| 입니다');
+
+        expect(rendered).toContain('<span data-keiai-spoiler>hero dies</span>');
+    });
+
+    it('renders Markdown inside a spoiler', () => {
+        const rendered = parseMarkdown('||**bang** 그리고 $x^2$||');
+
+        expect(rendered).toContain('<span data-keiai-spoiler><strong>bang</strong>');
+        expect(rendered).toContain('class="katex');
+    });
+
+    it('keeps unclosed and escaped spoilers literal', () => {
+        expect(parseMarkdown('||partial')).not.toContain('data-keiai-spoiler');
+        expect(parseMarkdown('escaped \\||not spoiler\\||')).not.toContain('data-keiai-spoiler');
+    });
+
+    it('keeps spoilers inside inline code literal', () => {
+        const rendered = parseMarkdown('`a ||b|| c`');
+
+        expect(rendered).toContain('<code>a ||b|| c</code>');
+        expect(rendered).not.toContain('data-keiai-spoiler');
+    });
+});
+
+describe('Markdown code block chrome', () => {
+    it('wraps fenced code with a copy button', () => {
+        const rendered = parseMarkdown('```js\nconst a = 1;\n```');
+
+        expect(rendered).toContain('<div class="keiai-code-block">');
+        expect(rendered).toContain('data-keiai-copy');
+        expect(rendered).toContain('<code class="hljs language-js">');
+    });
+
+    it('marks mermaid fences for diagram hydration', () => {
+        const rendered = parseMarkdown('```mermaid\ngraph TD\nA-->B\n```');
+
+        expect(rendered).toContain('<div class="keiai-code-block" data-keiai-mermaid>');
+        expect(rendered).toContain('A--&gt;B');
+    });
+});

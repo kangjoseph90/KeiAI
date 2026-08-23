@@ -5,6 +5,7 @@
  * - GFM → tables, strikethrough, task lists
  * - Setext headings and indented code blocks are disabled for chat compatibility
  * - KaTeX → LaTeX math with $...$, $$...$$, \(...\), and \[...\] delimiters
+ * - ||...|| spoilers and ```mermaid fences for diagram hydration
  */
 import { Marked, type Token, type Tokenizer, type Tokens } from 'marked';
 import hljs from 'highlight.js';
@@ -26,6 +27,7 @@ const INLINE_DOLLAR_RULE =
     /^(\${1,2})(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n$]))\1(?=[\s?!.,:？！。，：]|$)/;
 const INLINE_PAREN_RULE = /^\\\(((?:\\.|[^\\\n])+?)\\\)/;
 const INLINE_BRACKET_RULE = /^\\\[((?:\\[\s\S]|[^\\])+?)\\\]/;
+const INLINE_SPOILER_RULE = /^\|\|(?!\|)((?:\\.|[^\\\n])+?)\|\|(?!\|)/;
 
 const BLOCK_DOLLAR_RULE = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/;
 const BLOCK_BRACKET_RULE = /^\\\[\n((?:\\[^]|[^\\])+?)\n\\\](?:\n|$)/;
@@ -38,6 +40,9 @@ function escapeHtml(value: string): string {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+
+// Icon-only markup; ui/code-copy.ts provides the accessible label and behavior.
+const CODE_COPY_BUTTON = `<button type="button" class="keiai-code-copy" data-keiai-copy><svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon-check" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>`;
 
 function renderMath(token: MathToken): string {
     try {
@@ -82,6 +87,11 @@ interface QuoteToken extends Tokens.Generic {
     kind: QuoteKind;
     open: string;
     close: string;
+    tokens: Token[];
+}
+
+interface SpoilerToken extends Tokens.Generic {
+    type: 'spoiler';
     tokens: Token[];
 }
 
@@ -248,6 +258,29 @@ const markedInstance = new Marked({
             renderer(token: Tokens.Generic) {
                 return `${renderMath(token as MathToken)}\n`;
             }
+        },
+        {
+            name: 'spoiler',
+            level: 'inline',
+            start(src: string) {
+                const index = src.indexOf('||');
+                return index >= 0 ? index : undefined;
+            },
+            tokenizer(src: string): SpoilerToken | undefined {
+                const match = src.match(INLINE_SPOILER_RULE);
+                if (!match) return undefined;
+
+                return {
+                    type: 'spoiler',
+                    raw: match[0],
+                    tokens: this.lexer.inlineTokens(match[1])
+                };
+            },
+            renderer(token: Tokens.Generic) {
+                const spoiler = token as SpoilerToken;
+                return `<span data-keiai-spoiler>${this.parser.parseInline(spoiler.tokens)}</span>`;
+            },
+            childTokens: ['tokens']
         }
     ],
     tokenizer: {
@@ -289,9 +322,14 @@ const markedInstance = new Marked({
     },
     renderer: {
         code({ text, lang }: { text: string; lang?: string }) {
+            if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
+                const source = escapeHtml(text);
+                return `<div class="keiai-code-block" data-keiai-mermaid><pre><code class="hljs language-mermaid">${source}</code></pre>${CODE_COPY_BUTTON}</div>`;
+            }
+
             const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
             const highlighted = hljs.highlight(text, { language }).value;
-            return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+            return `<div class="keiai-code-block"><pre><code class="hljs language-${language}">${highlighted}</code></pre>${CODE_COPY_BUTTON}</div>`;
         }
     }
 });

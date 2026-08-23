@@ -12,9 +12,14 @@
         sanitizeWithStyle,
         scopeStyleBlocks
     } from '$lib/utils/style';
-    import { reconcileHydratedAssetSlots } from '$lib/components/hydrate';
+    import {
+        reconcileHydratedAssetSlots,
+        hydrateMermaid,
+        isRenderedMermaidPair
+    } from '$lib/components/hydrate';
     import type { RuntimeContext } from '$lib/types/context';
-    import { eventButtons, externalLinks } from '$lib/ui';
+    import { codeCopy, eventButtons, externalLinks, spoilerToggles } from '$lib/ui';
+    import { t } from '$lib/stores';
 
     export interface TextPartRenderContext {
         ctx: RuntimeContext;
@@ -46,6 +51,8 @@
 
     const RENDER_THROTTLE_MS = 150;
 
+    let copyLabel = $derived($t('chat.message.copyCode'));
+
     interface RenderRequest {
         text: string;
         context: TextPartRenderContext;
@@ -69,6 +76,15 @@
                 childrenOnly: true,
                 onBeforeElUpdated: (fromEl, toEl) => {
                     reconcileHydratedAssetSlots(fromEl, toEl);
+                    if (isRenderedMermaidPair(fromEl, toEl)) return false;
+                    if (
+                        fromEl instanceof HTMLElement &&
+                        toEl instanceof HTMLElement &&
+                        fromEl.hasAttribute('data-keiai-spoiler') &&
+                        fromEl.classList.contains('is-revealed')
+                    ) {
+                        toEl.classList.add('is-revealed');
+                    }
                     if (fromEl.isEqualNode(toEl)) return false;
                     return true;
                 }
@@ -200,6 +216,12 @@
         use:morphHtml={renderedHtml}
         use:externalLinks={renderedHtml}
         use:eventButtons={renderContext.ctx}
+        use:spoilerToggles
+        use:codeCopy={copyLabel}
+        use:hydrateMermaid={{
+            html: renderedHtml,
+            generating: renderContext.displayStatus === 'generating'
+        }}
         class="message-text prose prose-sm max-w-none leading-relaxed dark:prose-invert"
     ></div>
 {:else}

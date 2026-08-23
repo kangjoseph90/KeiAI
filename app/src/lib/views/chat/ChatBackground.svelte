@@ -19,7 +19,7 @@
         sanitizeWithStyle
     } from '$lib/utils/style';
     import { parseMarkdownAsync } from '$lib/markdown';
-    import { hydrateAssets } from '$lib/components/hydrate';
+    import { hydrateAssets, hydrateMermaid } from '$lib/components/hydrate';
     import type { RuntimeContext } from '$lib/types/context';
 
     let {
@@ -99,6 +99,7 @@
             class="h-full w-full"
             data-keiai-background-scope={backgroundScope}
             use:hydrateAssets={renderedHtml}
+            use:hydrateMermaid={{ html: renderedHtml, generating: false }}
         >
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify sanitizes above -->
             {@html renderedHtml}

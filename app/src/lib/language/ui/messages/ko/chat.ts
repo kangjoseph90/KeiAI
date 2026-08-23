@@ -111,6 +111,7 @@ export const chatMessages = {
     'chat.message.swipe.next': '다음 스와이프',
     'chat.message.copied': '메시지 복사됨',
     'chat.message.copy': '메시지 복사',
+    'chat.message.copyCode': '코드 복사',
     'chat.message.translation.stop': '번역 중지',
     'chat.message.translation.showOriginalTitle': '원문 표시',
     'chat.message.translation.showTranslationTitle': '번역 표시',

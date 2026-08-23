@@ -112,6 +112,7 @@ export const chatMessages = {
     'chat.message.swipe.next': 'Next swipe',
     'chat.message.copied': 'Copied message',
     'chat.message.copy': 'Copy message',
+    'chat.message.copyCode': 'Copy code',
     'chat.message.translation.stop': 'Stop translation',
     'chat.message.translation.showOriginalTitle': 'Show original',
     'chat.message.translation.showTranslationTitle': 'Show translation',

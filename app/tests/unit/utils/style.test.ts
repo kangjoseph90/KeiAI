@@ -104,6 +104,17 @@ describe('style scoping', () => {
         expect(sanitized.match(/<span class="katex"/g)).toHaveLength(2);
     });
 
+    it('preserves spoiler markers and code copy buttons from Markdown rendering', async () => {
+        const markdown = await parseMarkdownAsync('||secret||\n\n```js\nconst a = 1;\n```');
+        const sanitized = sanitizeWithStyle(markdown);
+
+        expect(sanitized).toContain('<span data-keiai-spoiler="">secret</span>');
+        expect(sanitized).toContain('data-keiai-copy');
+        expect(sanitized).toContain('<svg');
+        expect(sanitized).toContain('d="M4 16');
+        expect(sanitized).not.toContain('<script');
+    });
+
     it('preserves a style block at the start of rendered message HTML', async () => {
         const input =
             '<style>.container { display: grid; place-items: center; width: 100%; }</style><div class="container">Content</div>';

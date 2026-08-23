@@ -99,7 +99,23 @@ export function sanitizeWithStyle(html: string): string {
     return DOMPurify.sanitize(html, {
         FORCE_BODY: true,
         ADD_TAGS: ['style'],
+        // SVG path geometry is inert: it carries no URIs or scripts
+        ADD_URI_SAFE_ATTR: ['d'],
         ALLOWED_URI_REGEXP:
             /^(?:(?:https?|mailto|tel|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
+    });
+}
+
+/**
+ * Diagrams render after Markdown sanitization, so their SVG passes through
+ * its own DOMPurify pass before insertion. Anchors and external images are
+ * forbidden outright: chat messages own link handling, and diagram sources
+ * come from generated content.
+ */
+export function sanitizeMermaidSvg(svg: string): string {
+    return DOMPurify.sanitize(svg, {
+        ADD_TAGS: ['style'],
+        ADD_URI_SAFE_ATTR: ['d'],
+        FORBID_TAGS: ['a', 'script', 'image']
     });
 }

@@ -8,7 +8,7 @@ import {
     type AssetUrlLease
 } from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
-
+import { sanitizeMermaidSvg } from '$lib/utils/style';
 const RESOURCE_ATTRIBUTES = ['src', 'poster', 'href', 'style'] as const;
 const MAX_RETRIES = 2;
 
@@ -444,6 +444,148 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
                 void lease.release();
             }
             leaseCache.clear();
+        }
+    };
+};
+
+// ── Mermaid diagrams ──────────────────────────────────────────────────
+
+const MERMAID_SELECTOR = '[data-keiai-mermaid]';
+
+type MermaidTheme = 'dark' | 'default';
+
+let mermaidTheme = '';
+let mermaidRenderCount = 0;
+
+function currentTheme(): MermaidTheme {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
+}
+
+async function loadMermaid(theme: MermaidTheme) {
+    const mermaid = (await import('mermaid')).default;
+    if (mermaidTheme !== theme) {
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme });
+        mermaidTheme = theme;
+    }
+    return mermaid;
+}
+
+/**
+ * Renders one diagram and re-sanitizes the SVG with the app's DOMPurify
+ * boundary before it reaches the DOM. Throws (leaving the escaped source
+ * block as the fallback) when the source cannot be parsed.
+ */
+export async function renderMermaidSvg(
+    source: string,
+    theme: MermaidTheme = currentTheme()
+): Promise<string> {
+    const mermaid = await loadMermaid(theme);
+    const id = `kei-mermaid-${++mermaidRenderCount}`;
+    try {
+        const { svg } = await mermaid.render(id, source);
+        return sanitizeMermaidSvg(svg);
+    } catch (error) {
+        document.getElementById(id)?.remove();
+        throw error;
+    }
+}
+
+/** Diagram palettes are fixed at render time; re-render when the app theme flips. */
+const mermaidThemeListeners = new Set<() => void>();
+let mermaidThemeObserver: MutationObserver | null = null;
+
+function onMermaidThemeChange(listener: () => void): () => void {
+    mermaidThemeListeners.add(listener);
+
+    if (!mermaidThemeObserver) {
+        mermaidThemeObserver = new MutationObserver(() => {
+            for (const notify of mermaidThemeListeners) notify();
+        });
+        mermaidThemeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+    }
+
+    return () => {
+        mermaidThemeListeners.delete(listener);
+        if (mermaidThemeListeners.size > 0 || !mermaidThemeObserver) return;
+        mermaidThemeObserver.disconnect();
+        mermaidThemeObserver = null;
+    };
+}
+
+/** Keeps a rendered diagram across re-renders while its source is unchanged. */
+export function isRenderedMermaidPair(fromEl: Element, toEl: Element): boolean {
+    if (!fromEl.hasAttribute('data-keiai-mermaid') || !toEl.hasAttribute('data-keiai-mermaid')) {
+        return false;
+    }
+    if (!fromEl.classList.contains('is-rendered')) return false;
+    return fromEl.querySelector('code')?.textContent === toEl.querySelector('code')?.textContent;
+}
+
+export const hydrateMermaid: Action<HTMLElement, { html: string; generating: boolean }> = (
+    node,
+    params
+) => {
+    let destroyed = false;
+
+    function scan(): void {
+        if (destroyed || params.generating) return;
+        for (const block of node.querySelectorAll<HTMLElement>(MERMAID_SELECTOR)) {
+            if (block.classList.contains('is-rendered')) continue;
+            void renderBlock(block);
+        }
+    }
+
+    async function renderBlock(block: HTMLElement): Promise<void> {
+        const code = block.querySelector('code');
+        const source = code?.textContent ?? '';
+        if (!source.trim()) return;
+
+        const theme = currentTheme();
+        let svg: string;
+        try {
+            svg = await renderMermaidSvg(source, theme);
+        } catch {
+            return; // keep the escaped source block as the fallback
+        }
+        if (
+            destroyed ||
+            !node.contains(block) ||
+            code?.textContent !== source ||
+            currentTheme() !== theme
+        ) {
+            return;
+        }
+
+        const holder = document.createElement('div');
+        holder.className = 'keiai-mermaid-svg';
+        holder.innerHTML = svg;
+        block.appendChild(holder);
+        block.classList.add('is-rendered');
+    }
+
+    const observeTheme = onMermaidThemeChange(() => {
+        if (destroyed || mermaidTheme === '' || mermaidTheme === currentTheme()) return;
+        for (const block of node.querySelectorAll<HTMLElement>(MERMAID_SELECTOR)) {
+            if (!block.classList.contains('is-rendered')) continue;
+            block.classList.remove('is-rendered');
+            block.querySelector('.keiai-mermaid-svg')?.remove();
+        }
+        scan();
+    });
+
+    scan();
+
+    return {
+        update(next: { html: string; generating: boolean }) {
+            params = next;
+            scan();
+        },
+        destroy() {
+            destroyed = true;
+            observeTheme();
         }
     };
 };

@@ -5,3 +5,5 @@ export * from './toast';
 export * from './clipboard';
 export * from './external-link';
 export * from './event-button';
+export * from './spoiler';
+export * from './code-copy';

@@ -401,6 +401,74 @@ html[data-animation-level='minimal'] :is(.animate-in, .animate-out, .animate-pul
     overflow-x: auto;
 }
 
+/* Code block chrome: copy button stays pinned while the code scrolls. */
+.prose .keiai-code-block {
+    position: relative;
+}
+
+.prose .keiai-code-copy {
+    @apply flex size-7 items-center justify-center rounded-md border border-border bg-background/80 text-muted-foreground;
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    opacity: 0;
+    transition:
+        opacity 150ms ease,
+        color 150ms ease;
+    backdrop-filter: blur(4px);
+}
+
+.prose .keiai-code-copy:hover {
+    color: var(--foreground);
+}
+
+.prose .keiai-code-block:hover .keiai-code-copy,
+.prose .keiai-code-copy:focus-visible {
+    opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .prose .keiai-code-copy {
+        opacity: 1;
+    }
+}
+
+.prose .keiai-code-copy svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.prose .keiai-code-copy .icon-check {
+    display: none;
+}
+
+.prose .keiai-code-copy.is-copied .icon-copy {
+    display: none;
+}
+
+.prose .keiai-code-copy.is-copied .icon-check {
+    display: block;
+}
+
+/* Mermaid diagrams: rendered SVG replaces the source block, long diagrams scroll. */
+.keiai-code-block .keiai-mermaid-svg svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.keiai-code-block.is-rendered {
+    overflow-x: auto;
+}
+
+.keiai-code-block.is-rendered > pre {
+    display: none;
+}
+
+/* Chat backgrounds are non-interactive decorations; copy buttons there are dead UI. */
+[data-keiai-background-scope] .keiai-code-copy {
+    display: none;
+}
+
 /* Long display equations scroll on their own line instead of stretching the
    message bubble. */
 .prose .katex-display {
@@ -441,4 +509,31 @@ html[data-animation-level='minimal'] :is(.animate-in, .animate-out, .animate-pul
 
 .message-text mark[data-keiai-quote='double'] {
     color: var(--message-quote-double);
+}
+
+/* Spoilers are interactive only in messages; chat backgrounds show them plain. */
+.message-text [data-keiai-spoiler] {
+    border-radius: 0.25rem;
+    background: color-mix(in oklab, currentColor 14%, transparent);
+    cursor: pointer;
+    padding: 0 0.2rem;
+    transition: background 150ms ease;
+}
+
+.message-text [data-keiai-spoiler]:hover {
+    background: color-mix(in oklab, currentColor 22%, transparent);
+}
+
+.message-text [data-keiai-spoiler]:not(.is-revealed),
+.message-text [data-keiai-spoiler]:not(.is-revealed) * {
+    color: transparent !important;
+    user-select: none;
+}
+
+.message-text [data-keiai-spoiler]:not(.is-revealed) :is(code, mark) {
+    background: transparent !important;
+}
+
+.message-text [data-keiai-spoiler].is-revealed {
+    background: color-mix(in oklab, currentColor 6%, transparent);
 }
