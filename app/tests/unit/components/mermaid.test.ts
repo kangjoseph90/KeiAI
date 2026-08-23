@@ -1,9 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { renderMermaidSvg } from '$lib/components/hydrate';
+import { renderMermaidSvg, stripMermaidClickDirectives } from '$lib/components/hydrate';
 import { sanitizeMermaidSvg } from '$lib/utils/style';
+
+describe('mermaid click directives', () => {
+    it('drops click directive lines wherever they appear', () => {
+        const source = [
+            'graph TD',
+            '  A[Normal] --> B[Node]',
+            '  click A "https://evil.example/exploit" "go"',
+            '\tclick B callback "cb"',
+            '  C --> D'
+        ].join('\n');
+
+        expect(stripMermaidClickDirectives(source)).toBe(
+            'graph TD\n  A[Normal] --> B[Node]\n\n\n  C --> D'
+        );
+    });
+
+    it('keeps lines that merely mention click', () => {
+        const source = 'graph TD\n  A[clicked it] --> B[one click away]';
+
+        expect(stripMermaidClickDirectives(source)).toBe(source);
+    });
+});
 
 describe('mermaid diagram security', () => {
     it('renders a diagram through the app sanitize boundary', async () => {
+        // happy-dom cannot lay out diagrams, so label rendering is verified in
+        // the browser; this covers the config and sanitize boundary.
         const svg = await renderMermaidSvg('graph TD\n  A[Start] --> B{Choice}', 'default');
 
         expect(svg).toContain('<svg');

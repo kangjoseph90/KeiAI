@@ -464,10 +464,28 @@ function currentTheme(): MermaidTheme {
 async function loadMermaid(theme: MermaidTheme) {
     const mermaid = (await import('mermaid')).default;
     if (mermaidTheme !== theme) {
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme });
+        // htmlLabels keeps labels as SVG text. DOMPurify's svg profile rejects
+        // HTML-in-foreignObject, so HTML labels would be stripped on sanitize.
+        mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            theme,
+            htmlLabels: false
+        });
         mermaidTheme = theme;
     }
     return mermaid;
+}
+
+const MERMAID_CLICK_LINE = /^[ \t]*click\b[^\n]*$/gm;
+
+/**
+ * Click directives are dead features here (diagram navigation is not allowed)
+ * and their anchor wrappers lose node positions when sanitized away, so the
+ * directive lines are dropped before rendering.
+ */
+export function stripMermaidClickDirectives(source: string): string {
+    return source.replace(MERMAID_CLICK_LINE, '');
 }
 
 /**
@@ -482,7 +500,7 @@ export async function renderMermaidSvg(
     const mermaid = await loadMermaid(theme);
     const id = `kei-mermaid-${++mermaidRenderCount}`;
     try {
-        const { svg } = await mermaid.render(id, source);
+        const { svg } = await mermaid.render(id, stripMermaidClickDirectives(source));
         return sanitizeMermaidSvg(svg);
     } catch (error) {
         document.getElementById(id)?.remove();
