@@ -93,6 +93,17 @@ describe('style scoping', () => {
         expect(sanitized).toContain('<mark data-keiai-quote="double">');
     });
 
+    it('preserves rendered KaTeX markup from Markdown rendering', async () => {
+        const markdown = await parseMarkdownAsync('Inline $x^2$ and\n\n$$\n\\frac{a}{b}\n$$');
+        const sanitized = sanitizeWithStyle(markdown);
+
+        expect(sanitized).toContain('class="katex-display"');
+        expect(sanitized).toContain('class="katex-html"');
+        expect(sanitized).toContain('<math');
+        expect(sanitized).toContain('annotation');
+        expect(sanitized.match(/<span class="katex"/g)).toHaveLength(2);
+    });
+
     it('preserves a style block at the start of rendered message HTML', async () => {
         const input =
             '<style>.container { display: grid; place-items: center; width: 100%; }</style><div class="container">Content</div>';

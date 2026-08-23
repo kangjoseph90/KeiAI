@@ -4,9 +4,76 @@
  * - highlight.js → syntax highlighting for code blocks
  * - GFM → tables, strikethrough, task lists
  * - Setext headings and indented code blocks are disabled for chat compatibility
+ * - KaTeX → LaTeX math with $...$, $$...$$, \(...\), and \[...\] delimiters
  */
 import { Marked, type Token, type Tokenizer, type Tokens } from 'marked';
 import hljs from 'highlight.js';
+import katex from 'katex';
+
+type MathKind = 'inline' | 'display';
+
+interface MathToken extends Tokens.Generic {
+    type: 'inlineMath' | 'blockMath';
+    kind: MathKind;
+    text: string;
+}
+
+// Dollar math requires space/punctuation boundaries on both sides
+// (marked-katex-extension semantics) so money amounts like "$5이고 $3이다"
+// stay literal. CJK-adjacent math ("$x^2$이다") stays literal too; use
+// \(...\), which has no boundary requirements, in unspaced CJK prose.
+const INLINE_DOLLAR_RULE =
+    /^(\${1,2})(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n$]))\1(?=[\s?!.,:？！。，：]|$)/;
+const INLINE_PAREN_RULE = /^\\\(((?:\\.|[^\\\n])+?)\\\)/;
+const INLINE_BRACKET_RULE = /^\\\[((?:\\[\s\S]|[^\\])+?)\\\]/;
+
+const BLOCK_DOLLAR_RULE = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/;
+const BLOCK_BRACKET_RULE = /^\\\[\n((?:\\[^]|[^\\])+?)\n\\\](?:\n|$)/;
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderMath(token: MathToken): string {
+    try {
+        return katex.renderToString(token.text, {
+            displayMode: token.kind === 'display',
+            throwOnError: true,
+            strict: 'ignore'
+        });
+    } catch {
+        return escapeHtml(token.raw);
+    }
+}
+
+function earliestIndex(...indices: number[]): number | undefined {
+    const candidates = indices.filter((index) => index >= 0);
+    return candidates.length ? Math.min(...candidates) : undefined;
+}
+
+function findInlineDollarStart(src: string): number {
+    let offset = 0;
+    let rest = src;
+    while (rest) {
+        const index = rest.indexOf('$');
+        if (index === -1) return -1;
+        if (
+            (index === 0 || rest.charAt(index - 1) === ' ') &&
+            INLINE_DOLLAR_RULE.test(rest.substring(index))
+        ) {
+            return offset + index;
+        }
+        const stripped = rest.substring(index + 1).replace(/^\$+/, '');
+        offset += rest.length - stripped.length;
+        rest = stripped;
+    }
+    return -1;
+}
 
 type QuoteKind = 'single' | 'double';
 
@@ -101,6 +168,86 @@ const markedInstance = new Marked({
                 return `<mark data-keiai-quote="${quote.kind}">${quote.open}${this.parser.parseInline(quote.tokens)}${quote.close}</mark>`;
             },
             childTokens: ['tokens']
+        },
+        {
+            name: 'inlineMath',
+            level: 'inline',
+            start(src: string) {
+                return earliestIndex(
+                    findInlineDollarStart(src),
+                    src.indexOf('\\('),
+                    src.indexOf('\\[')
+                );
+            },
+            tokenizer(src: string): MathToken | undefined {
+                const dollar = src.match(INLINE_DOLLAR_RULE);
+                if (dollar) {
+                    return {
+                        type: 'inlineMath',
+                        raw: dollar[0],
+                        text: dollar[2].trim(),
+                        kind: dollar[1].length === 2 ? 'display' : 'inline'
+                    };
+                }
+
+                const paren = src.match(INLINE_PAREN_RULE);
+                if (paren) {
+                    return {
+                        type: 'inlineMath',
+                        raw: paren[0],
+                        text: paren[1].trim(),
+                        kind: 'inline'
+                    };
+                }
+
+                const bracket = src.match(INLINE_BRACKET_RULE);
+                if (bracket) {
+                    return {
+                        type: 'inlineMath',
+                        raw: bracket[0],
+                        text: bracket[1].trim(),
+                        kind: 'display'
+                    };
+                }
+
+                return undefined;
+            },
+            renderer(token: Tokens.Generic) {
+                return renderMath(token as MathToken);
+            }
+        },
+        {
+            name: 'blockMath',
+            level: 'block',
+            start(src: string) {
+                return earliestIndex(src.search(/\n\${1,2}\n/), src.search(/\n\\\[\n/));
+            },
+            tokenizer(src: string): MathToken | undefined {
+                const dollar = src.match(BLOCK_DOLLAR_RULE);
+                if (dollar) {
+                    return {
+                        type: 'blockMath',
+                        raw: dollar[0],
+                        text: dollar[2].trim(),
+                        kind: dollar[1].length === 2 ? 'display' : 'inline'
+                    };
+                }
+
+                const bracket = src.match(BLOCK_BRACKET_RULE);
+                if (bracket) {
+                    return {
+                        type: 'blockMath',
+                        raw: bracket[0],
+                        text: bracket[1].trim(),
+                        kind: 'display'
+                    };
+                }
+
+                return undefined;
+            },
+            renderer(token: Tokens.Generic) {
+                return `${renderMath(token as MathToken)}\n`;
+            }
         }
     ],
     tokenizer: {

@@ -401,6 +401,14 @@ html[data-animation-level='minimal'] :is(.animate-in, .animate-out, .animate-pul
     overflow-x: auto;
 }
 
+/* Long display equations scroll on their own line instead of stretching the
+   message bubble. */
+.prose .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+}
+
 .message-text[data-keiai-message-role='user'] {
     --code-block: oklch(0.87 0.003 286.32);
 }
