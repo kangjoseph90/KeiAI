@@ -66,6 +66,7 @@ export const commonMessages = {
     'common.noVariables': 'No variables defined.',
     'common.fileFilters.images': 'Images',
     'common.fileFilters.media': 'Images, audio, and video',
+    'common.fileFilters.attachments': 'Supported files',
     'common.error.fallback': 'Unknown error',
     'common.counts.items': { other: '{:count} items', one: '{:count} item' },
     'common.counts.selected': '{:count} selected',

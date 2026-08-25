@@ -4,10 +4,20 @@
 
     export type SyntaxTextareaLanguage =
         | 'javascript'
+        | 'typescript'
         | 'markdown'
         | 'html'
         | 'css'
         | 'json'
+        | 'python'
+        | 'yaml'
+        | 'sql'
+        | 'rust'
+        | 'go'
+        | 'cpp'
+        | 'c'
+        | 'csharp'
+        | 'bash'
         | 'none';
     export type SyntaxTextareaEvent = Event & { currentTarget: HTMLTextAreaElement };
     export type SyntaxTextareaKeyboardEvent = KeyboardEvent & {
@@ -167,7 +177,7 @@
         if (language === 'none') return escapeHtml(source);
         const lang = language === 'html' ? 'xml' : language;
         try {
-            return hljs.highlight(source, { language: lang }).value;
+            return hljs.highlight(source, { language: lang, ignoreIllegals: true }).value;
         } catch {
             return escapeHtml(source);
         }
@@ -320,7 +330,20 @@
     const highlighted = $derived(highlightSource(value, { language, template: isTemplateActive }));
     const resolvedWrap = $derived(
         wrap ??
-            (compact || language === 'javascript' || language === 'css' || language === 'json'
+            (compact ||
+            language === 'javascript' ||
+            language === 'typescript' ||
+            language === 'css' ||
+            language === 'json' ||
+            language === 'python' ||
+            language === 'yaml' ||
+            language === 'sql' ||
+            language === 'rust' ||
+            language === 'go' ||
+            language === 'cpp' ||
+            language === 'c' ||
+            language === 'csharp' ||
+            language === 'bash'
                 ? 'off'
                 : 'soft')
     );
@@ -440,7 +463,11 @@
             {onfocus}
             {onblur}
             class="keiai-syntax-input"
-            style:max-height={compact ? '2rem' : `${maxHeight}px`}
+            style:max-height={compact
+                ? '2rem'
+                : Number.isFinite(maxHeight)
+                  ? `${maxHeight}px`
+                  : 'none'}
         ></textarea>
     </div>
 </div>
@@ -475,6 +502,7 @@
         display: block;
         width: 100%;
         min-height: 100%;
+        height: 100%;
         min-width: 0;
         resize: none;
         overflow: auto;

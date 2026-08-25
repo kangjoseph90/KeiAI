@@ -4,9 +4,9 @@
     import { Label } from '$lib/components/ui/label';
     import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
     import { Button } from '$lib/components/ui/button';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { getErrorMessage } from '$lib/types/errors';
@@ -25,7 +25,7 @@
     let { character, onUpdate, onUpdateAvatar, onRemoveAvatar }: Props = $props();
     let avatarAction = $state<'upload' | 'remove' | null>(null);
     let avatarGalleryOpen = $state(false);
-    let avatarGalleryItems = $derived<MediaGalleryItem[]>(
+    let avatarGalleryItems = $derived<AssetViewerItem[]>(
         character.avatar
             ? [
                   {
@@ -106,7 +106,7 @@
                     title={$t('character.profile.viewAvatar')}
                     onclick={() => (avatarGalleryOpen = true)}
                 >
-                    <AssetView
+                    <MediaView
                         asset={avatarGalleryItems[0]?.asset}
                         alt={character.name}
                         class="size-full object-cover"
@@ -118,7 +118,7 @@
                 <div
                     class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
                 >
-                    <AssetView
+                    <MediaView
                         asset={null}
                         alt={character.name}
                         class="size-full object-cover"
@@ -128,7 +128,7 @@
                         <div class="flex size-full items-center justify-center">
                             <UserRound class="size-10 text-muted-foreground/50" />
                         </div>
-                    </AssetView>
+                    </MediaView>
                 </div>
             {/if}
         </div>
@@ -196,7 +196,7 @@
     </div>
 </div>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={avatarGalleryOpen}
     items={avatarGalleryItems}
     title={$t('character.profile.avatar')}

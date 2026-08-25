@@ -11,10 +11,10 @@
  */
 
 export interface IStorageAdapter {
-    /** Get a renderable URL for the file (Object URL or asset:// protocol) */
-    getRenderUrl(path: string): Promise<string | null>;
+    /** Get a renderable URL whose response preserves the file's content type. */
+    getRenderUrl(path: string, mimeType?: string): Promise<string | null>;
 
-    /** Revoke a previously created render URL (Web only, no-op on Tauri) */
+    /** Revoke a previously created object URL. */
     revokeRenderUrl(url: string): Promise<void>;
 
     /** Write binary data to storage. Creates parent directories if needed. */

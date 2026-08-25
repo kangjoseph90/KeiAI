@@ -24,9 +24,9 @@
     import { Badge } from '$lib/components/ui/badge';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import SyntaxTextarea from '$lib/components/SyntaxTextarea.svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import AdvancedTab from './AdvancedTab.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
@@ -89,7 +89,7 @@
     }
 
     const assetRefs = $derived($activePersona ? listItems($activePersona.assets) : []);
-    const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+    const galleryItems = $derived.by<AssetViewerItem[]>(() => {
         const persona = $activePersona;
         if (!persona) return [];
         return assetRefs.map((ref) => ({
@@ -106,7 +106,7 @@
             }
         }));
     });
-    const avatarGalleryItems = $derived.by<MediaGalleryItem[]>(() => {
+    const avatarGalleryItems = $derived.by<AssetViewerItem[]>(() => {
         const persona = $activePersona;
         if (!persona?.avatar) return [];
         return [
@@ -336,7 +336,7 @@
     <div
         class="flex {sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
     >
-        <AssetView
+        <MediaView
             asset={$activePersona?.avatar
                 ? {
                       scopeType: $activePersona.scopeType,
@@ -356,7 +356,7 @@
             {#if !$activePersona?.avatar}
                 <UserRoundPen class="size-5 text-muted-foreground" />
             {/if}
-        </AssetView>
+        </MediaView>
     </div>
 {/snippet}
 
@@ -386,14 +386,14 @@
                                 {#if $activePersona.avatar}
                                     <button
                                         type="button"
-                                        class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                         aria-label={$t('persona.profile.viewNamedAvatar', {
                                             name: $activePersona.name
                                         })}
                                         title={$t('persona.profile.viewAvatar')}
                                         onclick={() => (avatarGalleryOpen = true)}
                                     >
-                                        <AssetView
+                                        <MediaView
                                             asset={avatarGalleryItems[0]?.asset}
                                             alt={$activePersona.name}
                                             class="size-full object-cover"
@@ -405,7 +405,7 @@
                                     <div
                                         class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
                                     >
-                                        <AssetView
+                                        <MediaView
                                             asset={null}
                                             alt={$activePersona.name}
                                             class="size-full object-cover"
@@ -417,7 +417,7 @@
                                                     class="size-10 text-muted-foreground/50"
                                                 />
                                             </div>
-                                        </AssetView>
+                                        </MediaView>
                                     </div>
                                 {/if}
                             </div>
@@ -541,7 +541,7 @@
                                     <div
                                         class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
                                     >
-                                        <AssetView
+                                        <MediaView
                                             asset={{
                                                 scopeType: $activePersona!.scopeType,
                                                 scopeId: $activePersona!.scopeId,
@@ -621,6 +621,7 @@
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
+                                                class="text-muted-foreground hover:bg-muted hover:text-foreground"
                                                 title={$t('persona.assets.rename')}
                                                 aria-label={$t('persona.assets.renameNamed', {
                                                     name: ref.name
@@ -633,7 +634,7 @@
                                             <Button
                                                 variant="ghost"
                                                 size="icon-sm"
-                                                class="text-destructive hover:text-destructive"
+                                                class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                                 title={$t('common.actions.delete')}
                                                 aria-label={$t('persona.assets.deleteNamed', {
                                                     name: ref.name
@@ -679,7 +680,7 @@
     {/if}
 </WorkspaceShell>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}
@@ -688,7 +689,7 @@
     })}
 />
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={avatarGalleryOpen}
     items={avatarGalleryItems}
     title={$t('persona.profile.avatar')}

@@ -10,7 +10,7 @@
         UserRoundPen,
         Zap
     } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
@@ -575,7 +575,7 @@
                             >
                                 {#snippet visual()}
                                     {#if character.avatar}
-                                        <AssetView
+                                        <MediaView
                                             asset={{
                                                 scopeType: character.scopeType,
                                                 scopeId: character.scopeId,
@@ -738,7 +738,7 @@
                             >
                                 {#snippet visual()}
                                     {#if persona.avatar}
-                                        <AssetView
+                                        <MediaView
                                             asset={{
                                                 scopeType: persona.scopeType,
                                                 scopeId: persona.scopeId,

@@ -373,7 +373,8 @@ migrate(
         name: "data",
         type: "file",
         maxSelect: 1,
-        maxSize: 10 * 1024 * 1024,
+        // Largest client plaintext limit (100 MiB) plus the AES-GCM tag.
+        maxSize: 100 * 1024 * 1024 + 16,
       }),
     );
     catalog.fields.add(new Field({ name: "recoveryProtected", type: "bool" }));

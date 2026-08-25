@@ -10,6 +10,7 @@
 
 import type {
     LLMContentPart,
+    LLMFilePart,
     LLMMessage,
     LLMMediaPart,
     LLMOutputPart,
@@ -72,10 +73,11 @@ type OpenAIRequestContentPart =
     | { type: 'text'; text: string }
     | { type: 'image_url'; image_url: { url: string } }
     | { type: 'input_audio'; input_audio: { data: string; format: string } }
-    | { type: 'video_url'; video_url: { url: string } };
+    | { type: 'video_url'; video_url: { url: string } }
+    | { type: 'file'; file: { filename: string; file_data: string } };
 
 type OpenAIRequestContent = string | OpenAIRequestContentPart[];
-type OpenAIRegularPart = LLMTextPart | LLMMediaPart;
+type OpenAIRegularPart = LLMTextPart | LLMMediaPart | LLMFilePart;
 
 interface OpenAIRequestMessage {
     role: LLMMessage['role'] | 'tool';
@@ -348,7 +350,8 @@ function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
             part.type === 'text' ||
             part.type === 'image' ||
             part.type === 'audio' ||
-            part.type === 'video'
+            part.type === 'video' ||
+            part.type === 'file'
         ) {
             regularParts.push(part);
         } else if (part.type === 'tool_request') {
@@ -404,6 +407,15 @@ function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
 
 function toOpenAIContentPart(part: OpenAIRegularPart): OpenAIRequestContentPart {
     if (part.type === 'text') return part;
+    if (part.type === 'file') {
+        return {
+            type: 'file',
+            file: {
+                filename: part.name,
+                file_data: part.data
+            }
+        };
+    }
     if (part.type === 'audio') {
         return {
             type: 'input_audio',

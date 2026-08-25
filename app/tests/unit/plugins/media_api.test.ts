@@ -77,7 +77,8 @@ describe('plugin media APIs', () => {
 
     it('registers and removes media providers', () => {
         exposed.get('core.addLLMProvider')!('chat', 'llm-fn', {
-            name: 'Plugin Chat'
+            name: 'Plugin Chat',
+            capabilities: ['image_input', 'streaming', 'invalid']
         });
         exposed.get('core.addImageGenProvider')!('images', 'image-fn', {
             name: 'Plugin Images'
@@ -96,6 +97,9 @@ describe('plugin media APIs', () => {
         expect(instance.llmProviders.get('plugin::Example Plugin::chat')?.model.id).toBe(
             'plugin::Example Plugin::chat'
         );
+        expect(
+            instance.llmProviders.get('plugin::Example Plugin::chat')?.model.capabilities
+        ).toEqual(['image_input', 'streaming']);
         expect(instance.imageGenProviders.get('plugin::Example Plugin::images')).toEqual({
             fnId: 'image-fn',
             model: {

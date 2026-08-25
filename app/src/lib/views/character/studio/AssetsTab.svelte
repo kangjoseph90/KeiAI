@@ -2,9 +2,9 @@
     import { Check, Pencil, Trash2, Upload, X } from 'lucide-svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
@@ -37,7 +37,7 @@
     let busyAction = $state<string | null>(null);
     let galleryOpen = $state(false);
     let gallerySelectedId = $state<string | undefined>();
-    let galleryItems = $derived<MediaGalleryItem[]>(
+    let galleryItems = $derived<AssetViewerItem[]>(
         listItems(character.assets).map((ref) => ({
             id: ref.id,
             name: ref.name,
@@ -189,7 +189,7 @@
                 <div
                     class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
                 >
-                    <AssetView
+                    <MediaView
                         asset={{
                             scopeType: character.scopeType,
                             scopeId: character.scopeId,
@@ -262,6 +262,7 @@
                         <Button
                             variant="ghost"
                             size="icon-sm"
+                            class="text-muted-foreground hover:bg-muted hover:text-foreground"
                             title={$t('character.assets.rename')}
                             aria-label={$t('character.assets.renameNamed', { name: ref.name })}
                             disabled={busyAction !== null}
@@ -272,7 +273,7 @@
                         <Button
                             variant="ghost"
                             size="icon-sm"
-                            class="text-destructive hover:text-destructive"
+                            class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                             title={$t('common.actions.delete')}
                             aria-label={$t('character.assets.deleteNamed', { name: ref.name })}
                             disabled={busyAction !== null}
@@ -288,7 +289,7 @@
     </EntityList>
 </section>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}

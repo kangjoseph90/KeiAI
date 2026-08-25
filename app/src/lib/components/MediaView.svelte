@@ -169,19 +169,19 @@
 
     {#if mode === 'thumbnail' && mediaType === 'audio'}
         <div
-            class="flex size-full items-center justify-center bg-muted text-muted-foreground"
+            class="flex size-full items-center justify-center text-muted-foreground"
             title={alt}
             aria-label={alt}
         >
-            <AudioLines class="size-1/3 min-h-5 min-w-5" />
+            <AudioLines class="size-1/2 max-h-8 max-w-8" />
         </div>
     {:else if mode === 'thumbnail' && mediaType === 'video'}
         <div
-            class="flex size-full items-center justify-center bg-muted text-muted-foreground"
+            class="flex size-full items-center justify-center text-muted-foreground"
             title={alt}
             aria-label={alt}
         >
-            <Film class="size-1/3 min-h-5 min-w-5" />
+            <Film class="size-1/2 max-h-8 max-w-8" />
         </div>
     {:else if url}
         {#if mediaType === 'audio'}

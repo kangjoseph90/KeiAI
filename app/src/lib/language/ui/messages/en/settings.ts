@@ -407,6 +407,7 @@ export const settingsMessages = {
     'settings.capabilities.image_input': 'Image Input',
     'settings.capabilities.audio_input': 'Audio Input',
     'settings.capabilities.video_input': 'Video Input',
+    'settings.capabilities.file_input': 'File Input',
     'settings.capabilities.streaming': 'Streaming',
     'settings.capabilities.tool_call': 'Tool Calling',
     'settings.customModels.newName': 'New Custom Model',

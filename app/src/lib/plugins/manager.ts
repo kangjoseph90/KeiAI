@@ -308,18 +308,19 @@ export class PluginManager {
             const options = (opts || {}) as {
                 tokenizer?: LLMTokenizer;
                 name?: string;
-                unsupported?: unknown;
+                capabilities?: unknown;
             };
-            const unsupported = Array.isArray(options.unsupported)
-                ? options.unsupported.filter(
+            const capabilities = Array.isArray(options.capabilities)
+                ? options.capabilities.filter(
                       (capability): capability is LLMCapability =>
                           capability === 'image_input' ||
                           capability === 'audio_input' ||
                           capability === 'video_input' ||
+                          capability === 'file_input' ||
                           capability === 'streaming' ||
                           capability === 'tool_call'
                   )
-                : undefined;
+                : [];
 
             const model: PluginLLMModel = {
                 id: buildPluginModelId(pluginName, mId),
@@ -327,7 +328,7 @@ export class PluginManager {
                 modelId: mId,
                 provider: 'plugin',
                 tokenizer: options.tokenizer || 'o200k_base',
-                unsupported
+                capabilities
             };
 
             instance.llmProviders.set(model.id, { fnId: fId, model });

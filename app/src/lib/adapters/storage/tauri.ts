@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join, dirname } from '@tauri-apps/api/path';
 import type { IStorageAdapter } from './types';
 import { createLogger } from '$lib/adapters/logger';
+import { createRenderBlob } from './render';
 
 const logger = createLogger('adapter:storage:tauri');
 
@@ -41,17 +42,22 @@ export class TauriStorageAdapter implements IStorageAdapter {
         return fullPath;
     }
 
-    async getRenderUrl(path: string): Promise<string | null> {
+    async getRenderUrl(path: string, mimeType?: string): Promise<string | null> {
         const fullPath = await this.resolvePath(path);
         const fileExists = await exists(fullPath);
         if (!fileExists) return null;
 
-        // convertFileSrc produces asset://localhost/... which the webview renders natively.
-        // No memory allocation needed — no revoke required either.
+        if (mimeType && requiresTypedBlob(mimeType)) {
+            const bytes = await readFile(fullPath);
+            return URL.createObjectURL(await createRenderBlob(bytes, mimeType));
+        }
+
         return convertFileSrc(fullPath);
     }
 
-    async revokeRenderUrl(_url: string): Promise<void> {}
+    async revokeRenderUrl(url: string): Promise<void> {
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
 
     async write(path: string, data: Uint8Array | Blob): Promise<void> {
         const fullPath = await this.resolvePath(path, true); // createDirs = true
@@ -89,4 +95,9 @@ export class TauriStorageAdapter implements IStorageAdapter {
             return 0;
         }
     }
+}
+
+function requiresTypedBlob(mimeType: string): boolean {
+    const topLevelType = mimeType.trim().toLowerCase().split('/', 1)[0];
+    return topLevelType !== 'image' && topLevelType !== 'audio' && topLevelType !== 'video';
 }

@@ -66,6 +66,7 @@ export const commonMessages = {
     'common.noVariables': '정의된 변수가 없습니다.',
     'common.fileFilters.images': '이미지',
     'common.fileFilters.media': '이미지, 오디오, 비디오',
+    'common.fileFilters.attachments': '지원되는 파일',
     'common.error.fallback': '알 수 없는 오류',
     'common.counts.items': { other: '{:count}개 항목', one: '{:count}개 항목' },
     'common.counts.selected': '{:count}개 선택됨',

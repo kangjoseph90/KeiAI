@@ -44,6 +44,7 @@
         'image_input',
         'audio_input',
         'video_input',
+        'file_input',
         'streaming',
         'tool_call'
     ];
@@ -70,6 +71,7 @@
                 apiKey: '',
                 handler: 'openai_compatible',
                 tokenizer: 'o200k_base',
+                capabilities: [],
                 sortOrder: generateSortOrder(
                     Object.fromEntries(
                         models.map((model) => [
@@ -161,14 +163,14 @@
 
     function setCapability(
         id: string,
-        unsupported: LLMCapability[] | undefined,
+        current: LLMCapability[],
         capability: LLMCapability,
         enabled: boolean
     ): void {
         const next = enabled
-            ? (unsupported ?? []).filter((item) => item !== capability)
-            : [...new Set([...(unsupported ?? []), capability])];
-        void updateModelSafely(id, { unsupported: next.length > 0 ? next : undefined });
+            ? [...new Set([...current, capability])]
+            : current.filter((item) => item !== capability);
+        void updateModelSafely(id, { capabilities: next });
     }
 </script>
 
@@ -368,14 +370,14 @@
                                                     <input
                                                         type="checkbox"
                                                         class="size-4 accent-primary"
-                                                        checked={!model.unsupported?.includes(
+                                                        checked={model.capabilities.includes(
                                                             capability
                                                         )}
                                                         disabled={busyAction !== null}
                                                         onchange={(event) =>
                                                             setCapability(
                                                                 model.id,
-                                                                model.unsupported,
+                                                                model.capabilities,
                                                                 capability,
                                                                 event.currentTarget.checked
                                                             )}

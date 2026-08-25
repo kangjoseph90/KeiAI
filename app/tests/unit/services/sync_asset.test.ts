@@ -143,6 +143,16 @@ describe('Asset sync', () => {
         );
     });
 
+    it('uploads chat-owned attachments through the same asset queue', async () => {
+        vi.mocked(appAsset.getAllLocalAssets).mockResolvedValue([
+            { ...createRegistryRecord(), ownerTable: 'chats', ownerId: 'chat-123' }
+        ]);
+
+        await engine.start();
+
+        expect(uploadAsset).toHaveBeenCalledWith('old-hash', new Uint8Array([10, 11, 12]));
+    });
+
     it('keeps asset local and enters quota_error when upload quota is exceeded', async () => {
         vi.mocked(uploadAsset).mockRejectedValue(
             new AppError('QUOTA_EXCEEDED', 'Asset quota exceeded.')

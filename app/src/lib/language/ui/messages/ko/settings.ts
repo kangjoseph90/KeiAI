@@ -406,6 +406,7 @@ export const settingsMessages = {
     'settings.capabilities.image_input': '이미지 입력',
     'settings.capabilities.audio_input': '오디오 입력',
     'settings.capabilities.video_input': '비디오 입력',
+    'settings.capabilities.file_input': '파일 입력',
     'settings.capabilities.streaming': '스트리밍',
     'settings.capabilities.tool_call': '도구 호출',
     'settings.customModels.newName': '새 커스텀 모델',

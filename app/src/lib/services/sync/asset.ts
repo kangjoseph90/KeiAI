@@ -100,9 +100,7 @@ export class AssetSyncEngineImpl {
             }))
         );
         const pending = pendingGroups.flatMap(({ syncScope, entries }) =>
-            entries
-                .filter((entry) => entry.ownerTable !== 'chats')
-                .map((entry) => ({ syncScope, entry }))
+            entries.map((entry) => ({ syncScope, entry }))
         );
 
         this.updateStatus({

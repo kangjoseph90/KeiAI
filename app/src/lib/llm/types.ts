@@ -23,6 +23,7 @@ export type LLMThoughtPart = { type: 'thought'; text: string };
 export type LLMImagePart = { type: 'image'; mimeType: string; data: string };
 export type LLMAudioPart = { type: 'audio'; mimeType: string; data: string };
 export type LLMVideoPart = { type: 'video'; mimeType: string; data: string };
+export type LLMFilePart = { type: 'file'; name: string; mimeType: string; data: string };
 export type LLMMediaPart = LLMImagePart | LLMAudioPart | LLMVideoPart;
 export type LLMToolRequestPart = {
     type: 'tool_request';
@@ -54,7 +55,7 @@ export interface LLMStreamHandler {
 
 // ─── Chat Message ────────────────────────────────────────────────────────────
 
-export type LLMContentPart = LLMOutputPart | LLMToolResponsePart;
+export type LLMContentPart = LLMOutputPart | LLMFilePart | LLMToolResponsePart;
 
 /** Provider-neutral multimodal message used throughout the app. */
 export interface LLMMessage {

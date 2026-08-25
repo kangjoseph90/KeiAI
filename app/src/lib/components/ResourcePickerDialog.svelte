@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Check, Library, Search, UserRoundPlus, UsersRound } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import { Button } from '$lib/components/ui/button';
@@ -279,7 +279,7 @@
                             >
                                 {#snippet visual()}
                                     {#if resource.avatar}
-                                        <AssetView
+                                        <MediaView
                                             asset={{
                                                 scopeType: resource.scopeType,
                                                 scopeId: resource.scopeId,

@@ -18,9 +18,9 @@
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import {
         activeChat,
         activePreset,
@@ -52,6 +52,8 @@
         type DictationTask,
         type RecordAudioTask
     } from '$lib/stores';
+    import { FILE_ASSET_EXTENSIONS, getAssetMediaType } from '$lib/types/asset';
+    import { getFileIcon } from '$lib/components/fileDisplay';
     import {
         cancelDictation,
         cancelRecordAudio,
@@ -78,7 +80,6 @@
     import { emitEvent } from '$lib/events';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
-    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
     import type { RuntimeContext } from '$lib/types/context';
     import { type AgentPart } from '$lib/workflow/agent/llm';
     import { untrack } from 'svelte';
@@ -155,7 +156,7 @@
     const activeCommandTask = $derived(
         $activeChat ? ($commandTasks.get($activeChat.id) ?? null) : null
     );
-    const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+    const galleryItems = $derived.by<AssetViewerItem[]>(() => {
         const chat = $activeChat;
         if (!chat) return [];
         return pendingInlays.map((ref) => ({
@@ -524,9 +525,12 @@
     async function handleAttachmentUpload(): Promise<void> {
         if (!$activeChat || attachmentIds.length >= MAX_ATTACHMENTS) return;
         const files = await appDialog.openMultipleFiles({
-            title: $t('chat.composer.attachMediaTitle'),
+            title: $t('chat.composer.attachFilesTitle'),
             filters: [
-                { name: $t('common.fileFilters.media'), extensions: [...MEDIA_ASSET_EXTENSIONS] }
+                {
+                    name: $t('common.fileFilters.attachments'),
+                    extensions: [...FILE_ASSET_EXTENSIONS]
+                }
             ]
         });
         if (files?.length) await attachFiles(files);
@@ -709,40 +713,66 @@
             {/if}
 
             {#if !recordingBusy && pendingInlays.length > 0 && $activeChat}
-                <div class="flex gap-2 overflow-x-auto px-2 pb-2 pt-1">
+                <div class="flex gap-2.5 overflow-x-auto px-2.5 pb-2 pt-2">
                     {#each pendingInlays as ref (ref.id)}
-                        <div class="relative size-18 shrink-0 overflow-visible rounded-lg">
+                        {@const mediaType = getAssetMediaType(ref.mimeType)}
+                        {@const chat = $activeChat}
+                        <div class="relative h-14 shrink-0 overflow-visible">
+                            {#if mediaType === 'other'}
+                                {@const FileIcon = getFileIcon(ref.name, ref.mimeType)}
+                                <button
+                                    type="button"
+                                    class="flex h-14 max-w-52 cursor-zoom-in items-center gap-2.5 rounded-lg border bg-muted/40 px-3 py-2 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    aria-label={$t('chat.composer.attachmentOpen', {
+                                        name: ref.name
+                                    })}
+                                    title={ref.name}
+                                    onclick={() => openGallery(ref.id)}
+                                >
+                                    <FileIcon class="size-5 shrink-0 text-muted-foreground" />
+                                    <span class="truncate text-xs font-medium text-foreground">
+                                        {ref.name}
+                                    </span>
+                                </button>
+                            {:else}
+                                <button
+                                    type="button"
+                                    class="aspect-square h-14 cursor-zoom-in overflow-hidden rounded-lg border bg-muted/40 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    aria-label={$t('chat.composer.attachmentOpen', {
+                                        name: ref.name
+                                    })}
+                                    title={ref.name}
+                                    onclick={() => openGallery(ref.id)}
+                                >
+                                    <MediaView
+                                        asset={{
+                                            scopeType: chat.scopeType,
+                                            scopeId: chat.scopeId,
+                                            ownerTable: 'chats',
+                                            ownerId: chat.id,
+                                            hash: ref.hash,
+                                            encKey: ref.encKey,
+                                            mimeType: ref.mimeType
+                                        }}
+                                        alt={ref.name}
+                                        class="size-full object-cover"
+                                        fallback="none"
+                                    />
+                                </button>
+                            {/if}
                             <button
                                 type="button"
-                                class="absolute inset-0 cursor-zoom-in overflow-hidden rounded-lg border text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                aria-label={$t('chat.composer.attachmentOpen', { name: ref.name })}
-                                onclick={() => openGallery(ref.id)}
-                            >
-                                <AssetView
-                                    asset={{
-                                        scopeType: $activeChat.scopeType,
-                                        scopeId: $activeChat.scopeId,
-                                        ownerTable: 'chats',
-                                        ownerId: $activeChat.id,
-                                        hash: ref.hash,
-                                        encKey: ref.encKey,
-                                        mimeType: ref.mimeType
-                                    }}
-                                    alt={ref.name}
-                                    class="size-full object-cover"
-                                    fallback="none"
-                                />
-                            </button>
-                            <button
-                                type="button"
-                                class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
+                                class="absolute -right-1 -top-1 z-10 flex size-4.5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-xs transition hover:bg-destructive/90"
                                 aria-label={$t('chat.composer.attachmentRemove', {
                                     name: ref.name
                                 })}
                                 onmousedown={(event) => event.preventDefault()}
-                                onclick={() => removeAttachment(ref.id)}
+                                onclick={(event) => {
+                                    event.stopPropagation();
+                                    removeAttachment(ref.id);
+                                }}
                             >
-                                <X class="size-3" />
+                                <X class="size-2.5" />
                             </button>
                         </div>
                     {/each}
@@ -975,7 +1005,7 @@
     </div>
 </div>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={galleryOpen}
     bind:selectedId={selectedGalleryId}
     items={galleryItems}

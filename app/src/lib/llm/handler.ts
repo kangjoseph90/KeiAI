@@ -37,7 +37,7 @@ const logger = createLogger('llm:handler');
 export function selectLLMHandler(
     modelConfig: LLMModelConfig,
     settings: AppSettings
-): { handler: LLMStreamHandler; unsupported: LLMCapabilities } | null {
+): { handler: LLMStreamHandler; capabilities: LLMCapabilities } | null {
     const model = resolveModel(modelConfig, settings);
 
     if (!model) {
@@ -60,7 +60,7 @@ export function selectLLMHandler(
         handler = selectBuiltInHandler(model, settings);
     }
 
-    return handler ? { handler, unsupported: model.unsupported ?? [] } : null;
+    return handler ? { handler, capabilities: model.capabilities } : null;
 }
 
 function selectTransformersHandler(model: TransformersLLMModel): LLMStreamHandler {
@@ -207,7 +207,8 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
             name: modelId,
             modelId,
             provider: config.provider,
-            tokenizer: config.tokenizer ?? 'o200k_base'
+            tokenizer: config.tokenizer ?? 'o200k_base',
+            capabilities: ['image_input', 'audio_input', 'video_input', 'streaming', 'tool_call']
         };
         return model;
     }

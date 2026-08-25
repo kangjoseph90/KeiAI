@@ -98,6 +98,51 @@ export function mimeTypeFromName(name: string): string {
     if (extension === 'm4a') return 'audio/mp4';
     if (extension === 'mp4') return 'video/mp4';
     if (extension === 'mov') return 'video/quicktime';
+    if (extension === 'pdf') return 'application/pdf';
+    if (extension === 'docx') {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (extension === 'pptx') {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    }
+    if (extension === 'xlsx') {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    if (extension === 'txt' || extension === 'log') return 'text/plain';
+    if (extension === 'md' || extension === 'markdown') return 'text/markdown';
+    if (extension === 'csv') return 'text/csv';
+    if (extension === 'tsv') return 'text/tab-separated-values';
+    if (extension === 'html' || extension === 'htm') return 'text/html';
+    if (extension === 'css') return 'text/css';
+    if (extension === 'xml') return 'application/xml';
+    if (extension === 'yaml' || extension === 'yml') return 'application/x-yaml';
+    if (extension === 'toml') return 'application/toml';
+    if (extension === 'sql') return 'application/sql';
+    if (extension === 'js' || extension === 'jsx' || extension === 'ts' || extension === 'tsx') {
+        return 'text/javascript';
+    }
+    if (
+        extension === 'py' ||
+        extension === 'java' ||
+        extension === 'kt' ||
+        extension === 'kts' ||
+        extension === 'c' ||
+        extension === 'h' ||
+        extension === 'cpp' ||
+        extension === 'hpp' ||
+        extension === 'cs' ||
+        extension === 'go' ||
+        extension === 'rs' ||
+        extension === 'rb' ||
+        extension === 'php' ||
+        extension === 'swift' ||
+        extension === 'sh' ||
+        extension === 'bash' ||
+        extension === 'zsh' ||
+        extension === 'ps1'
+    ) {
+        return 'text/plain';
+    }
     if (extension === 'json' || extension === 'keipreset') return 'application/json';
     if (
         extension === 'zip' ||

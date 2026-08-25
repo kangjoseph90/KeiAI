@@ -80,6 +80,15 @@ function isLLMStreamContent(value: unknown): value is LLMStreamContent {
                     'data' in part &&
                     typeof part.data === 'string'
                 );
+            case 'file':
+                return (
+                    'name' in part &&
+                    typeof part.name === 'string' &&
+                    'mimeType' in part &&
+                    typeof part.mimeType === 'string' &&
+                    'data' in part &&
+                    typeof part.data === 'string'
+                );
             case 'tool_request':
                 return (
                     'callId' in part &&

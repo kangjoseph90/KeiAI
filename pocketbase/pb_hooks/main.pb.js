@@ -473,11 +473,12 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
     }
     hash = hash.toLowerCase();
 
-    var body = toBytes(e.request.body, 10 * 1024 * 1024 + 1);
+    var maxAssetBytes = h.maxAssetCiphertextBytes();
+    var body = toBytes(e.request.body, maxAssetBytes + 1);
     if (!body || body.length === 0) {
       return e.json(400, { error: "Missing asset ciphertext." });
     }
-    if (body.length > 10 * 1024 * 1024) {
+    if (body.length > maxAssetBytes) {
       return e.json(413, { error: "Asset too large." });
     }
 
@@ -564,11 +565,12 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
     var owner = h.getMultiRoomUploadOwner(auth, roomId);
     if (owner.status !== 200) return e.json(owner.status, owner.body);
 
-    var body = toBytes(e.request.body, 10 * 1024 * 1024 + 1);
+    var maxAssetBytes = h.maxAssetCiphertextBytes();
+    var body = toBytes(e.request.body, maxAssetBytes + 1);
     if (!body || body.length === 0) {
       return e.json(400, { error: "Missing asset ciphertext." });
     }
-    if (body.length > 10 * 1024 * 1024) {
+    if (body.length > maxAssetBytes) {
       return e.json(413, { error: "Asset too large." });
     }
 

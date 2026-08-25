@@ -147,8 +147,8 @@ export class WebAssetAdapter implements IAssetAdapter {
         return appStorage.exists(storagePath(assetRegistryId(locator)));
     }
 
-    async getRenderUrl(locator: AssetLocator): Promise<string | null> {
-        return appStorage.getRenderUrl(storagePath(assetRegistryId(locator)));
+    async getRenderUrl(locator: AssetLocator, mimeType?: string): Promise<string | null> {
+        return appStorage.getRenderUrl(storagePath(assetRegistryId(locator)), mimeType);
     }
 
     async revokeRenderUrl(url: string): Promise<void> {

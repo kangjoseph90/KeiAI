@@ -1,4 +1,5 @@
 import type { IStorageAdapter } from './types';
+import { createRenderBlob } from './render';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
 import Dexie, { type Table } from 'dexie';
@@ -115,15 +116,21 @@ export class WebStorageAdapter implements IStorageAdapter {
         }
     }
 
-    async getRenderUrl(path: string): Promise<string | null> {
+    async getRenderUrl(
+        path: string,
+        mimeType = 'application/octet-stream'
+    ): Promise<string | null> {
         const root = await this.getOpfsRoot();
         if (root) {
             const handle = await this.getOpfsFileHandle(root, path);
-            if (handle) return URL.createObjectURL(await handle.getFile());
+            if (handle) {
+                const file = await handle.getFile();
+                return URL.createObjectURL(await createRenderBlob(file, mimeType));
+            }
         }
 
         const bytes = await this.fallback.read(path);
-        return bytes ? URL.createObjectURL(new Blob([copyBuffer(bytes)])) : null;
+        return bytes ? URL.createObjectURL(await createRenderBlob(bytes, mimeType)) : null;
     }
 
     async revokeRenderUrl(url: string): Promise<void> {

@@ -5,8 +5,8 @@
 
     import { Label } from '$lib/components/ui/label';
     import * as Avatar from '$lib/components/ui/avatar';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import { Trash2, Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
     import { IMAGE_ASSET_EXTENSIONS } from '$lib/types/asset';
@@ -33,7 +33,7 @@
         avatarDraft === null ? ($activeUser?.avatar ?? '') : avatarDraft
     );
     const canPreviewAvatar = $derived(displayedAvatar.length > 0);
-    const avatarPreviewItems = $derived<MediaGalleryItem[]>(
+    const avatarPreviewItems = $derived<AssetViewerItem[]>(
         canPreviewAvatar
             ? [
                   {
@@ -262,7 +262,7 @@
     </section>
 </div>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={avatarPreviewOpen}
     items={avatarPreviewItems}
     title={$t('settings.profile.galleryTitle')}

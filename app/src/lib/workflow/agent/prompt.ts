@@ -7,7 +7,7 @@
 
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Character, Chat, Persona, Lorebook } from '$lib/services';
-import type { LLMContentPart, LLMMessage } from '../../llm/types';
+import type { LLMContentPart, LLMFilePart, LLMMessage } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
 import { runPipeline } from '$lib/pipeline';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
@@ -88,6 +88,10 @@ interface HistoryPlan {
     tokens: number;
     cutoff: number;
 }
+
+// Providers tokenize native file parts server-side, so the prompt budget only
+// reserves a nominal slot instead of estimating tokens from raw bytes.
+const NATIVE_FILE_TOKEN_ESTIMATE = 1_000;
 
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
@@ -650,12 +654,23 @@ async function renderWithFormat(
 
 async function countMessages(messages: LLMMessage[], tokenizer: LLMTokenizer): Promise<number> {
     if (messages.length === 0) return 0;
-    return TokenCounter.count(
-        messages
-            .map((message) => message.content.map(contentPartForTokenCount).join('\n'))
-            .join('\n'),
-        tokenizer
-    );
+
+    const textParts: string[] = [];
+    const fileCounts: Promise<number>[] = [];
+    for (const message of messages) {
+        for (const part of message.content) {
+            if (part.type === 'file') {
+                fileCounts.push(countFileTokens(part, tokenizer));
+            } else {
+                textParts.push(contentPartForTokenCount(part));
+            }
+        }
+    }
+
+    const textTokens =
+        textParts.length > 0 ? await TokenCounter.count(textParts.join('\n'), tokenizer) : 0;
+    const fileTokens = (await Promise.all(fileCounts)).reduce((total, count) => total + count, 0);
+    return textTokens + fileTokens;
 }
 
 async function countToolDefinitions(toolIds: string[], tokenizer: LLMTokenizer): Promise<number> {
@@ -663,7 +678,7 @@ async function countToolDefinitions(toolIds: string[], tokenizer: LLMTokenizer):
     return TokenCounter.count(JSON.stringify(resolveAgentTools(toolIds)), tokenizer);
 }
 
-function contentPartForTokenCount(part: LLMContentPart): string {
+function contentPartForTokenCount(part: Exclude<LLMContentPart, LLMFilePart>): string {
     switch (part.type) {
         case 'text':
             return part.text;
@@ -684,4 +699,10 @@ function contentPartForTokenCount(part: LLMContentPart): string {
                 isError: part.isError ?? false
             });
     }
+}
+
+function countFileTokens(part: LLMFilePart, tokenizer: LLMTokenizer): Promise<number> {
+    return TokenCounter.count(`[file:${part.name}:${part.mimeType}]`, tokenizer).then(
+        (tokens) => tokens + NATIVE_FILE_TOKEN_ESTIMATE
+    );
 }

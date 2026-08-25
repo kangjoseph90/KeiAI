@@ -15,6 +15,8 @@ import type {
 } from '../types';
 import { getTextContent } from '$lib/workflow/agent/llm';
 import { AppError } from '$lib/types/errors';
+import { officeFileToTextPart } from '$lib/llm/attachments';
+import { fromBase64 } from '$lib/crypto';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
 import { buildUrl } from '$lib/utils/url';
@@ -248,7 +250,17 @@ function toGeminiParts(content: LLMContentPart[]): GeminiContentPart[] {
 function toGeminiPart(part: LLMContentPart): GeminiContentPart | null {
     if (part.type === 'thought') return null;
     if (part.type === 'text') return { text: part.text };
-    if (part.type === 'image' || part.type === 'audio' || part.type === 'video') {
+    if (
+        part.type === 'image' ||
+        part.type === 'audio' ||
+        part.type === 'video' ||
+        part.type === 'file'
+    ) {
+        // Gemini only accepts PDF natively; Office attachments must be converted to text.
+        if (part.type === 'file') {
+            const fallback = officeFileToTextPart(part.name, part.mimeType, fromBase64(part.data));
+            if (fallback) return { text: fallback.text };
+        }
         return { inlineData: { mimeType: part.mimeType, data: part.data } };
     }
     if (part.type === 'tool_request') {

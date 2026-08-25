@@ -1,11 +1,12 @@
 <script lang="ts">
     import { ImageOff } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import { activeChat, t } from '$lib/stores';
     import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
+    import { getFileIcon } from '$lib/components/fileDisplay';
 
     let {
         ids,
@@ -22,6 +23,7 @@
     type InlayMedia = {
         id: string;
         name: string;
+        mimeType: string;
         mediaType: AssetMediaType;
         locator: AssetReadLocator | null;
     };
@@ -37,6 +39,7 @@
                 return {
                     id,
                     name: $t('chat.message.inlay.unavailable'),
+                    mimeType: '',
                     mediaType: 'other',
                     locator: null
                 };
@@ -44,6 +47,7 @@
             return {
                 id: ref.id,
                 name: ref.name,
+                mimeType: ref.mimeType,
                 mediaType: getAssetMediaType(ref.mimeType),
                 locator: {
                     scopeType: chat.scopeType,
@@ -62,7 +66,7 @@
     let audioMedia = $derived(media.filter((item) => item.mediaType === 'audio'));
     let unavailableMedia = $derived(media.filter((item) => !item.locator));
 
-    let galleryItems = $derived<MediaGalleryItem[]>(
+    let galleryItems = $derived<AssetViewerItem[]>(
         media.flatMap((item) =>
             item.locator ? [{ id: item.id, name: item.name, asset: item.locator }] : []
         )
@@ -91,7 +95,7 @@
                     aria-label={$t('chat.message.inlay.open', { name: item.name })}
                     onclick={() => openGallery(item)}
                 >
-                    <AssetView
+                    <MediaView
                         asset={item.locator}
                         alt={item.name}
                         class="w-full"
@@ -111,7 +115,7 @@
                             aria-label={$t('chat.message.inlay.open', { name: item.name })}
                             onclick={() => openGallery(item)}
                         >
-                            <AssetView
+                            <MediaView
                                 asset={item.locator}
                                 alt={item.name}
                                 class="size-full"
@@ -128,7 +132,7 @@
             {#if item.locator}
                 <div class="w-full max-w-xl rounded-lg border bg-muted/30 px-3 py-2">
                     <div class="mb-1 truncate text-xs text-muted-foreground">{item.name}</div>
-                    <AssetView
+                    <MediaView
                         asset={item.locator}
                         alt={item.name}
                         class="w-full"
@@ -150,40 +154,63 @@
         {/each}
     </div>
 {:else}
-    <div class="flex flex-wrap gap-2 py-1">
+    <div class="flex flex-wrap items-center gap-2 py-1">
         {#each media as item (item.id)}
-            <div class="size-24 overflow-hidden rounded-md border bg-muted">
+            {#if item.mediaType === 'other'}
+                {@const FileIcon = getFileIcon(item.name, item.mimeType)}
                 {#if item.locator}
                     <button
                         type="button"
-                        class="size-full cursor-zoom-in text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        class="flex h-14 min-w-36 max-w-xs shrink-0 cursor-zoom-in items-center gap-2.5 rounded-lg border bg-muted/40 px-3 py-2 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         title={$t('chat.message.inlay.open', { name: item.name })}
                         aria-label={$t('chat.message.inlay.open', { name: item.name })}
                         onclick={() => openGallery(item)}
                     >
-                        <AssetView
-                            asset={item.locator}
-                            alt={item.name}
-                            class="size-full"
-                            fallback="none"
-                            mode="thumbnail"
-                        />
+                        <FileIcon class="size-5 shrink-0 text-muted-foreground" />
+                        <span class="truncate text-xs font-medium text-foreground">
+                            {item.name}
+                        </span>
                     </button>
                 {:else}
                     <div
-                        class="flex size-full items-center justify-center text-muted-foreground"
+                        class="flex h-14 min-w-36 max-w-xs shrink-0 items-center gap-2.5 rounded-lg border bg-muted/40 px-3 py-2 text-muted-foreground"
                         title={item.name}
                         aria-label={item.name}
                     >
-                        <ImageOff class="size-5" />
+                        <FileIcon class="size-5 shrink-0" />
+                        <span class="truncate text-xs">{item.name}</span>
                     </div>
                 {/if}
-            </div>
+            {:else if item.locator}
+                <button
+                    type="button"
+                    class="aspect-square size-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-muted/40 text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    title={$t('chat.message.inlay.open', { name: item.name })}
+                    aria-label={$t('chat.message.inlay.open', { name: item.name })}
+                    onclick={() => openGallery(item)}
+                >
+                    <MediaView
+                        asset={item.locator}
+                        alt={item.name}
+                        class="size-full"
+                        fallback="none"
+                        mode="thumbnail"
+                    />
+                </button>
+            {:else}
+                <div
+                    class="flex size-20 shrink-0 items-center justify-center rounded-lg border bg-muted/40 text-muted-foreground"
+                    title={item.name}
+                    aria-label={item.name}
+                >
+                    <ImageOff class="size-5" />
+                </div>
+            {/if}
         {/each}
     </div>
 {/if}
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={galleryOpen}
     bind:selectedId
     items={galleryItems}

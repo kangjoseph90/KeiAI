@@ -167,7 +167,7 @@ describe('AssetService', () => {
         );
     });
 
-    it('rejects unsupported formats in the write path before encryption', async () => {
+    it('accepts supported document formats without changing their bytes', async () => {
         vi.mocked(fileToPlaintext).mockResolvedValue({
             bytes: mockBytes,
             mimeType: 'application/pdf'
@@ -180,9 +180,27 @@ describe('AssetService', () => {
                 ownerTable: 'characters',
                 ownerId: 'char-123'
             })
+        ).resolves.toMatchObject({ name: 'document.pdf', mimeType: 'application/pdf' });
+
+        expect(encryptConvergentAsset).toHaveBeenCalledWith(mockBytes);
+    });
+
+    it('rejects unsupported formats in the write path before encryption', async () => {
+        vi.mocked(fileToPlaintext).mockResolvedValue({
+            bytes: mockBytes,
+            mimeType: 'application/x-msdownload'
+        });
+
+        await expect(
+            AssetService.write(new File([], 'program.exe'), {
+                scopeType: 'user',
+                scopeId: mockUserId,
+                ownerTable: 'characters',
+                ownerId: 'char-123'
+            })
         ).rejects.toMatchObject({
             code: 'ASSET_ERROR',
-            message: 'Unsupported asset format: application/pdf.'
+            message: 'Unsupported asset format: application/x-msdownload.'
         });
 
         expect(encryptConvergentAsset).not.toHaveBeenCalled();
@@ -278,13 +296,16 @@ describe('AssetService', () => {
             ownerTable: 'characters',
             ownerId: 'char-123',
             hash: 'hash-123',
-            encKey: 'enc-key'
+            encKey: 'enc-key',
+            mimeType: 'text/markdown'
         };
         vi.mocked(appAsset.hasAsset).mockResolvedValue(true);
         vi.mocked(appAsset.getRenderUrl).mockResolvedValueOnce('blob:asset-123');
 
         const first = await AssetService.acquireUrl(locator);
         const second = await AssetService.acquireUrl(locator);
+
+        expect(appAsset.getRenderUrl).toHaveBeenCalledWith(locator, 'text/plain;charset=utf-8');
 
         expect(first?.url).toBe('blob:asset-123');
         expect(second?.url).toBe('blob:asset-123');

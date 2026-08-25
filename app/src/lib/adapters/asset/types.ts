@@ -53,7 +53,7 @@ export interface IAssetAdapter {
 
     hasAsset(locator: AssetLocator): Promise<boolean>;
     readAssetBytes(locator: AssetLocator): Promise<Uint8Array | null>;
-    getRenderUrl(locator: AssetLocator): Promise<string | null>;
+    getRenderUrl(locator: AssetLocator, mimeType?: string): Promise<string | null>;
     revokeRenderUrl(url: string): Promise<void>;
     touchAsset(locator: AssetLocator): Promise<void>;
 

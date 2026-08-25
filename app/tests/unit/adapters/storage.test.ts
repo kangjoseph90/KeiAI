@@ -28,8 +28,12 @@ describe('WebStorageAdapter', () => {
         const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fallback');
         const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
-        await expect(adapter.getRenderUrl('assets/fallback.bin')).resolves.toBe('blob:fallback');
-        expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+        await expect(adapter.getRenderUrl('assets/fallback.bin', 'image/png')).resolves.toBe(
+            'blob:fallback'
+        );
+        const renderedBlob = createObjectURL.mock.calls[0][0];
+        expect(renderedBlob).toBeInstanceOf(Blob);
+        expect((renderedBlob as Blob).type).toBe('image/png');
         await adapter.revokeRenderUrl('blob:fallback');
         expect(revokeObjectURL).toHaveBeenCalledWith('blob:fallback');
 
@@ -50,6 +54,32 @@ describe('WebStorageAdapter', () => {
         expect(await adapter.read('assets/rejected.bin')).toEqual(new Uint8Array([9, 8, 7]));
         expect(await adapter.getSize('assets/rejected.bin')).toBe(3);
         expect(getDirectory).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders legacy Korean text bytes as UTF-8 plain text', async () => {
+        setStorage(undefined);
+        const adapter = makeAdapter();
+        await adapter.write('assets/korean.md', new Uint8Array([0xbe, 0xc8, 0xb3, 0xe7]));
+
+        const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:korean');
+        await adapter.getRenderUrl('assets/korean.md', 'text/plain;charset=utf-8');
+
+        const renderedBlob = createObjectURL.mock.calls[0][0] as Blob;
+        expect(renderedBlob.type).toBe('text/plain;charset=utf-8');
+        expect(await renderedBlob.text()).toBe('안녕');
+    });
+
+    it('re-tags transcoded text blobs as UTF-8 regardless of the declared charset', async () => {
+        setStorage(undefined);
+        const adapter = makeAdapter();
+        await adapter.write('assets/legacy.txt', new Uint8Array([0xbe, 0xc8, 0xb3, 0xe7]));
+
+        const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:legacy');
+        await adapter.getRenderUrl('assets/legacy.txt', 'text/plain;charset=euc-kr');
+
+        const renderedBlob = createObjectURL.mock.calls[0][0] as Blob;
+        expect(renderedBlob.type).toBe('text/plain;charset=utf-8');
+        expect(await renderedBlob.text()).toBe('안녕');
     });
 });
 

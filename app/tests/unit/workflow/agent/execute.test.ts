@@ -4,6 +4,16 @@ import type { LLMMessage } from '$lib/llm/types';
 import { getTextContent } from '$lib/workflow/agent/llm';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Chat } from '$lib/services';
+import type { LLMCapabilities } from '$lib/types/models/llm';
+
+const allCapabilities: LLMCapabilities = [
+    'image_input',
+    'audio_input',
+    'video_input',
+    'file_input',
+    'streaming',
+    'tool_call'
+];
 
 const {
     mockSelectLLMHandler,
@@ -138,7 +148,7 @@ describe('executeAgentNode', () => {
                     };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const workflow: WorkflowDefinition = {
@@ -240,7 +250,7 @@ describe('executeAgentNode', () => {
                     };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const workflow: WorkflowDefinition = {
@@ -330,7 +340,7 @@ describe('executeAgentNode', () => {
                     yield { parts: [{ type: 'text', text: 'memory saved' }] };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const workflow: WorkflowDefinition = {
@@ -429,7 +439,7 @@ describe('executeAgentNode', () => {
                     yield { parts: [{ type: 'text', text: 'Hello!' }] };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const workflow: WorkflowDefinition = {
@@ -501,7 +511,7 @@ describe('executeAgentNode', () => {
                     };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const result = await collectFinal(
@@ -542,7 +552,10 @@ describe('executeAgentNode', () => {
             }
             yield { parts: [{ type: 'text', text: 'Finished.' }] };
         });
-        mockSelectLLMHandler.mockReturnValue({ handler: { stream }, unsupported: [] });
+        mockSelectLLMHandler.mockReturnValue({
+            handler: { stream },
+            capabilities: [...allCapabilities]
+        });
 
         const workflow = createToolWorkflow('file_read');
         const values: string[] = [];
@@ -617,7 +630,7 @@ describe('executeAgentNode', () => {
                     yield { parts: [{ type: 'text', text: 'Finished.' }] };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const values: string[] = [];
@@ -696,7 +709,7 @@ describe('executeAgentNode', () => {
                     yield { parts: [{ type: 'text', text: 'Write cancelled.' }] };
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
 
         const values: string[] = [];

@@ -20,6 +20,8 @@ import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
 import { buildUrl } from '$lib/utils/url';
+import { fromBase64 } from '$lib/crypto';
+import { officeFileToTextPart } from '$lib/llm/attachments';
 
 interface AnthropicMessage {
     role: 'user' | 'assistant';
@@ -29,6 +31,7 @@ interface AnthropicMessage {
 type AnthropicContentBlock =
     | { type: 'text'; text: string }
     | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
     | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
     | {
           type: 'tool_result';
@@ -266,6 +269,20 @@ function toAnthropicContentBlock(part: LLMContentPart): AnthropicContentBlock | 
     if (part.type === 'image') {
         return {
             type: 'image',
+            source: { type: 'base64', media_type: part.mimeType, data: part.data }
+        };
+    }
+    if (part.type === 'file') {
+        if (part.mimeType !== 'application/pdf') {
+            const fallback = officeFileToTextPart(part.name, part.mimeType, fromBase64(part.data));
+            if (fallback) return fallback;
+            throw new AppError(
+                'INVALID_INPUT',
+                `Anthropic does not support native ${part.mimeType} attachments`
+            );
+        }
+        return {
+            type: 'document',
             source: { type: 'base64', media_type: part.mimeType, data: part.data }
         };
     }

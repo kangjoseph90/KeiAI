@@ -17,6 +17,8 @@ import type {
     LLMTokenizer,
     LLMType
 } from '$lib/types/models/llm';
+import { fromBase64 } from '$lib/crypto';
+import { officeFileToTextPart } from '$lib/llm/attachments';
 
 const DEFAULT_MAX_RESPONSE = 4096;
 
@@ -55,15 +57,15 @@ export async function resolveLLM(type: LLMType, presetId?: string): Promise<Reso
     }
 
     const parameters = resolveParameters(type, preset.parameters);
-    const { handler, unsupported = [] } = selected;
+    const { handler, capabilities } = selected;
     return {
         tokenizer: modelConfig.tokenizer ?? 'o200k_base',
         stream: (messages, signal, options = {}) =>
-            handler.stream(adaptMessages(messages, unsupported), signal, {
+            handler.stream(adaptMessages(messages, capabilities), signal, {
                 parameters,
                 maxResponse: options.maxResponse,
-                stream: Boolean(options.stream) && !unsupported.includes('streaming'),
-                tools: unsupported.includes('tool_call') ? undefined : options.tools
+                stream: Boolean(options.stream) && capabilities.includes('streaming'),
+                tools: capabilities.includes('tool_call') ? options.tools : undefined
             })
     };
 }
@@ -125,30 +127,36 @@ const mediaCapabilities: Record<LLMMediaPart['type'], LLMCapability> = {
     video: 'video_input'
 };
 
-function adaptMessages(messages: LLMMessage[], unsupported: LLMCapabilities): LLMMessage[] {
-    if (unsupported.length === 0) return messages;
-
+function adaptMessages(messages: LLMMessage[], capabilities: LLMCapabilities): LLMMessage[] {
     return messages
         .map((message) => ({
             ...message,
             content: message.content
-                .map((part): LLMContentPart | null => adaptPart(part, unsupported))
+                .map((part): LLMContentPart | null => adaptPart(part, capabilities))
                 .filter((part): part is LLMContentPart => part !== null)
         }))
         .filter((message) => message.content.length > 0);
 }
 
-function adaptPart(part: LLMContentPart, unsupported: LLMCapabilities): LLMContentPart | null {
+function adaptPart(part: LLMContentPart, capabilities: LLMCapabilities): LLMContentPart | null {
     if (
-        unsupported.includes('tool_call') &&
+        !capabilities.includes('tool_call') &&
         (part.type === 'tool_request' || part.type === 'tool_response')
     ) {
         return null;
     }
     if (part.type !== 'image' && part.type !== 'audio' && part.type !== 'video') {
+        if (part.type === 'file' && !capabilities.includes('file_input')) {
+            const fallback = officeFileToTextPart(part.name, part.mimeType, fromBase64(part.data));
+            if (fallback) return fallback;
+            throw new AppError(
+                'INVALID_INPUT',
+                `The selected model does not support file attachments: ${part.name}`
+            );
+        }
         return part;
     }
-    if (!unsupported.includes(mediaCapabilities[part.type])) {
+    if (capabilities.includes(mediaCapabilities[part.type])) {
         return part;
     }
     return {

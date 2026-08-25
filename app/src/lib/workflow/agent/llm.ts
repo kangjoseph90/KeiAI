@@ -7,6 +7,7 @@ import { getAssetMediaType } from '$lib/types/asset';
 import type { ToolCallStatus } from '$lib/types/tools';
 import type { LLMRole, LLMTypeDefinition } from '$lib/types/models/llm';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import { fileBytesToLLMPart } from '$lib/llm/attachments';
 
 export type AgentTextPart = { type: 'text'; text: string };
 export type AgentToolCall = { id: string; name: string; status: ToolCallStatus };
@@ -209,17 +210,24 @@ export async function loadInlayContent(ids: string[], chat: Chat): Promise<LLMCo
         const ref = chat.inlays.refs[id];
         if (!ref) continue;
 
-        const bytes = await AssetService.readBytes({
+        const locator = {
             scopeType: chat.scopeType,
             scopeId: chat.scopeId,
             ownerTable: 'chats',
             ownerId: chat.id,
             hash: ref.hash
-        });
+        } as const;
+        let bytes = await AssetService.readBytes(locator);
+        if (!bytes && (await AssetService.load({ ...locator, encKey: ref.encKey }))) {
+            bytes = await AssetService.readBytes(locator);
+        }
         if (!bytes) continue;
 
         const mediaType = getAssetMediaType(ref.mimeType);
-        if (mediaType === 'other') continue;
+        if (mediaType === 'other') {
+            parts.push(fileBytesToLLMPart(ref.name, ref.mimeType, bytes));
+            continue;
+        }
         parts.push({
             type: mediaType,
             mimeType: ref.mimeType,

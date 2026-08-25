@@ -21,7 +21,7 @@
         Languages
     } from 'lucide-svelte';
     import { onDestroy, tick, untrack } from 'svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
@@ -729,7 +729,7 @@
             : 'col-start-1'}"
     >
         {#if speakerAvatarLocator}
-            <AssetView
+            <MediaView
                 asset={speakerAvatarLocator}
                 alt={speakerName}
                 class="size-full object-cover"

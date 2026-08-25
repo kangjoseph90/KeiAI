@@ -7,6 +7,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runChat, stopChat, dismissChat } from '$lib/tasks/chat';
 import type { LLMStreamHandler, LLMStreamContent } from '$lib/llm/types';
+import type { LLMCapabilities } from '$lib/types/models/llm';
+
+const allCapabilities: LLMCapabilities = [
+    'image_input',
+    'audio_input',
+    'video_input',
+    'file_input',
+    'streaming',
+    'tool_call'
+];
 
 function textState(text: string): LLMStreamContent {
     return { parts: [{ type: 'text', text }] };
@@ -310,7 +320,7 @@ describe('Chat Pipeline', () => {
                     yield textState('Response');
                 })
             },
-            unsupported: []
+            capabilities: [...allCapabilities]
         });
         // Default: createMessage returns a new message
         vi.mocked(createMessage).mockResolvedValue(
@@ -382,7 +392,10 @@ describe('Chat Pipeline', () => {
                     activeSwipeId: 'swipe-new'
                 }) as Message
         );
-        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            capabilities: [...allCapabilities]
+        });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -462,7 +475,7 @@ describe('Chat Pipeline', () => {
         };
         vi.mocked(selectLLMHandler).mockReturnValue({
             handler: mockHandler,
-            unsupported: ['image_input', 'streaming']
+            capabilities: ['audio_input', 'video_input', 'file_input', 'tool_call']
         });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
@@ -600,7 +613,10 @@ describe('Chat Pipeline', () => {
             swipes: { 'swipe-new': { id: 'swipe-new', parts: [], createdAt: Date.now() } },
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
-        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            capabilities: [...allCapabilities]
+        });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -616,7 +632,10 @@ describe('Chat Pipeline', () => {
                 throw new DOMException('Aborted', 'AbortError');
             })
         };
-        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            capabilities: [...allCapabilities]
+        });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -632,7 +651,10 @@ describe('Chat Pipeline', () => {
                 throw new Error('Network fail');
             })
         };
-        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            capabilities: [...allCapabilities]
+        });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -648,7 +670,10 @@ describe('Chat Pipeline', () => {
             })
         };
 
-        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            capabilities: [...allCapabilities]
+        });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -722,7 +747,10 @@ describe('Chat Pipeline', () => {
                     },
                     activeSwipeId: 'swipe-new'
                 } as unknown as import('$lib/services').Message);
-            vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+            vi.mocked(selectLLMHandler).mockReturnValue({
+                handler: mockHandler,
+                capabilities: [...allCapabilities]
+            });
 
             await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 
@@ -767,7 +795,10 @@ describe('Chat Pipeline', () => {
                 },
                 activeSwipeId: 'swipe-new'
             } as unknown as import('$lib/services').Message);
-            vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
+            vi.mocked(selectLLMHandler).mockReturnValue({
+                handler: mockHandler,
+                capabilities: [...allCapabilities]
+            });
 
             await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 

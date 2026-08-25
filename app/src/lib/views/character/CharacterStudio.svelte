@@ -10,7 +10,7 @@
     } from 'lucide-svelte';
     import { WorkspaceShell } from '$lib/components/layout';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import {
         activeCharacter,
         activeChat,
@@ -174,7 +174,7 @@
     <div
         class="flex {sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
     >
-        <AssetView
+        <MediaView
             asset={$activeCharacter?.avatar
                 ? {
                       scopeType: $activeCharacter.scopeType,
@@ -194,7 +194,7 @@
             {#if !$activeCharacter?.avatar}
                 <UserRound class="size-5 text-muted-foreground" />
             {/if}
-        </AssetView>
+        </MediaView>
     </div>
 {/snippet}
 

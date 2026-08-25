@@ -48,7 +48,18 @@ export async function fileToPlaintext(
 }
 
 function resolveFileMimeType(file: File, bytes: Uint8Array): string {
-    if (file.type && file.type !== 'application/octet-stream') return file.type;
+    const namedMimeType = mimeTypeFromName(file.name);
+    if (file.type && file.type !== 'application/octet-stream') {
+        if (
+            namedMimeType !== 'application/octet-stream' &&
+            !file.type.startsWith('image/') &&
+            !file.type.startsWith('audio/') &&
+            !file.type.startsWith('video/')
+        ) {
+            return namedMimeType;
+        }
+        return file.type;
+    }
 
     if (bytes.length >= 12) {
         const isWebP =
@@ -117,7 +128,7 @@ function resolveFileMimeType(file: File, bytes: Uint8Array): string {
         if (isMp3) return 'audio/mpeg';
     }
 
-    return mimeTypeFromName(file.name);
+    return namedMimeType;
 }
 
 function extensionOf(fileName: string): string {

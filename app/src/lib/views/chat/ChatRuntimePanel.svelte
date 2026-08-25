@@ -1,19 +1,10 @@
 <script lang="ts">
     import type { Snippet } from 'svelte';
-    import {
-        Plus,
-        UserRoundPen,
-        Book,
-        ImageIcon,
-        FileText,
-        Paperclip,
-        Pin,
-        X
-    } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import { Plus, UserRoundPen, Book, Paperclip, Pin, Trash2, FileText } from 'lucide-svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
-    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
-    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
+    import AssetViewerDialog from '$lib/components/AssetViewerDialog.svelte';
+    import type { AssetViewerItem } from '$lib/components/AssetViewerDialog.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
@@ -48,9 +39,10 @@
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
-    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
+    import { FILE_ASSET_EXTENSIONS, getAssetMediaType } from '$lib/types/asset';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
+    import { getFileIcon } from '$lib/components/fileDisplay';
     import type { FolderDef } from '$lib/types/refs';
 
     interface Props {
@@ -75,7 +67,7 @@
     let panelAction = $state<string | null>(null);
     let galleryOpen = $state(false);
     let gallerySelectedId = $state<string | undefined>();
-    let galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+    let galleryItems = $derived.by<AssetViewerItem[]>(() => {
         const chat = $activeChat;
         if (!chat) return [];
         return listItems(chat.inlays).map((ref) => ({
@@ -146,13 +138,13 @@
     async function handleInlayUpload() {
         if ($activeChat?.id !== chatId) return;
         const targetChatId = chatId;
-        await runPanelAction('upload-inlay', $t('chat.toast.uploadGallery'), async () => {
+        await runPanelAction('upload-inlay', $t('chat.toast.uploadAttachments'), async () => {
             const files = await appDialog.openMultipleFiles({
-                title: $t('chat.runtime.gallery.uploadTitle'),
+                title: $t('chat.runtime.attachments.uploadTitle'),
                 filters: [
                     {
-                        name: $t('common.fileFilters.media'),
-                        extensions: [...MEDIA_ASSET_EXTENSIONS]
+                        name: $t('common.fileFilters.attachments'),
+                        extensions: [...FILE_ASSET_EXTENSIONS]
                     }
                 ]
             });
@@ -175,10 +167,10 @@
         const targetChatId = chatId;
         await runPanelAction(
             `delete-inlay:${assetId}`,
-            $t('chat.toast.deleteGalleryImage'),
+            $t('chat.toast.deleteAttachment'),
             async () => {
                 const confirmed = await appConfirm({
-                    title: $t('chat.runtime.gallery.delete'),
+                    title: $t('chat.runtime.attachments.delete'),
                     description: $t('library.room.deleteChatBody', { name }),
                     confirmText: $t('common.confirm.delete'),
                     variant: 'destructive'
@@ -290,12 +282,14 @@
             class="shrink-0 {galleryVisible
                 ? 'bg-sidebar-accent text-foreground'
                 : 'text-muted-foreground hover:text-foreground'}"
-            title={galleryVisible ? $t('chat.context.show') : $t('chat.runtime.gallery.title')}
-            aria-label={galleryVisible ? $t('chat.context.show') : $t('chat.runtime.gallery.title')}
+            title={galleryVisible ? $t('chat.context.show') : $t('chat.runtime.attachments.title')}
+            aria-label={galleryVisible
+                ? $t('chat.context.show')
+                : $t('chat.runtime.attachments.title')}
             aria-pressed={galleryVisible}
             onclick={() => (galleryVisible = !galleryVisible)}
         >
-            <ImageIcon class="size-4" />
+            <Paperclip class="size-4" />
         </Button>
     </div>
 
@@ -353,7 +347,7 @@
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
                             {#snippet personaVisual()}
                                 {#if persona.avatar}
-                                    <AssetView
+                                    <MediaView
                                         asset={{
                                             scopeType: persona.scopeType,
                                             scopeId: persona.scopeId,
@@ -504,8 +498,8 @@
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
-                            <ImageIcon class="size-3" />
-                            {$t('chat.runtime.section.gallery')}
+                            <Paperclip class="size-3" />
+                            {$t('chat.runtime.section.attachments')}
                         </Label>
                         <div class="flex items-center gap-1.5">
                             <Badge variant="outline" class="text-[10px] font-mono"
@@ -516,7 +510,7 @@
                                 size="icon-sm"
                                 disabled={panelAction !== null}
                                 aria-busy={panelAction === 'upload-inlay'}
-                                aria-label={$t('chat.runtime.gallery.upload')}
+                                aria-label={$t('chat.runtime.attachments.upload')}
                                 onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
@@ -526,10 +520,10 @@
                     <EntityList
                         entities={listItems($activeChat.inlays)}
                         config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
-                        layout="grid"
-                        gridClass="chat-runtime-gallery-grid grid gap-1 w-full"
+                        layout="list"
+                        listClass="flex flex-col gap-1 w-full"
                         itemWrapperClass={() =>
-                            'relative w-full p-1 transition-all duration-200 drop-target'}
+                            'relative w-full transition-all duration-200 drop-target'}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createChatFolder(chatId, 'inlays', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -541,62 +535,92 @@
                     >
                         {#snippet empty()}
                             <div class="col-span-full">
-                                <EmptyListPlaceholder message={$t('chat.runtime.gallery.empty')} />
+                                <EmptyListPlaceholder
+                                    message={$t('chat.runtime.attachments.empty')}
+                                />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: ref })}
                             {@const chat = $activeChat!}
+                            {@const mediaType = getAssetMediaType(ref.mimeType)}
                             <div
-                                class="group relative aspect-square cursor-zoom-in overflow-visible rounded-lg"
+                                class="group flex w-full cursor-zoom-in items-center gap-2 rounded-md px-2 py-2 text-sm transition hover:bg-accent/50"
                             >
-                                <div class="absolute inset-0 overflow-hidden rounded-lg border">
-                                    <AssetView
-                                        asset={{
-                                            scopeType: chat.scopeType,
-                                            scopeId: chat.scopeId,
-                                            ownerTable: 'chats',
-                                            ownerId: chat.id,
-                                            hash: ref.hash,
-                                            encKey: ref.encKey,
-                                            mimeType: ref.mimeType
-                                        }}
-                                        alt={ref.name}
-                                        class="size-full object-cover"
-                                        fallback="none"
-                                    />
+                                <div
+                                    class="flex h-7 w-full items-center justify-between gap-2 min-w-0"
+                                >
+                                    <div class="flex min-w-0 flex-1 items-center gap-2">
+                                        <div
+                                            class="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted/40"
+                                        >
+                                            {#if mediaType === 'other'}
+                                                {@const FileIcon = getFileIcon(
+                                                    ref.name,
+                                                    ref.mimeType
+                                                )}
+                                                <FileIcon class="size-3.5 text-muted-foreground" />
+                                            {:else}
+                                                <MediaView
+                                                    asset={{
+                                                        scopeType: chat.scopeType,
+                                                        scopeId: chat.scopeId,
+                                                        ownerTable: 'chats',
+                                                        ownerId: chat.id,
+                                                        hash: ref.hash,
+                                                        encKey: ref.encKey,
+                                                        mimeType: ref.mimeType
+                                                    }}
+                                                    alt={ref.name}
+                                                    class="size-full object-cover"
+                                                    fallback="none"
+                                                />
+                                            {/if}
+                                        </div>
+                                        <span
+                                            class="min-w-0 flex-1 truncate text-sm text-foreground"
+                                        >
+                                            {ref.name}
+                                        </span>
+                                    </div>
+                                    <div
+                                        class="touch-visible flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+                                    >
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            title={$t('chat.runtime.attachments.attach')}
+                                            aria-label={$t('chat.runtime.attachments.attachNamed', {
+                                                name: ref.name
+                                            })}
+                                            onclick={(event) => {
+                                                event.stopPropagation();
+                                                if ($activeChat?.id === chatId) {
+                                                    addChatDraftInlay(chatId, ref.id);
+                                                }
+                                            }}
+                                        >
+                                            <Paperclip class="size-3.5" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                            title={$t('chat.runtime.attachments.delete')}
+                                            aria-label={$t('chat.runtime.attachments.deleteNamed', {
+                                                name: ref.name
+                                            })}
+                                            disabled={panelAction !== null}
+                                            aria-busy={panelAction === `delete-inlay:${ref.id}`}
+                                            onclick={(event) => {
+                                                event.stopPropagation();
+                                                void handleInlayDelete(ref.id, ref.name);
+                                            }}
+                                        >
+                                            <Trash2 class="size-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    class="touch-visible absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity after:absolute after:-inset-2 after:content-[''] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 focus-visible:opacity-100"
-                                    title={$t('chat.runtime.gallery.attach')}
-                                    aria-label={$t('chat.runtime.gallery.attachNamed', {
-                                        name: ref.name
-                                    })}
-                                    onclick={(event) => {
-                                        event.stopPropagation();
-                                        if ($activeChat?.id === chatId) {
-                                            addChatDraftInlay(chatId, ref.id);
-                                        }
-                                    }}
-                                >
-                                    <Paperclip class="size-3" />
-                                </button>
-                                <button
-                                    type="button"
-                                    class="touch-visible absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 shadow-sm transition-opacity after:absolute after:-inset-2 after:content-[''] hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 focus-visible:opacity-100"
-                                    title={$t('chat.runtime.gallery.delete')}
-                                    aria-label={$t('chat.runtime.gallery.deleteNamed', {
-                                        name: ref.name
-                                    })}
-                                    disabled={panelAction !== null}
-                                    aria-busy={panelAction === `delete-inlay:${ref.id}`}
-                                    onclick={(event) => {
-                                        event.stopPropagation();
-                                        void handleInlayDelete(ref.id, ref.name);
-                                    }}
-                                >
-                                    <X class="size-3" />
-                                </button>
                             </div>
                         {/snippet}
                     </EntityList>
@@ -606,11 +630,11 @@
     </ScrollArea>
 </div>
 
-<MediaGalleryDialog
+<AssetViewerDialog
     bind:open={galleryOpen}
     bind:selectedId={gallerySelectedId}
     items={galleryItems}
-    title={$t('chat.runtime.gallery.title')}
+    title={$t('chat.runtime.attachments.title')}
 />
 
 <style>
@@ -618,14 +642,12 @@
         container: chat-runtime-panel / inline-size;
     }
 
-    :global(.chat-runtime-persona-grid),
-    :global(.chat-runtime-gallery-grid) {
+    :global(.chat-runtime-persona-grid) {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     @container chat-runtime-panel (min-width: 20rem) {
-        :global(.chat-runtime-persona-grid),
-        :global(.chat-runtime-gallery-grid) {
+        :global(.chat-runtime-persona-grid) {
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
     }

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { characters } from '$lib/stores';
     import type { Room } from '$lib/services';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import { sortByRefs } from '$lib/utils/ordering';
 
     interface Props {
@@ -54,7 +54,7 @@
                         : ''}"
                 >
                     {#if character.avatar}
-                        <AssetView
+                        <MediaView
                             asset={{
                                 scopeType: character.scopeType,
                                 scopeId: character.scopeId,

@@ -28,7 +28,7 @@ import { fetchAssetCiphertext } from './remote';
 import { sha256, type Bytes } from '$lib/crypto';
 import {
     getAssetMediaType,
-    MEDIA_ASSET_MIME_TYPES,
+    FILE_ASSET_MIME_TYPES,
     type AssetEntries,
     type AssetFields,
     type AssetMediaType,
@@ -38,7 +38,7 @@ import {
 export type { AssetLocator, AssetOwner, AssetReadLocator, AssetRegistryRecord } from './types';
 export { ASSET_URI_MARKER, ASSET_URI_PATTERN, createAssetUri, parseAssetUri } from './uri';
 
-const SUPPORTED_MEDIA_TYPES: readonly AssetMediaType[] = ['image', 'audio', 'video'];
+const SUPPORTED_ASSET_TYPES: readonly AssetMediaType[] = ['image', 'audio', 'video', 'other'];
 
 export interface AssetUrlLease {
     readonly url: string;
@@ -102,10 +102,13 @@ export class AssetService {
 
     private static validateMimeType(
         mimeType: string,
-        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_MEDIA_TYPES
+        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_ASSET_TYPES
     ): AssetMediaType {
-        const normalizedMimeType = mimeType.trim().toLowerCase();
-        if (!(MEDIA_ASSET_MIME_TYPES as readonly string[]).includes(normalizedMimeType)) {
+        const normalizedMimeType = mimeType.trim().toLowerCase().split(';', 1)[0];
+        if (
+            !normalizedMimeType.startsWith('text/') &&
+            !(FILE_ASSET_MIME_TYPES as readonly string[]).includes(normalizedMimeType)
+        ) {
             throw new AppError(
                 'ASSET_ERROR',
                 `Unsupported asset format: ${mimeType || 'unknown'}.`
@@ -125,7 +128,7 @@ export class AssetService {
     static async write(
         file: File,
         owner: AssetOwner,
-        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_MEDIA_TYPES
+        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_ASSET_TYPES
     ): Promise<AssetFields> {
         const { bytes, mimeType, width, height } = await fileToPlaintext(file);
         const mediaType = AssetService.validateMimeType(mimeType, allowedMediaTypes);
@@ -199,7 +202,12 @@ export class AssetService {
     private static async initializeUrlEntry(key: string, entry: AssetUrlCacheEntry): Promise<void> {
         try {
             const success = await AssetService.load(entry.locator);
-            const url = success ? await appAsset.getRenderUrl(entry.locator) : null;
+            const url = success
+                ? await appAsset.getRenderUrl(
+                      entry.locator,
+                      AssetService.renderMimeType(entry.locator.mimeType)
+                  )
+                : null;
             if (AssetService.urlCache.get(key) !== entry) {
                 if (url) await appAsset.revokeRenderUrl(url);
                 return;
@@ -217,6 +225,24 @@ export class AssetService {
         } finally {
             entry.promise = undefined;
         }
+    }
+
+    private static renderMimeType(mimeType?: string): string {
+        const declared = mimeType?.trim().toLowerCase();
+        const normalized = declared?.split(';', 1)[0];
+        if (!normalized) return 'application/octet-stream';
+        if (
+            normalized.startsWith('text/') ||
+            normalized === 'application/json' ||
+            normalized === 'application/xml' ||
+            normalized === 'application/x-yaml' ||
+            normalized === 'application/toml' ||
+            normalized === 'application/sql'
+        ) {
+            const charset = declared.match(/(?:^|;)\s*charset\s*=\s*([\w.-]+)/)?.[1] ?? 'utf-8';
+            return `text/plain;charset=${charset}`;
+        }
+        return declared;
     }
 
     private static createUrlLease(key: string, entry: AssetUrlCacheEntry): AssetUrlLease {

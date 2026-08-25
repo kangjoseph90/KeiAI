@@ -15,7 +15,7 @@
         Wand2,
         X
     } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
+    import MediaView from '$lib/components/MediaView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import MediaEntityCard from '$lib/components/entitylist/MediaEntityCard.svelte';
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
@@ -472,7 +472,7 @@
                             >
                                 {#snippet visual()}
                                     {#if character.avatar}
-                                        <AssetView
+                                        <MediaView
                                             asset={{
                                                 scopeType: character.scopeType,
                                                 scopeId: character.scopeId,

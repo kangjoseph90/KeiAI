@@ -321,7 +321,7 @@ export const guestSDK = String.raw`
             broker.expose(fnId, (messages, config, signal) => {
                 return fn(messages, signal, config);
             });
-            const p = broker.invoke('core.addLLMProvider', [modelId, fnId, { tokenizer: opts.tokenizer, name: opts.name, unsupported: opts.unsupported }]);
+            const p = broker.invoke('core.addLLMProvider', [modelId, fnId, { tokenizer: opts.tokenizer, name: opts.name, capabilities: opts.capabilities }]);
             registrations.push(p);
             return async () => {
                 try {
