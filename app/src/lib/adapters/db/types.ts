@@ -114,6 +114,12 @@ export interface ChatRecord extends DataRecord {
 export interface MessageRecord extends DataRecord {
     chatId: string;
     sortOrder: string;
+    activeSwipeId: string;
+}
+
+export interface DatabaseKeyEntry extends DataScope {
+    primaryKey: string;
+    indexKey: string[];
 }
 
 // ─── Settings ────────────────────────────────────────────────────────
@@ -216,6 +222,14 @@ export interface IDatabaseAdapter {
         limit?: number,
         offset?: number
     ): Promise<T[]>;
+    getKeys(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[],
+        limit?: number,
+        offset?: number
+    ): Promise<DatabaseKeyEntry[]>;
     countRecordsInRange(
         tableName: TableName,
         indexName: string,

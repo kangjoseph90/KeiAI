@@ -15,6 +15,7 @@ import type {
     CharacterRecord,
     ChatRecord,
     MessageRecord,
+    DatabaseKeyEntry,
     SettingsRecord,
     PersonaRecord,
     ModuleRecord,
@@ -51,7 +52,7 @@ class DexieStore extends Dexie {
             presets:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             messages:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+updatedAt], chatId, [chatId+sortOrder], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+updatedAt], chatId, [chatId+sortOrder], [chatId+sortOrder+activeSwipeId+scopeType+scopeId], updatedAt, isDeleted',
             settings:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             personas:
@@ -71,6 +72,7 @@ function scrubSoftDeletedRecord(record: DataRecord, updatedAt: number): void {
     record.updatedAt = updatedAt;
     record.assetEntries = undefined;
     record.data = {};
+    Reflect.deleteProperty(record, 'activeSwipeId');
 }
 
 export class WebDatabaseAdapter implements IDatabaseAdapter {
@@ -337,6 +339,35 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .offset(offset)
             .limit(limit)
             .toArray()) as T[];
+    }
+
+    async getKeys(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[],
+        limit = 50,
+        offset = 0
+    ): Promise<DatabaseKeyEntry[]> {
+        await this.flush();
+        const columns = indexName.slice(1, -1).split('+');
+        const collection = this.getTable<DataRecord>(tableName)
+            .where(indexName)
+            .between([...lowerBound, '\uffff'], upperBound, false, false);
+        const entries: DatabaseKeyEntry[] = [];
+        await collection
+            .offset(offset)
+            .limit(limit)
+            .eachKey((key, cursor) => {
+                const indexKey = key as string[];
+                entries.push({
+                    primaryKey: String(cursor.primaryKey),
+                    indexKey,
+                    scopeType: indexKey[columns.indexOf('scopeType')] as DataScopeType,
+                    scopeId: indexKey[columns.indexOf('scopeId')]
+                });
+            });
+        return entries;
     }
 
     async countRecordsInRange(

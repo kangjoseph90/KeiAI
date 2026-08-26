@@ -1,6 +1,11 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
-import { localDB, type DataScopeType, type MessageRecord } from '$lib/adapters/db';
+import {
+    localDB,
+    type DatabaseKeyEntry,
+    type DataScopeType,
+    type MessageRecord
+} from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -57,6 +62,11 @@ export interface Message extends MessageFields {
     scopeId: string;
 }
 
+export interface MessageIdentity {
+    messageId: string;
+    swipeId: string;
+}
+
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultMessageFields: MessageFields = {
@@ -68,7 +78,10 @@ const defaultMessageFields: MessageFields = {
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseFields(record: MessageRecord): MessageFields {
-    return deepMerge(defaultMessageFields, record.data as DeepPartial<MessageFields>);
+    return {
+        ...deepMerge(defaultMessageFields, record.data as DeepPartial<MessageFields>),
+        activeSwipeId: record.activeSwipeId
+    };
 }
 
 function normalizeChanges(changes: DeepPartial<MessageFields>): DeepPartial<MessageFields> {
@@ -83,9 +96,33 @@ function normalizeChanges(changes: DeepPartial<MessageFields>): DeepPartial<Mess
     return { ...changes, swipes };
 }
 
+function toMessageIdentity(entry: DatabaseKeyEntry): MessageIdentity | null {
+    const [, , swipeId] = entry.indexKey;
+    if (!canAccessScope(entry)) return null;
+    return { messageId: entry.primaryKey, swipeId };
+}
+
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class MessageService {
+    static async getIdentities(
+        chatId: string,
+        beforeSortOrder: string,
+        limit = 50,
+        offset = 0
+    ): Promise<MessageIdentity[]> {
+        await buffer.flushTable('messages');
+        const keys = await localDB.getKeys(
+            'messages',
+            '[chatId+sortOrder+activeSwipeId+scopeType+scopeId]',
+            [chatId, ''],
+            [chatId, beforeSortOrder],
+            limit,
+            offset
+        );
+        return keys.flatMap((key) => toMessageIdentity(key) ?? []);
+    }
+
     /**
      * Cursor-based pagination for UI (loads older messages)
      * Returns messages sorted ascending (oldest first) within the batch
@@ -189,6 +226,7 @@ export class MessageService {
                 scopeId: scope.scopeId,
                 chatId,
                 sortOrder,
+                activeSwipeId: resolved.activeSwipeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -224,7 +262,11 @@ export class MessageService {
 
             buffer.update<MessageRecord>({
                 tableName: 'messages',
-                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                record: {
+                    ...record,
+                    activeSwipeId: updated.activeSwipeId,
+                    data: updated as unknown as Record<string, unknown>
+                },
                 patch: normalized as unknown as Record<string, unknown>
             });
 

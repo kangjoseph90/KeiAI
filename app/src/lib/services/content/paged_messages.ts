@@ -1,5 +1,5 @@
 import { AppError } from '$lib/types/errors';
-import { MessageService, type Message } from './message';
+import { MessageService, type Message, type MessageIdentity } from './message';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -9,6 +9,11 @@ export interface PagedMessagesOptions {
 
 export interface IndexedMessage {
     message: Message;
+    index: number;
+}
+
+export interface IndexedMessageIdentity {
+    identity: MessageIdentity;
     index: number;
 }
 
@@ -58,6 +63,7 @@ export class PagedMessages {
     private readonly pages = new Map<number, Promise<Message[]>>();
     private readonly pagedLength: number;
     private readonly lastMessageId: string | null;
+    private readonly lastMessageIdentity: MessageIdentity | null;
     private lastMessage: Message | null;
     private lastMessageDirty = false;
 
@@ -75,6 +81,9 @@ export class PagedMessages {
         this.beforeSortOrder = beforeSortOrder;
         this.lastMessageId = lastMessage?.id ?? null;
         this.lastMessage = lastMessage ?? null;
+        this.lastMessageIdentity = lastMessage
+            ? { messageId: lastMessage.id, swipeId: lastMessage.activeSwipeId }
+            : null;
     }
 
     static async createBefore(
@@ -141,6 +150,45 @@ export class PagedMessages {
         }
 
         return messages;
+    }
+
+    async identityAt(index: number): Promise<IndexedMessageIdentity | null> {
+        const resolved = normalizeElementIndex(index, this.length);
+        if (resolved === null) return null;
+        return (await this.identitySlice(resolved, resolved + 1))[0] ?? null;
+    }
+
+    async identitySlice(start?: number, end?: number): Promise<IndexedMessageIdentity[]> {
+        const resolvedStart = this.normalizeIndex(start ?? 0);
+        const resolvedEnd = this.normalizeIndex(end ?? this.length);
+        if (resolvedStart >= resolvedEnd) return [];
+
+        const beforeEnd = Math.min(resolvedEnd, this.pagedLength);
+        const identities: IndexedMessageIdentity[] = [];
+        if (resolvedStart < beforeEnd) {
+            const range = await MessageService.getIdentities(
+                this.chatId,
+                this.beforeSortOrder,
+                beforeEnd - resolvedStart,
+                resolvedStart
+            );
+            identities.push(
+                ...range.map((identity, offset) => ({
+                    identity,
+                    index: resolvedStart + offset
+                }))
+            );
+        }
+
+        if (
+            this.lastMessageIdentity &&
+            resolvedStart <= this.pagedLength &&
+            this.pagedLength < resolvedEnd
+        ) {
+            identities.push({ identity: this.lastMessageIdentity, index: this.pagedLength });
+        }
+
+        return identities;
     }
 
     async toArray(): Promise<IndexedMessage[]> {

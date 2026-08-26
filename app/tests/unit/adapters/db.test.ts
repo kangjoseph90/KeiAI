@@ -495,6 +495,108 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
     });
 
+    describe('key-only reads', () => {
+        it('reads ordered identities without returning message data', async () => {
+            const records = [
+                createTestRecord({
+                    id: 'identity-1',
+                    chatId: 'chat-identity',
+                    sortOrder: 'a0',
+                    activeSwipeId: 'swipe-1',
+                    data: { activeSwipeId: 'swipe-1', parts: ['large body'] }
+                }),
+                createTestRecord({
+                    id: 'identity-2',
+                    chatId: 'chat-identity',
+                    sortOrder: 'a1',
+                    activeSwipeId: 'swipe-2',
+                    data: { activeSwipeId: 'swipe-2', parts: ['another large body'] }
+                })
+            ];
+            await localDB.putRecords('messages', records as MessageRecord[]);
+
+            const identities = await localDB.getKeys(
+                'messages',
+                '[chatId+sortOrder+activeSwipeId+scopeType+scopeId]',
+                ['chat-identity', ''],
+                ['chat-identity', '\uffff']
+            );
+
+            expect(identities).toEqual([
+                {
+                    primaryKey: 'identity-1',
+                    indexKey: ['chat-identity', 'a0', 'swipe-1', 'user', 'user-123'],
+                    scopeType: 'user',
+                    scopeId: 'user-123'
+                },
+                {
+                    primaryKey: 'identity-2',
+                    indexKey: ['chat-identity', 'a1', 'swipe-2', 'user', 'user-123'],
+                    scopeType: 'user',
+                    scopeId: 'user-123'
+                }
+            ]);
+            expect(identities[0]).not.toHaveProperty('data');
+        });
+
+        it('uses the projection supplied by the message record', async () => {
+            const record = createTestRecord({
+                id: 'identity-update',
+                chatId: 'chat-identity-update',
+                sortOrder: 'a0',
+                activeSwipeId: 'swipe-1',
+                data: { activeSwipeId: 'swipe-1', parts: ['before'] }
+            }) as MessageRecord;
+            await localDB.putRecord('messages', record);
+
+            const readKeys = () =>
+                localDB.getKeys(
+                    'messages',
+                    '[chatId+sortOrder+activeSwipeId+scopeType+scopeId]',
+                    ['chat-identity-update', ''],
+                    ['chat-identity-update', '\uffff']
+                );
+
+            await expect(readKeys()).resolves.toEqual([
+                {
+                    primaryKey: record.id,
+                    indexKey: ['chat-identity-update', 'a0', 'swipe-1', 'user', 'user-123'],
+                    scopeType: 'user',
+                    scopeId: 'user-123'
+                }
+            ]);
+
+            await localDB.putRecord('messages', {
+                ...record,
+                activeSwipeId: 'swipe-1',
+                data: { activeSwipeId: 'swipe-1', parts: ['content-only edit'] }
+            });
+            await expect(readKeys()).resolves.toEqual([
+                {
+                    primaryKey: record.id,
+                    indexKey: ['chat-identity-update', 'a0', 'swipe-1', 'user', 'user-123'],
+                    scopeType: 'user',
+                    scopeId: 'user-123'
+                }
+            ]);
+
+            await localDB.putRecord('messages', {
+                ...record,
+                activeSwipeId: 'swipe-2',
+                data: { activeSwipeId: 'swipe-2', parts: ['after'] }
+            });
+
+            await expect(readKeys()).resolves.toEqual([
+                {
+                    primaryKey: record.id,
+                    indexKey: ['chat-identity-update', 'a0', 'swipe-2', 'user', 'user-123'],
+                    scopeType: 'user',
+                    scopeId: 'user-123'
+                }
+            ]);
+        });
+    });
+
     describe('getUnsyncedChanges', () => {
         it('should get records inside the requested timestamp window', async () => {
             const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };

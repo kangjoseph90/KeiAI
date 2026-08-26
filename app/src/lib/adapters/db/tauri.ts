@@ -4,9 +4,11 @@ import type {
     TableName,
     DataRecord,
     DataScope,
+    DataScopeType,
     DatabaseWriteEventListener,
     DatabaseWriteOptions,
-    DatabaseWriteOperation
+    DatabaseWriteOperation,
+    DatabaseKeyEntry
 } from './types';
 import { TABLES } from './types';
 import { AppError } from '$lib/types/errors';
@@ -32,6 +34,7 @@ interface DatabaseSqlRow {
     roomId: string | null;
     chatId: string | null;
     sortOrder: string | null;
+    activeSwipeId: string | null;
     createdAt: number | null;
     updatedAt: number | null;
     isDeleted: number; // 0 | 1
@@ -48,6 +51,7 @@ interface RecordBindingShape {
     roomId?: string;
     chatId?: string;
     sortOrder?: string;
+    activeSwipeId?: string;
     createdAt?: number;
     assetEntries?: AssetEntries;
     data?: Record<string, unknown>;
@@ -64,6 +68,7 @@ function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
         roomId: clone.roomId ?? null,
         chatId: clone.chatId ?? null,
         sortOrder: clone.sortOrder ?? null,
+        activeSwipeId: clone.activeSwipeId ?? null,
         createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
         isDeleted: clone.isDeleted ? 1 : 0,
@@ -83,6 +88,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         roomId: row.roomId ?? undefined,
         chatId: row.chatId ?? undefined,
         sortOrder: row.sortOrder ?? undefined,
+        activeSwipeId: row.activeSwipeId ?? undefined,
         createdAt: row.createdAt ?? 0,
         updatedAt: row.updatedAt ?? 0,
         isDeleted: row.isDeleted === 1,
@@ -96,14 +102,23 @@ function scrubSoftDeletedRecord(record: DataRecord, updatedAt: number): void {
     record.updatedAt = updatedAt;
     record.assetEntries = undefined;
     record.data = {};
+    Reflect.deleteProperty(record, 'activeSwipeId');
 }
 
 function parseCompoundIndex(indexName: string): [string, string] | null {
+    const cols = parseIndexColumns(indexName);
+    if (!cols || cols.length !== 2) return null;
+    return [cols[0], cols[1]];
+}
+
+function parseIndexColumns(indexName: string): string[] | null {
     const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
     if (!isComposite) return null;
     const cols = indexName.slice(1, -1).split('+');
-    if (cols.length !== 2) return null;
-    return [cols[0], cols[1]];
+    if (cols.length === 0 || cols.some((column) => !/^[A-Za-z][A-Za-z0-9]*$/.test(column))) {
+        return null;
+    }
+    return cols;
 }
 
 export class TauriDatabaseAdapter implements IDatabaseAdapter {
@@ -142,6 +157,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         roomId TEXT,
 						chatId TEXT,
                         sortOrder TEXT,
+                        activeSwipeId TEXT,
                         createdAt INTEGER,
                         updatedAt INTEGER,
                         isDeleted INTEGER,
@@ -169,6 +185,11 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 `;
 
         await db.execute(sql);
+
+        await db.execute(
+            `CREATE INDEX IF NOT EXISTS "idx_messages_identity"
+             ON messages (chatId, sortOrder, activeSwipeId, scopeType, scopeId, id)`
+        );
     }
 
     async getRecord<T extends DataRecord>(
@@ -192,8 +213,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName}
-				(id, scopeType, scopeId, roomId, chatId, sortOrder, createdAt, updatedAt, isDeleted, assetEntries, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+				(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
             [
                 b.id,
                 b.scopeType,
@@ -201,6 +222,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 b.roomId,
                 b.chatId,
                 b.sortOrder,
+                b.activeSwipeId,
                 b.createdAt,
                 b.updatedAt,
                 b.isDeleted,
@@ -223,8 +245,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 11 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
+                    const start = idx * 12 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
                 })
                 .join(', ');
 
@@ -238,6 +260,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.roomId,
                     b.chatId,
                     b.sortOrder,
+                    b.activeSwipeId,
                     b.createdAt,
                     b.updatedAt,
                     b.isDeleted,
@@ -248,7 +271,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName}
-					(id, scopeType, scopeId, roomId, chatId, sortOrder, createdAt, updatedAt, isDeleted, assetEntries, data)
+					(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
 					VALUES ${placeholders}`,
                 values
             );
@@ -357,8 +380,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 11 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
+                        const start = idx * 12 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -371,6 +394,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.roomId,
                         b.chatId,
                         b.sortOrder,
+                        b.activeSwipeId,
                         b.createdAt,
                         b.updatedAt,
                         b.isDeleted,
@@ -380,7 +404,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-	                (id, scopeType, scopeId, roomId, chatId, sortOrder, createdAt, updatedAt, isDeleted, assetEntries, data)
+	                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
 	                VALUES ${placeholders}`,
                     values
                 );
@@ -419,7 +443,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         if (rows.length === 0) return;
 
         await db.execute(
-            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3, assetEntries = NULL, data = '{}' WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
+            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3, activeSwipeId = NULL, assetEntries = NULL, data = '{}' WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
             [indexValue[0], indexValue[1], now]
         );
         this.emitWriteEvent(
@@ -563,6 +587,46 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             'INVALID_INPUT',
             `Unsupported indexName for getRecordsForward: ${indexName}`
         );
+    }
+
+    async getKeys(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[],
+        limit = 50,
+        offset = 0
+    ): Promise<DatabaseKeyEntry[]> {
+        await this.flush();
+        const db = await this.getDb();
+        const columns = parseIndexColumns(indexName);
+        if (!columns || columns.length < 2) {
+            throw new AppError('INVALID_INPUT', `Unsupported indexName for getKeys: ${indexName}`);
+        }
+        const partition = lowerBound[0];
+        const after = lowerBound[1];
+        const before = upperBound[1];
+        const rows = await db.select<Array<Record<string, unknown>>>(
+            `SELECT id, ${columns.join(', ')}
+             FROM ${tableName}
+             WHERE ${columns[0]} = $1
+               AND ${columns[1]} > $2
+               AND ${columns[1]} < $3
+               AND isDeleted = 0
+             ORDER BY ${columns[1]} ASC
+             LIMIT $4 OFFSET $5`,
+            [partition, after, before, limit, offset]
+        );
+        return rows.map((row) => this.toDatabaseKeyEntry(row, columns));
+    }
+
+    private toDatabaseKeyEntry(row: Record<string, unknown>, columns: string[]): DatabaseKeyEntry {
+        return {
+            primaryKey: String(row.id),
+            indexKey: columns.map((column) => String(row[column] ?? '')),
+            scopeType: row.scopeType as DataScopeType,
+            scopeId: String(row.scopeId)
+        };
     }
 
     async countRecordsInRange(

@@ -29,6 +29,7 @@ vi.mock('$lib/adapters/db', () => ({
     localDB: {
         getRecordsBackward: vi.fn(),
         getRecordsForward: vi.fn(),
+        getKeys: vi.fn(),
         getRecord: vi.fn(),
         putRecord: vi.fn(),
         softDeleteRecord: vi.fn(),
@@ -114,6 +115,7 @@ describe('MessageService', () => {
                     id: 'msg-2',
                     chatId: 'chat-1',
                     sortOrder: 'a1',
+                    activeSwipeId: 's1',
                     scopeType: 'user',
                     scopeId: mockUserId,
                     createdAt: 2000,
@@ -125,6 +127,7 @@ describe('MessageService', () => {
                     id: 'msg-1',
                     chatId: 'chat-1',
                     sortOrder: 'a0',
+                    activeSwipeId: 's1',
                     scopeType: 'user',
                     scopeId: mockUserId,
                     createdAt: 1000,
@@ -150,6 +153,7 @@ describe('MessageService', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a0',
+                activeSwipeId: 's1',
                 scopeType: 'user',
                 scopeId: mockUserId,
                 createdAt: 1000,
@@ -166,6 +170,55 @@ describe('MessageService', () => {
             expect(result?.id).toBe('msg-1');
             expect(result?.role).toBe('user');
             expect(getLastTextContent(result!.swipes[result!.activeSwipeId].parts)).toBe('Hello');
+        });
+    });
+
+    describe('identity reads', () => {
+        it('reads an ordered identity range without loading message data', async () => {
+            vi.mocked(localDB.getKeys).mockResolvedValue([
+                {
+                    primaryKey: 'msg-1',
+                    indexKey: ['chat-1', 'a0', 'swipe-1', 'user', mockUserId],
+                    scopeType: 'user',
+                    scopeId: mockUserId
+                },
+                {
+                    primaryKey: 'msg-2',
+                    indexKey: ['chat-1', 'a1', 'swipe-2', 'user', mockUserId],
+                    scopeType: 'user',
+                    scopeId: mockUserId
+                }
+            ]);
+
+            await expect(MessageService.getIdentities('chat-1', 'a-target', 2, 3)).resolves.toEqual(
+                [
+                    { messageId: 'msg-1', swipeId: 'swipe-1' },
+                    { messageId: 'msg-2', swipeId: 'swipe-2' }
+                ]
+            );
+            expect(buffer.flushTable).toHaveBeenCalledWith('messages');
+            expect(localDB.getKeys).toHaveBeenCalledWith(
+                'messages',
+                '[chatId+sortOrder+activeSwipeId+scopeType+scopeId]',
+                ['chat-1', ''],
+                ['chat-1', 'a-target'],
+                2,
+                3
+            );
+            expect(buffer.get).not.toHaveBeenCalled();
+        });
+
+        it('rejects inaccessible identities', async () => {
+            vi.mocked(localDB.getKeys).mockResolvedValue([
+                {
+                    primaryKey: 'msg-1',
+                    indexKey: ['chat-1', 'a0', 'swipe-1', 'user', 'another-user'],
+                    scopeType: 'user',
+                    scopeId: 'another-user'
+                }
+            ]);
+
+            await expect(MessageService.getIdentities('chat-1', 'a-target')).resolves.toEqual([]);
         });
     });
 
@@ -189,7 +242,8 @@ describe('MessageService', () => {
                     id: 'test-msg-id',
                     scopeType: 'user',
                     scopeId: mockUserId,
-                    chatId: 'chat-1'
+                    chatId: 'chat-1',
+                    activeSwipeId: 's1'
                 })
             );
         });
@@ -223,6 +277,7 @@ describe('MessageService', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a0',
+                activeSwipeId: 's1',
                 scopeType: 'user',
                 scopeId: mockUserId,
                 createdAt: 1000,
@@ -257,7 +312,8 @@ describe('MessageService', () => {
                                 translation: undefined
                             }
                         }
-                    }
+                    },
+                    record: expect.objectContaining({ activeSwipeId: 's1' })
                 })
             );
             expect(localDB.putRecord).not.toHaveBeenCalled();

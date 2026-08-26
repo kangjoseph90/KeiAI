@@ -7,6 +7,7 @@ vi.mock('$lib/services/content/message', () => ({
         get: vi.fn(),
         countByChat: vi.fn(),
         countByChatBefore: vi.fn(),
+        getIdentities: vi.fn(),
         getMessagesAfter: vi.fn(),
         getMessagesBefore: vi.fn()
     }
@@ -51,6 +52,21 @@ function mockPages(messages: Message[]): void {
     );
 }
 
+function mockIdentities(messages: Message[]): void {
+    vi.mocked(MessageService.getIdentities).mockImplementation(
+        async (_chatId, beforeSortOrder, limit = 50, offset = 0) =>
+            (beforeSortOrder === 'a-target'
+                ? messages
+                : messages.filter((message) => message.sortOrder < beforeSortOrder)
+            )
+                .slice(offset, offset + limit)
+                .map((message) => ({
+                    messageId: message.id,
+                    swipeId: message.activeSwipeId
+                }))
+    );
+}
+
 describe('PagedMessages', () => {
     const messages = Array.from({ length: 10 }, (_, index) => makeMessage(index));
 
@@ -62,6 +78,7 @@ describe('PagedMessages', () => {
             async (id) => messages.find((message) => message.id === id) ?? null
         );
         mockPages(messages);
+        mockIdentities(messages);
     });
 
     it('creates a readonly view with the bounded chat message count', async () => {
@@ -195,6 +212,46 @@ describe('PagedMessages', () => {
         paged.clear();
         await paged.at(5);
         expect(MessageService.getMessagesBefore).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads identity ranges without loading message bodies', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
+
+        const result = await paged.identitySlice(3, 8);
+
+        expect(result.map((entry) => entry.identity)).toEqual(
+            messages.slice(3, 8).map((message) => ({
+                messageId: message.id,
+                swipeId: message.activeSwipeId
+            }))
+        );
+        expect(MessageService.getMessagesAfter).not.toHaveBeenCalled();
+        expect(MessageService.getMessagesBefore).not.toHaveBeenCalled();
+        expect(MessageService.getIdentities).toHaveBeenCalledWith('chat-1', 'a-target', 5, 3);
+    });
+
+    it('reads a single identity through the range API', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
+
+        await expect(paged.identityAt(5)).resolves.toEqual({
+            identity: { messageId: 'msg-5', swipeId: 'swipe-5' },
+            index: 5
+        });
+        expect(MessageService.getIdentities).toHaveBeenCalledWith('chat-1', 'a-target', 1, 5);
+    });
+
+    it('keeps the inclusive target identity as part of the bounded snapshot', async () => {
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValueOnce(6);
+        const paged = await PagedMessages.createThrough(messages[6]);
+
+        paged.invalidate(6);
+
+        await expect(paged.identityAt(-1)).resolves.toEqual({
+            identity: { messageId: 'msg-6', swipeId: 'swipe-6' },
+            index: 6
+        });
+        expect(MessageService.get).not.toHaveBeenCalled();
+        expect(MessageService.getIdentities).not.toHaveBeenCalled();
     });
 
     it('invalidates only the page containing the requested index', async () => {
