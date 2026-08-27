@@ -7,7 +7,7 @@ import {
     type PngInput,
     type PngTextChunk
 } from '$lib/utils/png';
-import { fromBase64, toBase64 } from '$lib/crypto';
+import { fromBase64, textDecoder, textEncoder, toBase64 } from '$lib/crypto';
 import { assetPath, keiPackageToCard } from './card';
 import { parseCharacterCardV3 } from './ccv3';
 import { cardToKeiPackage } from './risu';
@@ -24,7 +24,7 @@ export async function readCharacterPng(input: PngInput): Promise<KeiCharacterPac
     const ccv3 = chunks.find((chunk) => chunk.key === 'ccv3');
     if (!ccv3) throw new AppError('INVALID_INPUT', 'PNG card is missing ccv3 chunk');
 
-    const cardJson = new TextDecoder().decode(fromBase64(ccv3.value));
+    const cardJson = textDecoder.decode(fromBase64(ccv3.value));
     const card = parseCharacterCardV3(JSON.parse(cardJson) as unknown);
     return cardToKeiPackage(card, readAssetChunks(chunks), bytes);
 }
@@ -32,7 +32,7 @@ export async function readCharacterPng(input: PngInput): Promise<KeiCharacterPac
 export async function writeCharacterPng(pkg: KeiCharacterPackageV1): Promise<Uint8Array> {
     const card = keiPackageToCard(pkg, 'png');
     const basePng = await basePngFor(pkg);
-    const cardBytes = new TextEncoder().encode(JSON.stringify(card));
+    const cardBytes = textEncoder.encode(JSON.stringify(card));
 
     const assetChunks: PngTextChunk[] = [];
     for (const [key, asset] of Object.entries(pkg.assets)) {

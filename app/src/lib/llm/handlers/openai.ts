@@ -26,6 +26,7 @@ import { getTextContent } from '$lib/workflow/agent/llm';
 import type { ToolCallResponsePart } from '$lib/types/tools';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
+import { toDataUrl } from '$lib/crypto';
 import { debounceStream } from '$lib/utils/stream';
 import { buildUrl } from '$lib/utils/url';
 import { createLogger } from '$lib/adapters/logger';
@@ -425,12 +426,12 @@ function toOpenAIContentPart(part: OpenAIRegularPart): OpenAIRequestContentPart 
     if (part.type === 'video') {
         return {
             type: 'video_url',
-            video_url: { url: `data:${part.mimeType};base64,${part.data}` }
+            video_url: { url: toDataUrl(part.mimeType, part.data) }
         };
     }
     return {
         type: 'image_url',
-        image_url: { url: `data:${part.mimeType};base64,${part.data}` }
+        image_url: { url: toDataUrl(part.mimeType, part.data) }
     };
 }
 

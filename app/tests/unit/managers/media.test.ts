@@ -92,7 +92,7 @@ describe('media manager', () => {
             sttProvider: 'mock'
         });
         mocks.getChat.mockResolvedValue(chat);
-        mocks.readBytes.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+        mocks.readBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
         mocks.createChatInlay.mockResolvedValue({
             id: 'generated-inlay',
             sortOrder: 'c',

@@ -16,7 +16,7 @@ import {
     importPrivateKey,
     importPublicKey
 } from './identityKey';
-import { toBase64, fromBase64 } from './encoding';
+import { textEncoder, textDecoder, toBase64, fromBase64 } from './encoding';
 
 const PAIRING_CHARSET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const PAIRING_CODE_LENGTH = 8;
@@ -90,7 +90,7 @@ export async function createPairingBlob(
             pbToken: args.pbToken
         };
 
-        const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+        const payloadBytes = textEncoder.encode(JSON.stringify(payload));
         const { ciphertext, iv } = await encryptBytes(encKey, payloadBytes);
 
         return {
@@ -131,7 +131,7 @@ export async function decryptPairingBlob(
         const iv = fromBase64(parsed.iv);
 
         const payloadBytes = await decryptBytes(encKey, { ciphertext, iv });
-        const payloadStr = new TextDecoder().decode(payloadBytes);
+        const payloadStr = textDecoder.decode(payloadBytes);
         const payload = JSON.parse(payloadStr) as PairingPayload;
 
         rawM = fromBase64(payload.rawM);

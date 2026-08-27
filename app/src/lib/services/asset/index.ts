@@ -25,7 +25,7 @@ import {
 } from './types';
 import { decryptConvergentAsset, encryptConvergentAsset, fileToPlaintext } from './util';
 import { fetchAssetCiphertext } from './remote';
-import { sha256, type Bytes } from '$lib/crypto';
+import { sha256 } from '$lib/crypto';
 import {
     getAssetMediaType,
     FILE_ASSET_MIME_TYPES,
@@ -278,7 +278,7 @@ export class AssetService {
         const ciphertext = await fetchAssetCiphertext(locator.hash);
         if (!ciphertext || ciphertext.length === 0) return false;
 
-        const actualHash = await sha256(ciphertext as unknown as Bytes);
+        const actualHash = await sha256(ciphertext);
         if (actualHash !== locator.hash) return false;
 
         const plaintext = await decryptConvergentAsset(ciphertext, locator.encKey);

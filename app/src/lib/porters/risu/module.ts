@@ -1,10 +1,9 @@
+import { textDecoder, textEncoder } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { isRecord } from '../utils';
 import type { RisuRegexScript } from './script';
 import { decodeRPack, encodeRPack } from './rpack';
 
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
 const RISU_MODULE_MAGIC = 111;
 const RISU_MODULE_VERSION = 0;
 
@@ -45,7 +44,7 @@ export function readRisuModule(bytes: Uint8Array): RisuModule {
     const mainLength = readUint32LE(bytes, state);
     const mainBytes = readBytes(bytes, state, mainLength);
     const decoded = decodeRPack(mainBytes);
-    const parsed = JSON.parse(TEXT_DECODER.decode(decoded)) as unknown;
+    const parsed = JSON.parse(textDecoder.decode(decoded)) as unknown;
     if (!isRecord(parsed) || parsed.type !== 'risuModule' || !isRecord(parsed.module)) {
         throw new AppError('INVALID_INPUT', 'Invalid Risu module');
     }
@@ -74,7 +73,7 @@ export function writeRisuModule(module: RisuModule): Uint8Array {
         assets: module.assets?.map((asset) => [asset[0], '', asset[2]] as RisuModuleAsset),
         assetData: undefined
     };
-    const body = TEXT_ENCODER.encode(
+    const body = textEncoder.encode(
         JSON.stringify(
             {
                 module: mainModule,

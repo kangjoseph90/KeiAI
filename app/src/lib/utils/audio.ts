@@ -36,12 +36,36 @@ export function pcm16ToWav(
     sampleRate: number,
     channels = 1
 ): Uint8Array<ArrayBuffer> {
-    const headerSize = 44;
-    const bytes = new Uint8Array(headerSize + pcm.byteLength);
-    const view = new DataView(bytes.buffer);
+    const bytes = new Uint8Array(44 + pcm.byteLength);
+    writeWavHeader(bytes, pcm.byteLength, sampleRate, channels);
+    bytes.set(pcm, 44);
+    return bytes;
+}
 
+export function float32ToWav(
+    samples: Float32Array,
+    sampleRate: number,
+    channels = 1
+): Uint8Array<ArrayBuffer> {
+    const bytes = new Uint8Array(44 + samples.length * 2);
+    writeWavHeader(bytes, samples.length * 2, sampleRate, channels);
+    const view = new DataView(bytes.buffer, 44);
+    for (let index = 0; index < samples.length; index += 1) {
+        const sample = Math.max(-1, Math.min(1, samples[index]));
+        view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    return bytes;
+}
+
+function writeWavHeader(
+    bytes: Uint8Array<ArrayBuffer>,
+    pcmByteLength: number,
+    sampleRate: number,
+    channels: number
+): void {
+    const view = new DataView(bytes.buffer);
     writeAscii(bytes, 0, 'RIFF');
-    view.setUint32(4, 36 + pcm.byteLength, true);
+    view.setUint32(4, 36 + pcmByteLength, true);
     writeAscii(bytes, 8, 'WAVE');
     writeAscii(bytes, 12, 'fmt ');
     view.setUint32(16, 16, true);
@@ -52,24 +76,7 @@ export function pcm16ToWav(
     view.setUint16(32, channels * 2, true);
     view.setUint16(34, 16, true);
     writeAscii(bytes, 36, 'data');
-    view.setUint32(40, pcm.byteLength, true);
-    bytes.set(pcm, headerSize);
-
-    return bytes;
-}
-
-export function float32ToWav(
-    samples: Float32Array,
-    sampleRate: number,
-    channels = 1
-): Uint8Array<ArrayBuffer> {
-    const pcm = new Uint8Array(samples.length * 2);
-    const view = new DataView(pcm.buffer);
-    for (let index = 0; index < samples.length; index += 1) {
-        const sample = Math.max(-1, Math.min(1, samples[index]));
-        view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    }
-    return pcm16ToWav(pcm, sampleRate, channels);
+    view.setUint32(40, pcmByteLength, true);
 }
 
 function writeAscii(bytes: Uint8Array, offset: number, value: string): void {

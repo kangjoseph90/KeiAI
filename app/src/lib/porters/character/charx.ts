@@ -1,3 +1,4 @@
+import { textDecoder, textEncoder } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { unzip, zip, type ZipInput } from '$lib/utils/zip';
 import { assetPath, keiPackageToCard, keiPackageToRisuModule } from './card';
@@ -6,9 +7,6 @@ import { readRisuModule, writeRisuModule, type RisuInternalLorebook } from '../r
 import { cardToKeiPackage } from './risu';
 import type { KeiCharacterPackageV1 } from './types';
 
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
-
 export async function readCharX(input: ZipInput): Promise<KeiCharacterPackageV1> {
     const entries = await unzip(input);
     const cardBytes = entries['card.json'];
@@ -16,7 +14,7 @@ export async function readCharX(input: ZipInput): Promise<KeiCharacterPackageV1>
         throw new AppError('INVALID_INPUT', 'CharX is missing card.json');
     }
 
-    const card = parseCharacterCardV3(JSON.parse(TEXT_DECODER.decode(cardBytes)) as unknown);
+    const card = parseCharacterCardV3(JSON.parse(textDecoder.decode(cardBytes)) as unknown);
     const moduleBytes = entries['module.risum'];
     if (moduleBytes) {
         const module = readRisuModule(moduleBytes);
@@ -46,7 +44,7 @@ export function writeCharX(
         card.data.creator_notes = options.creatorNotes;
     }
     const entries: Record<string, Uint8Array> = {
-        'card.json': TEXT_ENCODER.encode(JSON.stringify(card, null, 2)),
+        'card.json': textEncoder.encode(JSON.stringify(card, null, 2)),
         'module.risum': writeRisuModule(keiPackageToRisuModule(pkg))
     };
 

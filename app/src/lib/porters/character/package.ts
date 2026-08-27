@@ -1,9 +1,7 @@
+import { textDecoder, textEncoder } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import type { SerializedKeiAssetPayload } from '../types';
 import type { KeiCharacterPackageV1, SerializedKeiCharacterPackageV1 } from './types';
-
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
 
 export function toKeiPackageJson(
     pkg: KeiCharacterPackageV1,
@@ -39,7 +37,7 @@ export function writeKeiPackageJson(
     pkg: KeiCharacterPackageV1,
     options: { assetPath?: (key: string) => string | undefined } = {}
 ): Uint8Array {
-    return TEXT_ENCODER.encode(JSON.stringify(toKeiPackageJson(pkg, options), null, 2));
+    return textEncoder.encode(JSON.stringify(toKeiPackageJson(pkg, options), null, 2));
 }
 
 export function fromKeiPackageJson(
@@ -95,7 +93,7 @@ export function readKeiPackageJson(
     bytes: Uint8Array,
     files: Record<string, Uint8Array> = {}
 ): KeiCharacterPackageV1 {
-    const text = TEXT_DECODER.decode(bytes);
+    const text = textDecoder.decode(bytes);
     const json = JSON.parse(text) as unknown;
     return fromKeiPackageJson(json, files);
 }

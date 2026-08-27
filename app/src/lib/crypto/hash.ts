@@ -1,7 +1,9 @@
 /**
  * SHA-256 Hashing Implementation.
- * Optimized to handle both strings and raw bytes.
+ * Handles strings, byte views, and raw buffers.
  */
+
+import { asBytes, textEncoder, toHex } from './encoding';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -9,36 +11,24 @@ type Bytes = Uint8Array<ArrayBuffer>;
  * Calculate SHA-256 hash of a buffer or string.
  * Returns the hex representation of the hash.
  */
-export async function sha256(data: Bytes | ArrayBuffer | string): Promise<string> {
-    let buffer: BufferSource;
-
-    if (typeof data === 'string') {
-        buffer = new TextEncoder().encode(data);
-    } else if (data instanceof Uint8Array) {
-        buffer = data.buffer as ArrayBuffer;
-    } else {
-        buffer = data;
-    }
-
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+export async function sha256(
+    data: Uint8Array<ArrayBufferLike> | ArrayBuffer | string
+): Promise<string> {
+    return toHex(await crypto.subtle.digest('SHA-256', digestInput(data)));
 }
 
 /**
  * Calculate SHA-256 hash and return raw bytes.
  */
-export async function sha256Bytes(data: Bytes | ArrayBuffer | string): Promise<Bytes> {
-    let buffer: BufferSource;
+export async function sha256Bytes(
+    data: Uint8Array<ArrayBufferLike> | ArrayBuffer | string
+): Promise<Bytes> {
+    return new Uint8Array(await crypto.subtle.digest('SHA-256', digestInput(data)));
+}
 
-    if (typeof data === 'string') {
-        buffer = new TextEncoder().encode(data);
-    } else if (data instanceof Uint8Array) {
-        buffer = data.buffer as ArrayBuffer;
-    } else {
-        buffer = data;
-    }
-
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    return new Uint8Array(hashBuffer);
+/** Byte views pass through whole: digest hashes only what the view spans. */
+function digestInput(data: Uint8Array<ArrayBufferLike> | ArrayBuffer | string): BufferSource {
+    if (typeof data === 'string') return textEncoder.encode(data);
+    if (data instanceof Uint8Array) return asBytes(data);
+    return data;
 }

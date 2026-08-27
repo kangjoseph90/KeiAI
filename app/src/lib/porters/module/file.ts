@@ -1,3 +1,4 @@
+import { textDecoder, textEncoder } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { unzip, zip } from '$lib/utils/zip';
 import type { KeiModulePackageV1 } from './types';
@@ -10,9 +11,6 @@ import {
 } from './risu';
 import { detectFileKind } from '$lib/utils/file';
 import { readModuleCharX, writeModuleCharX } from './charx';
-
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
 
 export type ModuleFileExport =
     | { kind: 'keimodule'; assetMode: KeiPackageExportMode }
@@ -70,7 +68,7 @@ function readKeiModuleEntries(entries: Record<string, Uint8Array>): KeiModulePac
 
 function writeKeiModule(pkg: KeiModulePackageV1): Uint8Array {
     const entries: Record<string, Uint8Array> = {
-        'package.json': TEXT_ENCODER.encode(JSON.stringify(packageJson(pkg), null, 2))
+        'package.json': textEncoder.encode(JSON.stringify(packageJson(pkg), null, 2))
     };
     for (const [key, asset] of Object.entries(pkg.assets)) {
         if (asset.data) entries[`assets/${key}.bin`] = asset.data;
@@ -82,7 +80,7 @@ function readModuleJson(
     bytes: Uint8Array,
     files: Record<string, Uint8Array> = {}
 ): KeiModulePackageV1 {
-    const parsed = JSON.parse(TEXT_DECODER.decode(bytes)) as unknown;
+    const parsed = JSON.parse(textDecoder.decode(bytes)) as unknown;
     if (!isRecord(parsed)) throw new AppError('INVALID_INPUT', 'Invalid module JSON');
     if (parsed.kind === 'keiai.module' && parsed.version === 1) {
         const pkg = parsed as unknown as KeiModulePackageV1;

@@ -9,6 +9,7 @@
  * Every encryption uses a fresh random IV to ensure semantic security.
  */
 
+import { textDecoder, textEncoder } from './encoding';
 import { AES_IV_BYTES } from './constants';
 import type { EncryptedData } from './types';
 
@@ -23,13 +24,12 @@ type Bytes = Uint8Array<ArrayBuffer>;
  */
 export async function encrypt(masterKey: CryptoKey, plaintext: string): Promise<EncryptedData> {
     const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
-    const encoder = new TextEncoder();
 
     const ciphertext = new Uint8Array(
         (await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv },
             masterKey,
-            encoder.encode(plaintext)
+            textEncoder.encode(plaintext)
         )) as ArrayBuffer
     );
 
@@ -54,7 +54,7 @@ export async function decrypt(masterKey: CryptoKey, data: EncryptedData): Promis
         data.ciphertext
     )) as ArrayBuffer;
 
-    return new TextDecoder().decode(plainBytes);
+    return textDecoder.decode(plainBytes);
 }
 
 /**

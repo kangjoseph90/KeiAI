@@ -1,3 +1,4 @@
+import { asBytes } from '$lib/crypto';
 import { AssetService } from '$lib/services/asset';
 import type { Chat } from '$lib/services';
 import { selectSTTHandler } from '$lib/stt';
@@ -81,7 +82,7 @@ async function loadAudioInputs(content: string, chat: Chat): Promise<File[]> {
         if (!data) {
             throw new AppError('ASSET_ERROR', `Audio inlay data is unavailable: ${ref.id}`);
         }
-        files.push(new File([new Uint8Array(data)], ref.name, { type: ref.mimeType }));
+        files.push(new File([asBytes(data)], ref.name, { type: ref.mimeType }));
     }
     return files;
 }

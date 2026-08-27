@@ -12,6 +12,7 @@
  *   4. A new one-time recovery code is issued immediately
  */
 
+import { textEncoder } from './encoding';
 import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants';
 import { wrapMasterKey } from './masterKey';
 import type { RecoveryCodeParts } from './types';
@@ -69,18 +70,16 @@ export function splitRecoveryCode(code: string): RecoveryCodeParts {
  * and the recovery endpoint is rate-limited on the server.
  */
 export async function deriveRecoveryKey(frontHalf: string): Promise<Bytes> {
-    const encoder = new TextEncoder();
-
     const baseKey = await crypto.subtle.importKey(
         'raw',
-        encoder.encode(frontHalf),
+        textEncoder.encode(frontHalf),
         'PBKDF2',
         false,
         ['deriveBits']
     );
 
     // Use a domain-separated fixed salt for recovery key derivation
-    const salt = encoder.encode('kei:recovery-key-derivation');
+    const salt = textEncoder.encode('kei:recovery-key-derivation');
 
     const bits = new Uint8Array(
         (await crypto.subtle.deriveBits(
@@ -102,9 +101,8 @@ export async function deriveRecoveryKey(frontHalf: string): Promise<Bytes> {
  * Hash the back half of the recovery code for server-side auth verification.
  */
 export async function hashRecoveryAuthToken(backHalf: string): Promise<Bytes> {
-    const encoder = new TextEncoder();
     const hash = new Uint8Array(
-        (await crypto.subtle.digest('SHA-256', encoder.encode(backHalf))) as ArrayBuffer
+        (await crypto.subtle.digest('SHA-256', textEncoder.encode(backHalf))) as ArrayBuffer
     );
     return hash;
 }

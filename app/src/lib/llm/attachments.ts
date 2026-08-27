@@ -28,7 +28,7 @@ export function fileBytesToLLMPart(
         type: 'file',
         name,
         mimeType: normalizedMimeType,
-        data: toBase64(new Uint8Array(bytes))
+        data: toBase64(bytes)
     };
 }
 

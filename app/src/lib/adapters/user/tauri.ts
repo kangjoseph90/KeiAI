@@ -4,7 +4,7 @@ import { Store as StrongholdStore, Stronghold } from '@tauri-apps/plugin-strongh
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
 import { createLogger } from '$lib/adapters/logger';
-import { toBase64 } from '$lib/crypto';
+import { textEncoder, textDecoder, toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { UserWriteEventEmitter } from './events';
 import type {
@@ -380,7 +380,7 @@ export class TauriUserAdapter implements IUserAdapter {
     ): Promise<void> {
         const store = await this.getStore();
         const stronghold = await this.getStronghold();
-        const pubBytes = Array.from(new TextEncoder().encode(JSON.stringify(publicKeyJwk)));
+        const pubBytes = Array.from(textEncoder.encode(JSON.stringify(publicKeyJwk)));
         await store.insert(`identityPub:${id}`, pubBytes);
         await store.insert(`identityPriv:${id}`, Array.from(rawPrivateKey));
         await stronghold.save();
@@ -395,7 +395,7 @@ export class TauriUserAdapter implements IUserAdapter {
             const privData = await store.get(`identityPriv:${id}`);
             if (!pubData || !privData) return null;
 
-            const pubJson = new TextDecoder().decode(new Uint8Array(pubData));
+            const pubJson = textDecoder.decode(new Uint8Array(pubData));
 
             return {
                 publicKeyJwk: JSON.parse(pubJson) as JsonWebKey,
@@ -429,7 +429,7 @@ export class TauriUserAdapter implements IUserAdapter {
     ): Promise<void> {
         const store = await this.getStore();
         const stronghold = await this.getStronghold();
-        const publicBytes = new TextEncoder().encode(JSON.stringify(publicKeyJwk));
+        const publicBytes = textEncoder.encode(JSON.stringify(publicKeyJwk));
         await store.insert(`masterKey:${id}`, Array.from(rawKey));
         await store.insert(`identityPub:${id}`, Array.from(publicBytes));
         await store.insert(`identityPriv:${id}`, Array.from(rawPrivateKey));

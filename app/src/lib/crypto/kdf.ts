@@ -8,6 +8,7 @@
  * Uses PBKDF2 with SHA-256.
  */
 
+import { textEncoder } from './encoding';
 import { KDF_ITERATIONS, KDF_OUTPUT_BITS, SALT_BYTES } from './constants';
 import type { DerivedKeys } from './types';
 
@@ -28,8 +29,7 @@ export function generateSalt(): Bytes {
  * 3. Split result: first 256 bits → X, last 256 bits → Y.
  */
 export async function deriveKeys(password: string, salt: Bytes): Promise<DerivedKeys> {
-    const encoder = new TextEncoder();
-    const passwordBytes = encoder.encode(password);
+    const passwordBytes = textEncoder.encode(password);
 
     // Import raw password as PBKDF2 key material
     const baseKey = await crypto.subtle.importKey('raw', passwordBytes, 'PBKDF2', false, [
@@ -79,18 +79,21 @@ export async function importWrappingKey(rawKey: Bytes, extractable = false): Pro
  * @param outputBits - Number of bits to derive
  */
 export async function deriveHKDF(ikm: string, info: string, outputBits = 256): Promise<Bytes> {
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(ikm), 'HKDF', false, [
-        'deriveBits'
-    ]);
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        textEncoder.encode(ikm),
+        'HKDF',
+        false,
+        ['deriveBits']
+    );
 
     return new Uint8Array(
         (await crypto.subtle.deriveBits(
             {
                 name: 'HKDF',
                 hash: 'SHA-256',
-                salt: encoder.encode('kei:pairing-salt'),
-                info: encoder.encode(info)
+                salt: textEncoder.encode('kei:pairing-salt'),
+                info: textEncoder.encode(info)
             },
             keyMaterial,
             outputBits

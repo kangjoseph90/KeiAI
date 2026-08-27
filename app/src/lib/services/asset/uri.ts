@@ -1,5 +1,5 @@
 import { TABLES, type TableName } from '$lib/adapters/db';
-import { fromBase64, toBase64 } from '$lib/crypto';
+import { fromBase64, textDecoder, textEncoder, toBase64 } from '$lib/crypto';
 import type { AssetReadLocator } from './types';
 
 const GIF_DATA_URI_PREFIX = 'data:image/gif;base64,';
@@ -14,7 +14,7 @@ const PLACEHOLDER_GIF = Uint8Array.from([
 ]);
 
 export function createAssetUri(locator: AssetReadLocator): string {
-    const bytes = new TextEncoder().encode(JSON.stringify(locator));
+    const bytes = textEncoder.encode(JSON.stringify(locator));
     const payload = toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     return createPlaceholderDataUri(locator.width, locator.height) + ASSET_URI_MARKER + payload;
 }
@@ -31,7 +31,7 @@ export function parseAssetUri(uri: string): AssetReadLocator | null {
     try {
         const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
         const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-        const value: unknown = JSON.parse(new TextDecoder().decode(fromBase64(padded)));
+        const value: unknown = JSON.parse(textDecoder.decode(fromBase64(padded)));
         return isAssetReadLocator(value) ? value : null;
     } catch {
         return null;

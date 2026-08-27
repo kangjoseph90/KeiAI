@@ -1,4 +1,5 @@
 import { AppError } from '$lib/types/errors';
+import { asBytes, textDecoder, textEncoder } from '$lib/crypto';
 
 export type PngInput = File | Uint8Array;
 
@@ -28,12 +29,12 @@ export async function readPng(
         const dataStart = offset + 8;
         const dataEnd = dataStart + length;
         if (type === 'tEXt') {
-            const data = bytes.slice(dataStart, dataEnd);
+            const data = bytes.subarray(dataStart, dataEnd);
             const separator = data.indexOf(0);
             if (separator > 0) {
                 chunks.push({
-                    key: text(data.slice(0, separator)),
-                    value: text(data.slice(separator + 1))
+                    key: text(data.subarray(0, separator)),
+                    value: text(data.subarray(separator + 1))
                 });
             }
         }
@@ -61,15 +62,15 @@ export function writePngTextChunks(
 
         if (type === 'IEND') {
             for (const chunk of chunks) parts.push(makeTextChunk(chunk));
-            parts.push(png.slice(offset, fullChunkEnd));
+            parts.push(png.subarray(offset, fullChunkEnd));
             break;
         }
 
         if (
             type !== 'tEXt' ||
-            !shouldReplaceTextChunk(png.slice(dataStart, dataEnd), replaceKeys)
+            !shouldReplaceTextChunk(png.subarray(dataStart, dataEnd), replaceKeys)
         ) {
-            parts.push(png.slice(offset, fullChunkEnd));
+            parts.push(png.subarray(offset, fullChunkEnd));
         }
 
         offset = fullChunkEnd;
@@ -82,7 +83,7 @@ export async function imageToPng(bytes: Uint8Array): Promise<Uint8Array | null> 
     if (isPng(bytes)) return bytes;
     if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
 
-    const bitmap = await createImageBitmap(new Blob([bytes.slice()])).catch(() => null);
+    const bitmap = await createImageBitmap(new Blob([asBytes(bytes)])).catch(() => null);
     if (!bitmap) return null;
 
     const canvas = document.createElement('canvas');
@@ -109,20 +110,18 @@ function shouldReplaceTextChunk(data: Uint8Array, replaceKeys: string[]): boolea
 }
 
 function makeTextChunk(chunk: PngTextChunk): Uint8Array {
-    const key = bytes(chunk.key);
-    const value = bytes(chunk.value);
-    const data = concat([key, new Uint8Array([0]), value]);
-    return makeChunk('tEXt', data);
-}
+    const key = textEncoder.encode(chunk.key);
+    const value = textEncoder.encode(chunk.value);
+    const dataLength = key.length + 1 + value.length;
+    const chunkBytes = new Uint8Array(12 + dataLength);
 
-function makeChunk(type: string, data: Uint8Array): Uint8Array {
-    const typeBytes = bytes(type);
-    const chunk = new Uint8Array(12 + data.length);
-    writeUint32(chunk, 0, data.length);
-    chunk.set(typeBytes, 4);
-    chunk.set(data, 8);
-    writeUint32(chunk, 8 + data.length, crc32(concat([typeBytes, data])));
-    return chunk;
+    writeUint32(chunkBytes, 0, dataLength);
+    chunkBytes.set(bytes('tEXt'), 4);
+    chunkBytes.set(key, 8);
+    chunkBytes[8 + key.length] = 0;
+    chunkBytes.set(value, 9 + key.length);
+    writeUint32(chunkBytes, 12 + dataLength, crc32(chunkBytes.subarray(4, 12 + dataLength)));
+    return chunkBytes;
 }
 
 function readUint32(bytesValue: Uint8Array, offset: number): number {
@@ -163,11 +162,11 @@ function makeCrcTable(): Uint32Array {
 }
 
 function text(bytesValue: Uint8Array): string {
-    return new TextDecoder().decode(bytesValue);
+    return textDecoder.decode(bytesValue);
 }
 
 function bytes(value: string): Uint8Array {
-    return new TextEncoder().encode(value);
+    return textEncoder.encode(value);
 }
 
 function concat(parts: Uint8Array[]): Uint8Array {

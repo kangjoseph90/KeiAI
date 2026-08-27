@@ -231,7 +231,7 @@ export async function loadInlayContent(ids: string[], chat: Chat): Promise<LLMCo
         parts.push({
             type: mediaType,
             mimeType: ref.mimeType,
-            data: toBase64(new Uint8Array(bytes))
+            data: toBase64(bytes)
         });
     }
     return parts;

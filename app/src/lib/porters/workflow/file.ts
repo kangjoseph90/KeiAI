@@ -1,3 +1,4 @@
+import { textEncoder } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { isRecord } from '$lib/porters/utils';
 import {
@@ -11,8 +12,6 @@ import {
 } from '$lib/workflow';
 import { normalizeWorkflow } from '$lib/workflow/normalization';
 import type { KeiAgentPackageV1, KeiWorkflowPackageV1 } from './types';
-
-const TEXT_ENCODER = new TextEncoder();
 
 export async function readWorkflowFile(file: File): Promise<WorkflowDefinition> {
     const value = await readJson(file);
@@ -152,7 +151,7 @@ async function readJson(file: File): Promise<unknown> {
 }
 
 function writeJson(value: KeiWorkflowPackageV1 | KeiAgentPackageV1): Uint8Array {
-    return TEXT_ENCODER.encode(JSON.stringify(value, null, 2));
+    return textEncoder.encode(JSON.stringify(value, null, 2));
 }
 
 function isPackage(

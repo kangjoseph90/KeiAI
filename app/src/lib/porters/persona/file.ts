@@ -1,5 +1,5 @@
 import { AppError } from '$lib/types/errors';
-import { fromBase64, toBase64 } from '$lib/crypto';
+import { fromBase64, textDecoder, textEncoder, toBase64 } from '$lib/crypto';
 import { imageToPng, readPng, writePngTextChunks } from '$lib/utils/png';
 import { unzip, zip } from '$lib/utils/zip';
 import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
@@ -7,8 +7,6 @@ import type { KeiPersonaPackageV1 } from './types';
 import type { KeiPackageExportMode } from '../utils';
 import { detectFileKind } from '$lib/utils/file';
 
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
 const EMPTY_PNG = new Uint8Array([
     137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0,
     0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 252, 255, 31, 0, 3, 3, 2, 0,
@@ -53,7 +51,7 @@ async function readRisuPersonaPng(bytes: Uint8Array): Promise<KeiPersonaPackageV
     const chunk = chunks.find((item) => item.key === 'persona');
     if (!chunk) throw new AppError('INVALID_INPUT', 'PNG is missing Risu persona chunk');
 
-    const card = JSON.parse(TEXT_DECODER.decode(fromBase64(chunk.value))) as RisuPersonaCard;
+    const card = JSON.parse(textDecoder.decode(fromBase64(chunk.value))) as RisuPersonaCard;
     return {
         version: 1,
         kind: 'keiai.persona',
@@ -76,7 +74,7 @@ async function writeRisuPersonaPng(pkg: KeiPersonaPackageV1): Promise<Uint8Array
     const png = avatarData ? await imageToPng(avatarData) : EMPTY_PNG;
     return writePngTextChunks(
         png ?? EMPTY_PNG,
-        [{ key: 'persona', value: toBase64(TEXT_ENCODER.encode(JSON.stringify(card))) }],
+        [{ key: 'persona', value: toBase64(textEncoder.encode(JSON.stringify(card))) }],
         ['persona']
     );
 }
@@ -86,7 +84,7 @@ async function readKeiPersona(bytes: Uint8Array): Promise<KeiPersonaPackageV1> {
     const packageBytes = entries['package.json'];
     if (!packageBytes) throw new AppError('INVALID_INPUT', 'Kei persona is missing package.json');
 
-    const parsed = JSON.parse(TEXT_DECODER.decode(packageBytes)) as KeiPersonaPackageV1;
+    const parsed = JSON.parse(textDecoder.decode(packageBytes)) as KeiPersonaPackageV1;
     const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
     for (const [key, asset] of Object.entries(parsed.assets ?? {})) {
         assets[key] = {
@@ -126,7 +124,7 @@ function writeKeiPersona(pkg: KeiPersonaPackageV1): Uint8Array {
         : undefined;
 
     const entries: Record<string, Uint8Array> = {
-        'package.json': TEXT_ENCODER.encode(
+        'package.json': textEncoder.encode(
             JSON.stringify(
                 {
                     ...pkg,

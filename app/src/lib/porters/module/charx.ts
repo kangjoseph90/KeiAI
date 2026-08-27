@@ -1,11 +1,10 @@
+import { textDecoder } from '$lib/crypto';
 import { readCharX, writeCharX } from '../character/charx';
 import { parseCharacterCardV3 } from '../character/ccv3';
 import type { KeiCharacterPackageV1 } from '../character/types';
 import { unzip } from '$lib/utils/zip';
 import { AppError } from '$lib/types/errors';
 import type { KeiModulePackageV1 } from './types';
-
-const TEXT_DECODER = new TextDecoder();
 
 export async function readModuleCharX(bytes: Uint8Array): Promise<KeiModulePackageV1> {
     const entries = await unzip(bytes);
@@ -14,7 +13,7 @@ export async function readModuleCharX(bytes: Uint8Array): Promise<KeiModulePacka
         throw new AppError('INVALID_INPUT', 'Module CharX is missing card.json');
     }
 
-    const card = parseCharacterCardV3(JSON.parse(TEXT_DECODER.decode(cardBytes)) as unknown);
+    const card = parseCharacterCardV3(JSON.parse(textDecoder.decode(cardBytes)) as unknown);
     const pkg = await readCharX(bytes);
     return characterPackageToModulePackage(pkg, card.data.creator_notes);
 }

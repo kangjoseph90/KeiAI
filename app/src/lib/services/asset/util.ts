@@ -4,7 +4,7 @@
  * Image processing, hashing, and encryption utilities.
  */
 
-import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
+import { sha256, sha256Bytes, asBytes, fromHex, textEncoder, toHex, type Bytes } from '$lib/crypto';
 import { mimeTypeFromName } from '$lib/utils/file';
 import { preprocessImage, readImageDimensions, readVideoDimensions } from '$lib/utils/image';
 import { MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, WEBP_QUALITY } from './types';
@@ -154,27 +154,16 @@ function includesAscii(bytes: Uint8Array, value: string): boolean {
 
 // ─── Convergent Encryption ───────────────────────────────────────────
 
-function asWebCryptoBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-    const buffer = bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength
-    ) as ArrayBuffer;
-    return new Uint8Array(buffer);
-}
-
-async function hkdfBytes(ikm: Uint8Array, info: string, outputBits: number): Promise<Bytes> {
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', asWebCryptoBytes(ikm), 'HKDF', false, [
-        'deriveBits'
-    ]);
+async function hkdfBytes(ikm: Bytes, info: string, outputBits: number): Promise<Bytes> {
+    const keyMaterial = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
 
     return new Uint8Array(
         (await crypto.subtle.deriveBits(
             {
                 name: 'HKDF',
                 hash: 'SHA-256',
-                salt: encoder.encode('kei-asset-salt'),
-                info: encoder.encode(info)
+                salt: textEncoder.encode('kei-asset-salt'),
+                info: textEncoder.encode(info)
             },
             keyMaterial,
             outputBits
@@ -182,14 +171,14 @@ async function hkdfBytes(ikm: Uint8Array, info: string, outputBits: number): Pro
     );
 }
 
-async function importAssetCryptoKey(keyBytes: Uint8Array): Promise<CryptoKey> {
-    return crypto.subtle.importKey('raw', asWebCryptoBytes(keyBytes), { name: 'AES-GCM' }, false, [
+async function importAssetCryptoKey(keyBytes: Bytes): Promise<CryptoKey> {
+    return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, [
         'encrypt',
         'decrypt'
     ]);
 }
 
-async function deriveAssetIv(encKeyBytes: Uint8Array): Promise<Bytes> {
+async function deriveAssetIv(encKeyBytes: Bytes): Promise<Bytes> {
     return hkdfBytes(encKeyBytes, 'kei-asset-iv', 96);
 }
 
@@ -202,20 +191,16 @@ async function deriveAssetIv(encKeyBytes: Uint8Array): Promise<Bytes> {
 export async function encryptConvergentAsset(
     data: Uint8Array | ArrayBuffer
 ): Promise<{ ciphertext: Uint8Array; hash: string; encKey: string }> {
-    const plaintext = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const plaintextHash = await sha256Bytes(plaintext as unknown as Bytes);
+    const plaintext = asBytes(data instanceof Uint8Array ? data : new Uint8Array(data));
+    const plaintextHash = await sha256Bytes(plaintext);
     const encKeyBytes = await hkdfBytes(plaintextHash, 'kei-asset-enc', 256);
     const iv = await deriveAssetIv(encKeyBytes);
     const cryptoKey = await importAssetCryptoKey(encKeyBytes);
 
     const ciphertext = new Uint8Array(
-        (await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv: asWebCryptoBytes(iv) },
-            cryptoKey,
-            asWebCryptoBytes(plaintext)
-        )) as ArrayBuffer
+        (await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, plaintext)) as ArrayBuffer
     );
-    const hash = await sha256(ciphertext as unknown as Bytes);
+    const hash = await sha256(ciphertext);
     const encKey = toHex(encKeyBytes);
 
     plaintextHash.fill(0);
@@ -239,9 +224,9 @@ export async function decryptConvergentAsset(
     try {
         return new Uint8Array(
             (await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: asWebCryptoBytes(iv) },
+                { name: 'AES-GCM', iv },
                 cryptoKey,
-                asWebCryptoBytes(ciphertext)
+                asBytes(ciphertext)
             )) as ArrayBuffer
         );
     } finally {

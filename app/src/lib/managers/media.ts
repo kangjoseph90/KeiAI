@@ -1,4 +1,5 @@
 import { appHttp } from '$lib/adapters/http';
+import { asBytes } from '$lib/crypto';
 import { selectImageGenHandler } from '$lib/imagegen';
 import type { Chat } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
@@ -228,7 +229,7 @@ async function readChatInlay(chat: Chat, inlayId: string): Promise<InlayData> {
     }
     return {
         ...toInlayInfo(ref),
-        data: new Uint8Array(data)
+        data: asBytes(data)
     };
 }
 

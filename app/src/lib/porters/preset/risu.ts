@@ -1,3 +1,4 @@
+import { textEncoder } from '$lib/crypto';
 import { decompressSync } from 'fflate';
 import { decode } from 'msgpackr';
 import type { LLMRole } from '$lib/types/models/llm';
@@ -12,7 +13,6 @@ import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 import type { PromptBlockFields } from '$lib/workflow/types';
 import { readRisuTogglePanel } from '../risu/toggle';
 
-const TEXT_ENCODER = new TextEncoder();
 const RISU_PRESET_KEY = 'risupreset';
 
 type RisuRole = 'user' | 'bot' | 'system';
@@ -277,7 +277,7 @@ async function decrypt(data: Uint8Array, keyText: string): Promise<ArrayBuffer> 
 }
 
 async function cryptoKey(value: string): Promise<CryptoKey> {
-    const hash = await crypto.subtle.digest('SHA-256', TEXT_ENCODER.encode(value));
+    const hash = await crypto.subtle.digest('SHA-256', textEncoder.encode(value));
     return crypto.subtle.importKey('raw', hash, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
