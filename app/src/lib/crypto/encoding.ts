@@ -18,7 +18,10 @@ const BASE64_CHUNK_SIZE = 0x8000;
 export function toBase64(bytes: Uint8Array<ArrayBufferLike>): string {
     let binary = '';
     for (let index = 0; index < bytes.length; index += BASE64_CHUNK_SIZE) {
-        binary += String.fromCharCode(...bytes.subarray(index, index + BASE64_CHUNK_SIZE));
+        binary += String.fromCharCode.apply(
+            null,
+            bytes.subarray(index, index + BASE64_CHUNK_SIZE) as unknown as number[]
+        );
     }
     return btoa(binary);
 }
