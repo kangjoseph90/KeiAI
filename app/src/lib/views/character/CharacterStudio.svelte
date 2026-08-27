@@ -33,7 +33,7 @@
         moveCharacterItem,
         deleteCharacter
     } from '$lib/stores';
-    import { navigate, type CharacterStudioTab } from '$lib/router';
+    import { CHARACTER_STUDIO_TABS, navigate, type CharacterStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/services';
     import {
         exportCharacterFile,
@@ -87,15 +87,22 @@
     }
 
     // Tabs navigation helper
-    const tabs = $derived([
-        { id: 'profile', label: $t('character.studio.tabs.profile'), icon: UserRound },
-        { id: 'greetings', label: $t('character.studio.tabs.greetings'), icon: MessageSquare },
-        { id: 'lorebooks', label: $t('character.studio.tabs.lorebooks'), icon: Book },
-        { id: 'scripts', label: $t('character.studio.tabs.scripts'), icon: Code },
-        { id: 'display', label: $t('character.studio.tabs.display'), icon: Monitor },
-        { id: 'assets', label: $t('character.studio.tabs.assets'), icon: ImageIcon },
-        { id: 'advanced', label: $t('character.studio.tabs.advanced'), icon: Settings2 }
-    ] as const);
+    const TAB_ICONS = {
+        profile: UserRound,
+        greetings: MessageSquare,
+        lorebooks: Book,
+        scripts: Code,
+        display: Monitor,
+        assets: ImageIcon,
+        advanced: Settings2
+    } satisfies Record<CharacterStudioTab, unknown>;
+    const tabs = $derived(
+        CHARACTER_STUDIO_TABS.map((tab) => ({
+            id: tab,
+            label: $t(`character.studio.tabs.${tab}`),
+            icon: TAB_ICONS[tab]
+        }))
+    );
 
     $effect(() => {
         if (characterTab) activeTab = characterTab;

@@ -27,8 +27,7 @@
         activeRoom,
         activeChat
     } from '$lib/stores';
-    import { navigate } from '$lib/router';
-    import type { SettingsTab } from '$lib/router';
+    import { SETTINGS_TABS, navigate, type SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
     import ConnectionsSettings from './ConnectionsSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
@@ -53,18 +52,25 @@
     let suggestionWorkflowEditorOpen = $state(false);
     let titleWorkflowEditorOpen = $state(false);
 
-    const tabs = $derived([
-        { id: 'models', label: $t('settings.tabs.models'), icon: Layers },
-        { id: 'chat', label: $t('settings.tabs.chat'), icon: MessageSquare },
-        { id: 'services', label: $t('settings.tabs.services'), icon: LayoutGrid },
-        { id: 'plugins', label: $t('settings.tabs.plugins'), icon: Puzzle },
-        { id: 'language', label: $t('settings.tabs.language'), icon: Languages },
-        { id: 'profile', label: $t('settings.tabs.profile'), icon: User },
-        { id: 'account', label: $t('settings.tabs.account'), icon: Shield },
-        { id: 'connections', label: $t('settings.tabs.connections'), icon: Network },
-        { id: 'general', label: $t('settings.tabs.general'), icon: Settings },
-        { id: 'system', label: $t('settings.tabs.system'), icon: HardDrive }
-    ] as const);
+    const TAB_ICONS = {
+        models: Layers,
+        chat: MessageSquare,
+        services: LayoutGrid,
+        plugins: Puzzle,
+        language: Languages,
+        profile: User,
+        account: Shield,
+        connections: Network,
+        general: Settings,
+        system: HardDrive
+    } satisfies Record<SettingsTab, unknown>;
+    const tabs = $derived(
+        SETTINGS_TABS.map((tab) => ({
+            id: tab,
+            label: $t(`settings.tabs.${tab}`),
+            icon: TAB_ICONS[tab]
+        }))
+    );
 
     async function handleThemeChange(preference: ThemePreference): Promise<void> {
         if (themeBusy || preference === $themePreference) return;

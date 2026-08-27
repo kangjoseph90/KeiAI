@@ -31,7 +31,7 @@
         deleteModuleFolder,
         moveModuleItem
     } from '$lib/stores';
-    import { navigate, type ModuleStudioTab } from '$lib/router';
+    import { MODULE_STUDIO_TABS, navigate, type ModuleStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/services';
     import { exportModuleFile } from '$lib/managers/module';
     import type { DeepPartial } from '$lib/utils/defaults';
@@ -79,16 +79,23 @@
     }
 
     // Tabs navigation helper
-    const tabs = $derived([
-        { id: 'profile', label: $t('module.studio.tabs.profile'), icon: UserRound },
-        { id: 'lorebooks', label: $t('module.studio.tabs.lorebooks'), icon: Book },
-        { id: 'scripts', label: $t('module.studio.tabs.scripts'), icon: Code },
-        { id: 'toggles', label: $t('module.studio.tabs.toggles'), icon: SlidersHorizontal },
-        { id: 'commands', label: $t('module.studio.tabs.commands'), icon: SquareTerminal },
-        { id: 'display', label: $t('module.studio.tabs.display'), icon: Monitor },
-        { id: 'assets', label: $t('module.studio.tabs.assets'), icon: ImageIcon },
-        { id: 'advanced', label: $t('module.studio.tabs.advanced'), icon: Settings2 }
-    ] as const);
+    const TAB_ICONS = {
+        profile: UserRound,
+        lorebooks: Book,
+        scripts: Code,
+        toggles: SlidersHorizontal,
+        commands: SquareTerminal,
+        display: Monitor,
+        assets: ImageIcon,
+        advanced: Settings2
+    } satisfies Record<ModuleStudioTab, unknown>;
+    const tabs = $derived(
+        MODULE_STUDIO_TABS.map((tab) => ({
+            id: tab,
+            label: $t(`module.studio.tabs.${tab}`),
+            icon: TAB_ICONS[tab]
+        }))
+    );
 
     $effect(() => {
         if (moduleTab) activeTab = moduleTab;

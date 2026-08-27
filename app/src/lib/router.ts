@@ -10,35 +10,45 @@ export type ViewMode =
     | 'moduleStudio'
     | 'personaStudio'
     | 'settings';
-export type SettingsTab =
-    | 'models'
-    | 'services'
-    | 'chat'
-    | 'plugins'
-    | 'language'
-    | 'profile'
-    | 'account'
-    | 'connections'
-    | 'system'
-    | 'general';
-export type CharacterStudioTab =
-    | 'profile'
-    | 'greetings'
-    | 'lorebooks'
-    | 'scripts'
-    | 'display'
-    | 'assets'
-    | 'advanced';
-export type ModuleStudioTab =
-    | 'profile'
-    | 'lorebooks'
-    | 'scripts'
-    | 'toggles'
-    | 'commands'
-    | 'display'
-    | 'assets'
-    | 'advanced';
-export type PersonaStudioTab = 'profile' | 'assets' | 'advanced';
+export const SETTINGS_TABS = [
+    'models',
+    'chat',
+    'services',
+    'plugins',
+    'language',
+    'profile',
+    'account',
+    'connections',
+    'general',
+    'system'
+] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+export const CHARACTER_STUDIO_TABS = [
+    'profile',
+    'greetings',
+    'lorebooks',
+    'scripts',
+    'display',
+    'assets',
+    'advanced'
+] as const;
+export type CharacterStudioTab = (typeof CHARACTER_STUDIO_TABS)[number];
+
+export const MODULE_STUDIO_TABS = [
+    'profile',
+    'lorebooks',
+    'scripts',
+    'toggles',
+    'commands',
+    'display',
+    'assets',
+    'advanced'
+] as const;
+export type ModuleStudioTab = (typeof MODULE_STUDIO_TABS)[number];
+
+export const PERSONA_STUDIO_TABS = ['profile', 'assets', 'advanced'] as const;
+export type PersonaStudioTab = (typeof PERSONA_STUDIO_TABS)[number];
 
 export interface RouteState {
     view: ViewMode;
@@ -95,12 +105,17 @@ function buildHash(route: RouteState): string {
     }
 }
 
+function parseValidTab<T extends string>(
+    tabs: readonly T[],
+    raw: string | undefined
+): T | undefined {
+    return raw !== undefined && (tabs as readonly string[]).includes(raw) ? (raw as T) : undefined;
+}
+
 function parseHash(hash: string): RouteState {
     const path = hash.replace(/^#\//, '');
     if (!path || path === '/') return { view: 'home' };
     if (path === 'multi-room') return { view: 'multiRoom' };
-
-    if (path === 'settings') return { view: 'settings' };
 
     const parts = path.split('/');
     if (parts[0] === 'room') {
@@ -109,59 +124,28 @@ function parseHash(hash: string): RouteState {
         if (roomId) return { view: 'room', roomId, chatId };
     }
     if (parts[0] === 'character' && parts[1]) {
-        const characterTab = parts[2];
-        if (
-            characterTab === 'profile' ||
-            characterTab === 'greetings' ||
-            characterTab === 'lorebooks' ||
-            characterTab === 'scripts' ||
-            characterTab === 'display' ||
-            characterTab === 'assets' ||
-            characterTab === 'advanced'
-        ) {
-            return { view: 'characterStudio', charId: parts[1], characterTab };
-        }
-        return { view: 'characterStudio', charId: parts[1] };
+        return {
+            view: 'characterStudio',
+            charId: parts[1],
+            characterTab: parseValidTab(CHARACTER_STUDIO_TABS, parts[2])
+        };
     }
     if (parts[0] === 'module' && parts[1]) {
-        const moduleTab = parts[2];
-        if (
-            moduleTab === 'profile' ||
-            moduleTab === 'lorebooks' ||
-            moduleTab === 'scripts' ||
-            moduleTab === 'toggles' ||
-            moduleTab === 'commands' ||
-            moduleTab === 'display' ||
-            moduleTab === 'assets' ||
-            moduleTab === 'advanced'
-        ) {
-            return { view: 'moduleStudio', moduleId: parts[1], moduleTab };
-        }
-        return { view: 'moduleStudio', moduleId: parts[1] };
+        return {
+            view: 'moduleStudio',
+            moduleId: parts[1],
+            moduleTab: parseValidTab(MODULE_STUDIO_TABS, parts[2])
+        };
     }
     if (parts[0] === 'persona' && parts[1]) {
-        const personaTab = parts[2];
-        if (personaTab === 'profile' || personaTab === 'assets' || personaTab === 'advanced') {
-            return { view: 'personaStudio', personaId: parts[1], personaTab };
-        }
-        return { view: 'personaStudio', personaId: parts[1] };
+        return {
+            view: 'personaStudio',
+            personaId: parts[1],
+            personaTab: parseValidTab(PERSONA_STUDIO_TABS, parts[2])
+        };
     }
     if (parts[0] === 'settings') {
-        if (
-            parts[1] === 'models' ||
-            parts[1] === 'services' ||
-            parts[1] === 'chat' ||
-            parts[1] === 'plugins' ||
-            parts[1] === 'language' ||
-            parts[1] === 'profile' ||
-            parts[1] === 'account' ||
-            parts[1] === 'connections' ||
-            parts[1] === 'system' ||
-            parts[1] === 'general'
-        ) {
-            return { view: 'settings', settingsTab: parts[1] };
-        }
-        return { view: 'settings' };
+        return { view: 'settings', settingsTab: parseValidTab(SETTINGS_TABS, parts[1]) };
     }
     return { view: 'home' };
 }

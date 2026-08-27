@@ -86,72 +86,71 @@ export function withDetectedExtension(name: string, kind: DetectedFileKind): str
     return extension ? `${name}.${extension}` : name;
 }
 
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    m4a: 'audio/mp4',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    txt: 'text/plain',
+    log: 'text/plain',
+    md: 'text/markdown',
+    markdown: 'text/markdown',
+    csv: 'text/csv',
+    tsv: 'text/tab-separated-values',
+    html: 'text/html',
+    htm: 'text/html',
+    css: 'text/css',
+    xml: 'application/xml',
+    yaml: 'application/x-yaml',
+    yml: 'application/x-yaml',
+    toml: 'application/toml',
+    sql: 'application/sql',
+    js: 'text/javascript',
+    jsx: 'text/javascript',
+    ts: 'text/javascript',
+    tsx: 'text/javascript',
+    py: 'text/plain',
+    java: 'text/plain',
+    kt: 'text/plain',
+    kts: 'text/plain',
+    c: 'text/plain',
+    h: 'text/plain',
+    cpp: 'text/plain',
+    hpp: 'text/plain',
+    cs: 'text/plain',
+    go: 'text/plain',
+    rs: 'text/plain',
+    rb: 'text/plain',
+    php: 'text/plain',
+    swift: 'text/plain',
+    sh: 'text/plain',
+    bash: 'text/plain',
+    zsh: 'text/plain',
+    ps1: 'text/plain',
+    json: 'application/json',
+    keipreset: 'application/json',
+    zip: 'application/zip',
+    charx: 'application/zip',
+    keichar: 'application/zip',
+    keimodule: 'application/zip',
+    keipersona: 'application/zip'
+};
+
 export function mimeTypeFromName(name: string): string {
     const extension = name.split('.').pop()?.toLowerCase();
-    if (extension === 'png') return 'image/png';
-    if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
-    if (extension === 'webp') return 'image/webp';
-    if (extension === 'gif') return 'image/gif';
-    if (extension === 'mp3') return 'audio/mpeg';
-    if (extension === 'wav') return 'audio/wav';
-    if (extension === 'ogg') return 'audio/ogg';
-    if (extension === 'm4a') return 'audio/mp4';
-    if (extension === 'mp4') return 'video/mp4';
-    if (extension === 'mov') return 'video/quicktime';
-    if (extension === 'pdf') return 'application/pdf';
-    if (extension === 'docx') {
-        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (!extension || !Object.hasOwn(EXTENSION_MIME_TYPES, extension)) {
+        return 'application/octet-stream';
     }
-    if (extension === 'pptx') {
-        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-    }
-    if (extension === 'xlsx') {
-        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    }
-    if (extension === 'txt' || extension === 'log') return 'text/plain';
-    if (extension === 'md' || extension === 'markdown') return 'text/markdown';
-    if (extension === 'csv') return 'text/csv';
-    if (extension === 'tsv') return 'text/tab-separated-values';
-    if (extension === 'html' || extension === 'htm') return 'text/html';
-    if (extension === 'css') return 'text/css';
-    if (extension === 'xml') return 'application/xml';
-    if (extension === 'yaml' || extension === 'yml') return 'application/x-yaml';
-    if (extension === 'toml') return 'application/toml';
-    if (extension === 'sql') return 'application/sql';
-    if (extension === 'js' || extension === 'jsx' || extension === 'ts' || extension === 'tsx') {
-        return 'text/javascript';
-    }
-    if (
-        extension === 'py' ||
-        extension === 'java' ||
-        extension === 'kt' ||
-        extension === 'kts' ||
-        extension === 'c' ||
-        extension === 'h' ||
-        extension === 'cpp' ||
-        extension === 'hpp' ||
-        extension === 'cs' ||
-        extension === 'go' ||
-        extension === 'rs' ||
-        extension === 'rb' ||
-        extension === 'php' ||
-        extension === 'swift' ||
-        extension === 'sh' ||
-        extension === 'bash' ||
-        extension === 'zsh' ||
-        extension === 'ps1'
-    ) {
-        return 'text/plain';
-    }
-    if (extension === 'json' || extension === 'keipreset') return 'application/json';
-    if (
-        extension === 'zip' ||
-        extension === 'charx' ||
-        extension === 'keichar' ||
-        extension === 'keimodule' ||
-        extension === 'keipersona'
-    ) {
-        return 'application/zip';
-    }
-    return 'application/octet-stream';
+    return EXTENSION_MIME_TYPES[extension];
 }

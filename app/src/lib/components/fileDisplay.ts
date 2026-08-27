@@ -23,69 +23,46 @@ export function getFileIcon(name: string, mime?: string) {
     return FileGenericIcon;
 }
 
+type SyntaxLanguageGroup = {
+    language: SyntaxTextareaLanguage;
+    extensions: readonly string[];
+    mimeTypes?: readonly string[];
+};
+
+const SYNTAX_LANGUAGE_GROUPS: readonly SyntaxLanguageGroup[] = [
+    { language: 'json', extensions: ['json', 'keipreset'], mimeTypes: ['application/json'] },
+    {
+        language: 'javascript',
+        extensions: ['js', 'jsx', 'mjs', 'cjs'],
+        mimeTypes: ['text/javascript', 'application/javascript']
+    },
+    { language: 'typescript', extensions: ['ts', 'tsx', 'mts', 'cts'] },
+    {
+        language: 'html',
+        extensions: ['html', 'htm', 'svg', 'xml'],
+        mimeTypes: ['text/html', 'text/xml', 'application/xml']
+    },
+    { language: 'css', extensions: ['css', 'scss', 'less'], mimeTypes: ['text/css'] },
+    { language: 'markdown', extensions: ['md', 'markdown'], mimeTypes: ['text/markdown'] },
+    { language: 'python', extensions: ['py', 'pyw'] },
+    { language: 'yaml', extensions: ['yaml', 'yml'], mimeTypes: ['application/x-yaml'] },
+    { language: 'sql', extensions: ['sql'], mimeTypes: ['application/sql'] },
+    { language: 'rust', extensions: ['rs'] },
+    { language: 'go', extensions: ['go'] },
+    { language: 'cpp', extensions: ['cpp', 'cc', 'cxx', 'hpp', 'h'] },
+    { language: 'c', extensions: ['c'] },
+    { language: 'csharp', extensions: ['cs'] },
+    { language: 'bash', extensions: ['sh', 'bash', 'zsh'] }
+];
+
 export function detectSyntaxLanguage(name: string, mime?: string): SyntaxTextareaLanguage {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
     const normalizedMime = mime?.trim().toLowerCase().split(';', 1)[0] ?? '';
 
-    if (ext === 'json' || ext === 'keipreset' || normalizedMime === 'application/json') {
-        return 'json';
-    }
-    if (
-        ext === 'js' ||
-        ext === 'jsx' ||
-        ext === 'mjs' ||
-        ext === 'cjs' ||
-        normalizedMime === 'text/javascript' ||
-        normalizedMime === 'application/javascript'
-    ) {
-        return 'javascript';
-    }
-    if (ext === 'ts' || ext === 'tsx' || ext === 'mts' || ext === 'cts') {
-        return 'typescript';
-    }
-    if (
-        ext === 'html' ||
-        ext === 'htm' ||
-        ext === 'svg' ||
-        ext === 'xml' ||
-        normalizedMime === 'text/html' ||
-        normalizedMime === 'text/xml' ||
-        normalizedMime === 'application/xml'
-    ) {
-        return 'html';
-    }
-    if (ext === 'css' || ext === 'scss' || ext === 'less' || normalizedMime === 'text/css') {
-        return 'css';
-    }
-    if (ext === 'md' || ext === 'markdown' || normalizedMime === 'text/markdown') {
-        return 'markdown';
-    }
-    if (ext === 'py' || ext === 'pyw') {
-        return 'python';
-    }
-    if (ext === 'yaml' || ext === 'yml' || normalizedMime === 'application/x-yaml') {
-        return 'yaml';
-    }
-    if (ext === 'sql' || normalizedMime === 'application/sql') {
-        return 'sql';
-    }
-    if (ext === 'rs') {
-        return 'rust';
-    }
-    if (ext === 'go') {
-        return 'go';
-    }
-    if (ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'hpp' || ext === 'h') {
-        return 'cpp';
-    }
-    if (ext === 'c') {
-        return 'c';
-    }
-    if (ext === 'cs') {
-        return 'csharp';
-    }
-    if (ext === 'sh' || ext === 'bash' || ext === 'zsh') {
-        return 'bash';
+    for (const group of SYNTAX_LANGUAGE_GROUPS) {
+        if (group.extensions.includes(ext) || group.mimeTypes?.includes(normalizedMime)) {
+            return group.language;
+        }
     }
     return 'none';
 }

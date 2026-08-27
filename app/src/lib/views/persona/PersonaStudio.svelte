@@ -46,7 +46,7 @@
         deletePersonaFolder,
         movePersonaItem
     } from '$lib/stores';
-    import { navigate, type PersonaStudioTab } from '$lib/router';
+    import { PERSONA_STUDIO_TABS, navigate, type PersonaStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/services';
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
@@ -69,11 +69,18 @@
     type ExportButton = 'risu' | 'keipersona-light' | 'keipersona-baked';
     let exporting = $state<ExportButton | null>(null);
 
-    const tabs = $derived([
-        { id: 'profile', label: $t('persona.studio.tabs.profile'), icon: UserRoundPen },
-        { id: 'assets', label: $t('persona.studio.tabs.assets'), icon: ImageIcon },
-        { id: 'advanced', label: $t('persona.studio.tabs.advanced'), icon: Settings2 }
-    ] as const);
+    const TAB_ICONS = {
+        profile: UserRoundPen,
+        assets: ImageIcon,
+        advanced: Settings2
+    } satisfies Record<PersonaStudioTab, unknown>;
+    const tabs = $derived(
+        PERSONA_STUDIO_TABS.map((tab) => ({
+            id: tab,
+            label: $t(`persona.studio.tabs.${tab}`),
+            icon: TAB_ICONS[tab]
+        }))
+    );
 
     $effect(() => {
         if (personaTab) activeTab = personaTab;
