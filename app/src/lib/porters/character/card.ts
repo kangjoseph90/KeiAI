@@ -1,9 +1,10 @@
 import type { KeiCharacterPackageV1 } from './types';
 import type { CardAsset, CharacterCardV3 } from './ccv3';
-import { bytesToBase64, toKeiPackageJson } from './package';
+import { sanitizeFileName } from '$lib/utils/file';
+import { toBase64 } from '$lib/crypto';
 import { keiLorebookToRisuCardEntry, keiLorebookToRisuInternal } from '../risu/lorebook';
 import { keiScriptToRisu } from '../risu/script';
-import { sanitizeFileName } from '$lib/utils/file';
+import { toKeiPackageJson } from './package';
 import { writeDefaultVariables } from '../utils';
 import { denormalizeRisuTemplate } from '../risu/template';
 import { backgroundWithMessageCSS } from '../risu/background';
@@ -130,7 +131,7 @@ function assetUri(
     }
 
     const ext = assetExt(asset?.data);
-    return asset?.data ? `data:${mimeType(ext)};base64,${bytesToBase64(asset.data)}` : '';
+    return asset?.data ? `data:${mimeType(ext)};base64,${toBase64(asset.data)}` : '';
 }
 
 function assetExt(bytes: Uint8Array | undefined): string {

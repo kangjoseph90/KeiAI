@@ -7,9 +7,9 @@ import {
     type PngInput,
     type PngTextChunk
 } from '$lib/utils/png';
+import { fromBase64, toBase64 } from '$lib/crypto';
 import { assetPath, keiPackageToCard } from './card';
 import { parseCharacterCardV3 } from './ccv3';
-import { base64ToBytes, bytesToBase64 } from './package';
 import { cardToKeiPackage } from './risu';
 import type { KeiCharacterPackageV1 } from './types';
 
@@ -24,7 +24,7 @@ export async function readCharacterPng(input: PngInput): Promise<KeiCharacterPac
     const ccv3 = chunks.find((chunk) => chunk.key === 'ccv3');
     if (!ccv3) throw new AppError('INVALID_INPUT', 'PNG card is missing ccv3 chunk');
 
-    const cardJson = new TextDecoder().decode(base64ToBytes(ccv3.value));
+    const cardJson = new TextDecoder().decode(fromBase64(ccv3.value));
     const card = parseCharacterCardV3(JSON.parse(cardJson) as unknown);
     return cardToKeiPackage(card, readAssetChunks(chunks), bytes);
 }
@@ -39,7 +39,7 @@ export async function writeCharacterPng(pkg: KeiCharacterPackageV1): Promise<Uin
         if (!asset.data) continue;
         assetChunks.push({
             key: `chara-ext-asset_:${assetPath(pkg, key)}`,
-            value: bytesToBase64(asset.data)
+            value: toBase64(asset.data)
         });
     }
 
@@ -49,14 +49,11 @@ export async function writeCharacterPng(pkg: KeiCharacterPackageV1): Promise<Uin
     if (pkg.avatar?.data) {
         assetChunks.push({
             key: `chara-ext-asset_:${assetPath(pkg, '__avatar__')}`,
-            value: bytesToBase64(pkg.avatar.data)
+            value: toBase64(pkg.avatar.data)
         });
     }
 
-    const chunks: PngTextChunk[] = [
-        { key: 'ccv3', value: bytesToBase64(cardBytes) },
-        ...assetChunks
-    ];
+    const chunks: PngTextChunk[] = [{ key: 'ccv3', value: toBase64(cardBytes) }, ...assetChunks];
 
     return writePngTextChunks(basePng, chunks, ['ccv3', 'chara-ext-asset_*']);
 }
@@ -66,7 +63,7 @@ function readAssetChunks(chunks: PngTextChunk[]): Record<string, Uint8Array> {
     for (const chunk of chunks) {
         if (!chunk.key.startsWith('chara-ext-asset_:')) continue;
         const path = chunk.key.slice('chara-ext-asset_:'.length);
-        assets[path] = base64ToBytes(chunk.value);
+        assets[path] = fromBase64(chunk.value);
     }
     return assets;
 }

@@ -1,4 +1,5 @@
 import { TABLES, type TableName } from '$lib/adapters/db';
+import { fromBase64, toBase64 } from '$lib/crypto';
 import type { AssetReadLocator } from './types';
 
 const GIF_DATA_URI_PREFIX = 'data:image/gif;base64,';
@@ -14,11 +15,7 @@ const PLACEHOLDER_GIF = Uint8Array.from([
 
 export function createAssetUri(locator: AssetReadLocator): string {
     const bytes = new TextEncoder().encode(JSON.stringify(locator));
-    let binary = '';
-    for (const byte of bytes) {
-        binary += String.fromCharCode(byte);
-    }
-    const payload = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const payload = toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     return createPlaceholderDataUri(locator.width, locator.height) + ASSET_URI_MARKER + payload;
 }
 
@@ -34,9 +31,7 @@ export function parseAssetUri(uri: string): AssetReadLocator | null {
     try {
         const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
         const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-        const binary = atob(padded);
-        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-        const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+        const value: unknown = JSON.parse(new TextDecoder().decode(fromBase64(padded)));
         return isAssetReadLocator(value) ? value : null;
     } catch {
         return null;
@@ -47,8 +42,7 @@ function createPlaceholderDataUri(width: number | undefined, height: number | un
     const gif = PLACEHOLDER_GIF.slice();
     writeGifDimension(gif, 6, width);
     writeGifDimension(gif, 8, height);
-    const binary = Array.from(gif, (byte) => String.fromCharCode(byte)).join('');
-    return GIF_DATA_URI_PREFIX + btoa(binary);
+    return GIF_DATA_URI_PREFIX + toBase64(gif);
 }
 
 function writeGifDimension(bytes: Uint8Array, offset: number, value: number | undefined): void {

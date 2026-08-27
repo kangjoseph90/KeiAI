@@ -9,13 +9,16 @@
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
+/** Chunk size keeps String.fromCharCode arguments under engine limits. */
+const BASE64_CHUNK_SIZE = 0x8000;
+
 /**
  * Convert raw bytes to a Base64 string.
  */
-export function toBase64(bytes: Bytes): string {
+export function toBase64(bytes: Uint8Array<ArrayBufferLike>): string {
     let binary = '';
-    for (const byte of bytes) {
-        binary += String.fromCharCode(byte);
+    for (let index = 0; index < bytes.length; index += BASE64_CHUNK_SIZE) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + BASE64_CHUNK_SIZE));
     }
     return btoa(binary);
 }

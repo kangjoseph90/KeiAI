@@ -3,6 +3,8 @@
  * Float32 under an f32: prefix; everything else stays plain JSON.
  */
 
+import { fromBase64, toBase64 } from '$lib/crypto';
+
 const F32_PREFIX = 'f32:';
 
 const HOST_IS_LITTLE_ENDIAN = new Uint8Array(new Float32Array([1]).buffer)[0] === 1;
@@ -20,13 +22,7 @@ function float32ToLEBytes(vector: Float32Array): Uint8Array {
 }
 
 export function encodeFloat32Base64(vector: Float32Array): string {
-    const bytes = float32ToLEBytes(vector);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let index = 0; index < bytes.length; index += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-    }
-    return btoa(binary);
+    return toBase64(float32ToLEBytes(vector));
 }
 
 /** Decode little-endian Float32 bytes, swapping them first on big-endian hosts. */
@@ -49,12 +45,7 @@ export function float32FromLEBytes(
 }
 
 export function decodeFloat32Base64(encoded: string): Float32Array {
-    const binary = atob(encoded);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-        bytes[index] = binary.charCodeAt(index);
-    }
-    return float32FromLEBytes(bytes);
+    return float32FromLEBytes(fromBase64(encoded));
 }
 
 export function encodeCacheValue(value: unknown): string {

@@ -4,6 +4,7 @@ import { Store as StrongholdStore, Stronghold } from '@tauri-apps/plugin-strongh
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
 import { createLogger } from '$lib/adapters/logger';
+import { toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { UserWriteEventEmitter } from './events';
 import type {
@@ -196,7 +197,7 @@ export class TauriUserAdapter implements IUserAdapter {
             let vaultPassword = await metaStore.get<string>('vaultPassword');
             if (!vaultPassword) {
                 const entropy = crypto.getRandomValues(new Uint8Array(32));
-                vaultPassword = btoa(String.fromCharCode(...entropy));
+                vaultPassword = toBase64(entropy);
                 await metaStore.set('vaultPassword', vaultPassword);
                 await metaStore.save();
             }

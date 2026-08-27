@@ -1,8 +1,9 @@
+import { fromBase64 } from '$lib/crypto';
 import type { Lorebook, LorebookFields, Script } from '$lib/services';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
 import type { CharacterBookEntry, CharacterCardV3 } from './ccv3';
-import { fromKeiPackageJson, base64ToBytes } from './package';
+import { fromKeiPackageJson } from './package';
 import { readRisuLorebookDecorators } from '../risu/lorebook';
 import { risuScriptToKei } from '../risu/script';
 import { normalizeRisuTemplate } from '../risu/template';
@@ -229,7 +230,7 @@ function resolveAssetData(
 
     const comma = uri.indexOf(',');
     if (comma === -1) return null;
-    return base64ToBytes(uri.slice(comma + 1));
+    return fromBase64(uri.slice(comma + 1));
 }
 
 function cardLorebookToFields(entry: CharacterBookEntry, index: number): LorebookFields {

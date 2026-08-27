@@ -1,7 +1,7 @@
 import { AppError } from '$lib/types/errors';
+import { fromBase64, toBase64 } from '$lib/crypto';
 import { imageToPng, readPng, writePngTextChunks } from '$lib/utils/png';
 import { unzip, zip } from '$lib/utils/zip';
-import { base64ToBytes, bytesToBase64 } from '../character/package';
 import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiPersonaPackageV1 } from './types';
 import type { KeiPackageExportMode } from '../utils';
@@ -53,7 +53,7 @@ async function readRisuPersonaPng(bytes: Uint8Array): Promise<KeiPersonaPackageV
     const chunk = chunks.find((item) => item.key === 'persona');
     if (!chunk) throw new AppError('INVALID_INPUT', 'PNG is missing Risu persona chunk');
 
-    const card = JSON.parse(TEXT_DECODER.decode(base64ToBytes(chunk.value))) as RisuPersonaCard;
+    const card = JSON.parse(TEXT_DECODER.decode(fromBase64(chunk.value))) as RisuPersonaCard;
     return {
         version: 1,
         kind: 'keiai.persona',
@@ -76,7 +76,7 @@ async function writeRisuPersonaPng(pkg: KeiPersonaPackageV1): Promise<Uint8Array
     const png = avatarData ? await imageToPng(avatarData) : EMPTY_PNG;
     return writePngTextChunks(
         png ?? EMPTY_PNG,
-        [{ key: 'persona', value: bytesToBase64(TEXT_ENCODER.encode(JSON.stringify(card))) }],
+        [{ key: 'persona', value: toBase64(TEXT_ENCODER.encode(JSON.stringify(card))) }],
         ['persona']
     );
 }
