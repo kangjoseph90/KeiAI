@@ -39,4 +39,8 @@ export interface CacheBackend {
     getMany(namespace: string, keys: string[]): Promise<CacheEntry[]>;
     setMany(namespace: string, entries: CacheEntry[], capacity: number): Promise<void>;
     deleteMany(namespace: string, keys: string[]): Promise<void>;
+    /** Queue read-recency touches in memory. Must not write synchronously. Returns true when a flush is worthwhile. */
+    queueTouch(namespace: string, keys: string[]): boolean;
+    /** Persist queued touches as one batched update. Never upserts, so racing deletes stay dead. */
+    flushTouches(): Promise<void>;
 }

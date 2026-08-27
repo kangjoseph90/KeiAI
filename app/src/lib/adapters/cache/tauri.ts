@@ -1,5 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import type { CacheBackend, CacheEntry } from './types';
+import { decodeCacheValue, encodeCacheValue } from './float-codec';
 import { Mutex } from '$lib/utils/mutex';
 
 const CHUNK_SIZE = 50;
@@ -16,12 +17,16 @@ function nextAccessedAt(): number {
     return lastAccessedAt;
 }
 
+const pendingTouches = new Set<string>();
+let touchFlushChain: Promise<void> = Promise.resolve();
+const TOUCH_FLUSH_THRESHOLD = 256;
+
 /**
- * Tauri SQLite Cache Backend
+ * Tauri SQLite Cache Backend.
  *
- * Uses @tauri-apps/plugin-sql with a separate DB file (KeiCacheDB.db) so
- * cache data never mixes with domain records (KeiLocalDB.db) and is never
- * synced. Values are stored as JSON-serializable TEXT.
+ * Separate DB file (KeiCacheDB.db) so cache data never mixes with domain
+ * records and is never synced. Values live in TEXT encoded by float-codec.ts:
+ * base64 little-endian Float32 for typed arrays, JSON for everything else.
  */
 export class TauriCacheBackend implements CacheBackend {
     private dbPromise: Promise<Database> | null = null;
@@ -75,7 +80,7 @@ export class TauriCacheBackend implements CacheBackend {
             );
             return rows.map(({ key, value }) => ({
                 key,
-                value: value !== null ? JSON.parse(value) : null
+                value: decodeCacheValue(value)
             }));
         });
     }
@@ -99,7 +104,7 @@ export class TauriCacheBackend implements CacheBackend {
                         `${namespace}:${key}`,
                         namespace,
                         key,
-                        JSON.stringify(value),
+                        encodeCacheValue(value),
                         accessedAt
                     );
                 }
@@ -121,9 +126,8 @@ export class TauriCacheBackend implements CacheBackend {
     async getMany(namespace: string, keys: string[]): Promise<CacheEntry[]> {
         if (keys.length === 0) return [];
         const uniqueKeys = [...new Set(keys)];
-        const accessedAt = nextAccessedAt();
 
-        return this.transaction(async (db) => {
+        return this.runExclusive(async (db) => {
             const rows: CacheRow[] = [];
             for (let index = 0; index < uniqueKeys.length; index += CHUNK_SIZE) {
                 const chunk = uniqueKeys.slice(index, index + CHUNK_SIZE);
@@ -135,18 +139,38 @@ export class TauriCacheBackend implements CacheBackend {
                         nskeys
                     ))
                 );
-                await db.execute(
-                    `UPDATE entries SET accessed_at = $1 WHERE nskey IN (${nskeys
-                        .map((_, itemIndex) => `$${itemIndex + 2}`)
-                        .join(', ')})`,
-                    [accessedAt, ...nskeys]
-                );
             }
-            return rows.map(({ key, value }) => ({
-                key,
-                value: value !== null ? JSON.parse(value) : null
-            }));
+            return rows.map(({ key, value }) => ({ key, value: decodeCacheValue(value) }));
         });
+    }
+
+    queueTouch(namespace: string, keys: string[]): boolean {
+        for (const key of keys) pendingTouches.add(`${namespace}:${key}`);
+        return pendingTouches.size >= TOUCH_FLUSH_THRESHOLD;
+    }
+
+    flushTouches(): Promise<void> {
+        const run = touchFlushChain.then(async () => {
+            if (pendingTouches.size === 0) return;
+            const nskeys = [...pendingTouches];
+            pendingTouches.clear();
+            const accessedAt = nextAccessedAt();
+
+            await this.runExclusive(async (db) => {
+                for (let index = 0; index < nskeys.length; index += CHUNK_SIZE) {
+                    const chunk = nskeys.slice(index, index + CHUNK_SIZE);
+                    const placeholders = chunk
+                        .map((_, itemIndex) => `$${itemIndex + 2}`)
+                        .join(', ');
+                    await db.execute(
+                        `UPDATE entries SET accessed_at = $1 WHERE nskey IN (${placeholders})`,
+                        [accessedAt, ...chunk]
+                    );
+                }
+            });
+        });
+        touchFlushChain = run.catch(() => undefined);
+        return run;
     }
 
     async setMany(namespace: string, entries: CacheEntry[], capacity: number): Promise<void> {
@@ -168,7 +192,7 @@ export class TauriCacheBackend implements CacheBackend {
                         `${namespace}:${key}`,
                         namespace,
                         key,
-                        JSON.stringify(value),
+                        encodeCacheValue(value),
                         nextAccessedAt()
                     );
                 }

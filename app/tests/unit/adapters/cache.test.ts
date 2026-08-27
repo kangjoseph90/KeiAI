@@ -34,6 +34,22 @@ function readNamespace(namespace: string): Promise<Map<string, unknown>> {
         .finally(() => db.close());
 }
 
+// Same, but preserves full records (including accessedAt) for write-tracking
+// assertions.
+function readRecords(namespace: string): Promise<Map<string, Record<string, unknown>>> {
+    const db = new Dexie('KeiCacheDB');
+    db.version(1).stores({ entries: 'nskey, namespace, [namespace+accessedAt]' });
+    return db
+        .open()
+        .then(() => db.table('entries').where('namespace').equals(namespace).toArray())
+        .then((rows) => {
+            const map = new Map<string, Record<string, unknown>>();
+            for (const row of rows) map.set(row.key as string, { ...row });
+            return map;
+        })
+        .finally(() => db.close());
+}
+
 describe('createCache (Web backend)', () => {
     it('persists set() entries to IndexedDB on flush', async () => {
         const cache = createCache<{ n: number }>('persist', 10);
@@ -199,5 +215,49 @@ describe('createAsyncCache (Web backend)', () => {
                 ['c', 3]
             ])
         );
+    });
+
+    it('does not rewrite records when reading', async () => {
+        const cache = createAsyncCache<number>('no-read-writes', 10);
+        await cache.setMany([
+            ['a', 1],
+            ['b', 2]
+        ]);
+        const before = await readRecords('no-read-writes');
+
+        // Hits are only queued in memory; nothing may be persisted here.
+        await expect(cache.getMany(['a', 'b'])).resolves.toEqual(
+            new Map([
+                ['a', 1],
+                ['b', 2]
+            ])
+        );
+        const afterReads = await readRecords('no-read-writes');
+        expect(afterReads).toEqual(before);
+
+        // The next write persists the queued touches as one batched update.
+        await cache.set('c', 3);
+        const afterDrain = await readRecords('no-read-writes');
+        for (const key of ['a', 'b']) {
+            expect(afterDrain.get(key)?.accessedAt).toBeGreaterThan(
+                before.get(key)?.accessedAt as number
+            );
+        }
+    });
+
+    it('persists Float32Array values as structured typed arrays (binary, not JSON)', async () => {
+        const cache = createAsyncCache<Float32Array>('binary-vectors', 4);
+        const vector = new Float32Array([0.25, -1.5, Number.EPSILON]);
+        await cache.setMany([['v', vector]]);
+
+        const raw = await readNamespace('binary-vectors');
+        const stored = raw.get('v');
+        expect(stored).toBeInstanceOf(Float32Array);
+        expect(stored).not.toBe(vector); // a persisted copy, not the live instance
+        expect(Array.from(stored as Float32Array)).toEqual([0.25, -1.5, Number.EPSILON]);
+
+        await expect(cache.getMany(['v'])).resolves.toEqual(new Map([['v', vector]]));
+        const [reread] = [...(await cache.getMany(['v'])).values()];
+        expect(reread).toBeInstanceOf(Float32Array);
     });
 });

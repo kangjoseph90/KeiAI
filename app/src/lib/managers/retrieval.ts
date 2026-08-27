@@ -8,8 +8,9 @@ import { LRUCache } from '$lib/utils/cache';
 
 const QUERY_L1_CAPACITY = 32;
 const QUERY_L2_CAPACITY = 100;
-const DOCUMENT_L1_CAPACITY = 256;
-const DOCUMENT_L2_CAPACITY = 1_000;
+/** 64 MiB of resident vectors ≈ 21k chunks at 768d / 10.9k at 1536d. */
+const DOCUMENT_L1_BYTE_BUDGET = 64 * 1024 * 1024;
+const DOCUMENT_L2_CAPACITY = 16_384;
 const EMBEDDING_BATCH_CHUNKS = 64;
 
 export interface RetrievalDocument {
@@ -30,12 +31,14 @@ interface EmbeddedCandidate {
 }
 
 const queryEmbeddingL1 = new LRUCache<string, Float32Array>(QUERY_L1_CAPACITY);
-const documentEmbeddingL1 = new LRUCache<string, Float32Array>(DOCUMENT_L1_CAPACITY);
-const queryEmbeddingL2 = createAsyncCache<number[]>(
+const documentEmbeddingL1 = new LRUCache<string, Float32Array>(DOCUMENT_L1_BYTE_BUDGET, {
+    estimateSize: (vector) => vector.byteLength
+});
+const queryEmbeddingL2 = createAsyncCache<Float32Array>(
     'normalized-embedding-query-vectors',
     QUERY_L2_CAPACITY
 );
-const documentEmbeddingL2 = createAsyncCache<number[]>(
+const documentEmbeddingL2 = createAsyncCache<Float32Array>(
     'normalized-embedding-document-vectors',
     DOCUMENT_L2_CAPACITY
 );
@@ -106,51 +109,36 @@ export async function searchDocuments(
 
     const [cachedQueries, cachedDocuments] = await Promise.all([
         queryVector
-            ? Promise.resolve(new Map<string, number[]>())
-            : queryEmbeddingL2.getMany([queryKey]).catch(() => new Map<string, number[]>()),
+            ? Promise.resolve(new Map<string, Float32Array>())
+            : queryEmbeddingL2.getMany([queryKey]).catch(() => new Map<string, Float32Array>()),
         documentL2Keys.length > 0
-            ? documentEmbeddingL2.getMany(documentL2Keys).catch(() => new Map<string, number[]>())
-            : Promise.resolve(new Map<string, number[]>())
+            ? documentEmbeddingL2
+                  .getMany(documentL2Keys)
+                  .catch(() => new Map<string, Float32Array>())
+            : Promise.resolve(new Map<string, Float32Array>())
     ]);
     signal.throwIfAborted();
 
-    const invalidQueryKeys: string[] = [];
-    const cachedQuery = cachedQueries.get(queryKey);
     if (!queryVector) {
-        if (isNormalizedEmbeddingVector(cachedQuery)) {
-            queryVector = toFloat32Vector(cachedQuery);
+        const cachedQuery = cachedQueries.get(queryKey);
+        if (cachedQuery) {
+            queryVector = cachedQuery;
             queryEmbeddingL1.set(queryKey, queryVector);
-        } else {
-            if (cachedQuery !== undefined) invalidQueryKeys.push(queryKey);
         }
     }
 
-    const invalidDocumentKeys: string[] = [];
     for (const key of uniqueDocumentVectorKeys) {
         if (documentVectors.has(key)) continue;
 
         const cached = cachedDocuments.get(key);
-        if (isNormalizedEmbeddingVector(cached)) {
-            const vector = toFloat32Vector(cached);
-            documentVectors.set(key, vector);
-            documentEmbeddingL1.set(key, vector);
-        } else {
-            if (cached !== undefined) invalidDocumentKeys.push(key);
+        if (cached) {
+            documentVectors.set(key, cached);
+            documentEmbeddingL1.set(key, cached);
         }
     }
-    await Promise.all([
-        invalidQueryKeys.length > 0
-            ? queryEmbeddingL2.deleteMany(invalidQueryKeys).catch(() => undefined)
-            : Promise.resolve(),
-        invalidDocumentKeys.length > 0
-            ? documentEmbeddingL2
-                  .deleteMany([...new Set(invalidDocumentKeys)])
-                  .catch(() => undefined)
-            : Promise.resolve()
-    ]);
 
-    const queryL2Entries: Array<readonly [string, number[]]> = [];
-    const documentL2Entries: Array<readonly [string, number[]]> = [];
+    const queryL2Entries: Array<readonly [string, Float32Array]> = [];
+    const documentL2Entries: Array<readonly [string, Float32Array]> = [];
     if (!queryVector) {
         const { vectors } = await selected.handler.embedQuery([query], signal);
         signal.throwIfAborted();
@@ -159,7 +147,7 @@ export async function searchDocuments(
         }
         queryVector = normalizeEmbeddingVector(vectors[0]);
         queryEmbeddingL1.set(queryKey, queryVector);
-        queryL2Entries.push([queryKey, Array.from(queryVector)]);
+        queryL2Entries.push([queryKey, queryVector]);
     }
     const expectedDimensions = queryVector.length;
 
@@ -200,7 +188,7 @@ export async function searchDocuments(
                 const key = entry.vectorKeys[chunkIndex];
                 documentVectors.set(key, normalized);
                 documentEmbeddingL1.set(key, normalized);
-                documentL2Entries.push([key, Array.from(normalized)]);
+                documentL2Entries.push([key, normalized]);
             }
         }
     }
@@ -269,14 +257,6 @@ export async function rerank(
     return results;
 }
 
-function isNormalizedEmbeddingVector(value: number[] | undefined): value is number[] {
-    return (
-        Array.isArray(value) &&
-        value.length > 0 &&
-        value.every((component) => typeof component === 'number' && Number.isFinite(component))
-    );
-}
-
 function normalizeEmbeddingVector(vector: Float32Array): Float32Array {
     if (
         !(vector instanceof Float32Array) ||
@@ -303,21 +283,22 @@ function normalizeEmbeddingVector(vector: Float32Array): Float32Array {
     return normalized;
 }
 
-function toFloat32Vector(vector: number[]): Float32Array {
-    const converted = Float32Array.from(vector);
-    if (!converted.every(Number.isFinite)) {
-        throw new AppError('NETWORK_ERROR', 'Cached embedding vector is invalid');
-    }
-    return converted;
-}
-
 function dotProduct(left: ArrayLike<number>, right: ArrayLike<number>): number {
     if (left.length !== right.length) {
         throw new AppError('NETWORK_ERROR', 'Embedding returned inconsistent vector lengths');
     }
 
+    // One accumulator keeps scalar addition order, so scores are bit-identical.
     let dot = 0;
-    for (let index = 0; index < left.length; index += 1) {
+    let index = 0;
+    const unrolledLength = left.length - (left.length % 4);
+    for (; index < unrolledLength; index += 4) {
+        dot += left[index] * right[index];
+        dot += left[index + 1] * right[index + 1];
+        dot += left[index + 2] * right[index + 2];
+        dot += left[index + 3] * right[index + 3];
+    }
+    for (; index < left.length; index += 1) {
         dot += left[index] * right[index];
     }
     return dot;

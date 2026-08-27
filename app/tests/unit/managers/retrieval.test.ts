@@ -153,14 +153,81 @@ describe('retrieval manager', () => {
         const queryKey = 'openai::embedding-model\0query\0persistent-query';
         const documentGroupKey = 'openai::embedding-model\0document\0["persistent-chunk"]';
         const documentKey = `${documentGroupKey}\0${0}`;
-        mocks.queryStore.getMany.mockResolvedValue(new Map([[queryKey, [1, 0]]]));
-        mocks.documentStore.getMany.mockResolvedValue(new Map([[documentKey, [1, 0]]]));
+        mocks.queryStore.getMany.mockResolvedValue(new Map([[queryKey, new Float32Array([1, 0])]]));
+        mocks.documentStore.getMany.mockResolvedValue(
+            new Map([[documentKey, new Float32Array([1, 0])]])
+        );
 
         await expect(
             searchChunks('persistent-query', ['persistent-chunk'], signal)
         ).resolves.toEqual([{ index: 0, score: 1 }]);
         expect(mocks.embedQuery).not.toHaveBeenCalled();
         expect(mocks.embedDocuments).not.toHaveBeenCalled();
+    });
+
+    it('keeps dot-product scores bit-identical to naive accumulation order', async () => {
+        const signal = new AbortController().signal;
+
+        // Deterministic PRNG so any failure reproduces exactly.
+        let seed = 0x2f6e2b1;
+        const random = () => {
+            seed = (seed + 0x6d2b79f5) | 0;
+            let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+        const naiveDot = (left: Float32Array, right: Float32Array) => {
+            let dot = 0;
+            for (let index = 0; index < left.length; index += 1) {
+                dot += left[index] * right[index];
+            }
+            return dot;
+        };
+
+        const dimension = 1536;
+        const chunkCount = 8;
+        const chunks = Array.from({ length: chunkCount }, (_, index) => `chunk-${index}`);
+        const chunkVectors = Array.from({ length: chunkCount }, () =>
+            Array.from({ length: dimension }, () => (random() - 0.5) * 4)
+        );
+        mocks.embedDocuments.mockResolvedValue({
+            vectors: [chunkVectors.map((components) => new Float32Array(components))]
+        });
+        mocks.embedQuery.mockResolvedValue({
+            vectors: [
+                new Float32Array(Array.from({ length: dimension }, () => (random() - 0.5) * 4))
+            ]
+        });
+
+        const results = await searchDocuments('bit-exact-query', [document(...chunks)], signal);
+        expect(results).toHaveLength(chunkCount);
+
+        // Reference must use the exact vectors the manager normalized and
+        // persisted, not the raw handler outputs.
+        await vi.waitFor(() => {
+            expect(mocks.documentStore.setMany).toHaveBeenCalled();
+            expect(mocks.queryStore.setMany).toHaveBeenCalled();
+        });
+        const documentEntries = mocks.documentStore.setMany.mock.calls[0][0] as ReadonlyArray<
+            readonly [string, Float32Array]
+        >;
+        const queryEntries = mocks.queryStore.setMany.mock.calls[0][0] as ReadonlyArray<
+            readonly [string, Float32Array]
+        >;
+        expect(documentEntries).toHaveLength(chunkCount);
+        const queryVector = queryEntries[0][1];
+
+        for (let index = 0; index < chunkCount; index += 1) {
+            const result = results.find((entry) => entry.chunkIndex === index);
+            expect(result).toBeDefined();
+            const expected = naiveDot(queryVector, documentEntries[index][1]);
+            expect(Object.is(result?.score, expected)).toBe(true);
+        }
+
+        // A warm repeated search is stable as well.
+        await expect(
+            searchDocuments('bit-exact-query', [document(...chunks)], signal)
+        ).resolves.toEqual(results);
     });
 
     it('batches by chunk count without splitting document groups', async () => {

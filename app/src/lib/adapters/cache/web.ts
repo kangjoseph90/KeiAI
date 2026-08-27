@@ -28,6 +28,10 @@ function nextAccessedAt(): number {
     return lastAccessedAt;
 }
 
+const pendingTouches = new Set<string>();
+let touchFlushChain: Promise<void> = Promise.resolve();
+const TOUCH_FLUSH_THRESHOLD = 256;
+
 export class WebCacheBackend implements CacheBackend {
     async loadAll(namespace: string): Promise<CacheEntry[]> {
         const records = await db.entries.where('namespace').equals(namespace).toArray();
@@ -54,16 +58,33 @@ export class WebCacheBackend implements CacheBackend {
     async getMany(namespace: string, keys: string[]): Promise<CacheEntry[]> {
         if (keys.length === 0) return [];
         const nskeys = [...new Set(keys)].map((key) => `${namespace}:${key}`);
-        return db.transaction('rw', db.entries, async () => {
-            const records = (await db.entries.bulkGet(nskeys)).filter(
-                (record): record is CacheRecord => record !== undefined
-            );
-            for (const record of records) {
-                record.accessedAt = nextAccessedAt();
-            }
-            if (records.length > 0) await db.entries.bulkPut(records);
-            return records.map(({ key, value }) => ({ key, value }));
+        const records = (
+            (await db.entries.bulkGet(nskeys)) as Array<CacheRecord | undefined>
+        ).filter((record): record is CacheRecord => record !== undefined);
+        return records.map(({ key, value }) => ({ key, value }));
+    }
+
+    queueTouch(namespace: string, keys: string[]): boolean {
+        for (const key of keys) pendingTouches.add(`${namespace}:${key}`);
+        return pendingTouches.size >= TOUCH_FLUSH_THRESHOLD;
+    }
+
+    flushTouches(): Promise<void> {
+        const run = touchFlushChain.then(() => {
+            if (pendingTouches.size === 0) return;
+            const nskeys = [...pendingTouches];
+            pendingTouches.clear();
+            const accessedAt = nextAccessedAt();
+            return db.entries
+                .where('nskey')
+                .anyOf(nskeys)
+                .modify((record) => {
+                    record.accessedAt = accessedAt;
+                })
+                .then(() => undefined);
         });
+        touchFlushChain = run.catch(() => undefined);
+        return run;
     }
 
     async setMany(namespace: string, entries: CacheEntry[], capacity: number): Promise<void> {

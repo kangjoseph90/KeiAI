@@ -19,22 +19,44 @@ export type { AsyncCacheStore, CacheStore } from './types';
 const backend: CacheBackend = isTauri() ? new TauriCacheBackend() : new WebCacheBackend();
 
 export function createAsyncCache<T>(namespace: string, capacity: number): AsyncCacheStore<T> {
+    /** Persists queued touches before mutations so eviction sees fresh recency. */
+    async function drainTouches(): Promise<void> {
+        try {
+            await backend.flushTouches();
+        } catch {
+            // Touch bookkeeping is best-effort; a failed flush must not fail
+            // the operation it precedes.
+        }
+    }
+
+    function trackTouches(entries: CacheEntry[]): void {
+        if (entries.length === 0) return;
+        const hitKeys = entries.map((entry) => entry.key);
+        if (backend.queueTouch(namespace, hitKeys)) {
+            void backend.flushTouches().catch(() => undefined);
+        }
+    }
+
     return {
         async get(key: string): Promise<T | undefined> {
             const entries = await backend.getMany(namespace, [key]);
+            trackTouches(entries);
             return entries[0]?.value as T | undefined;
         },
 
         async getMany(keys: string[]): Promise<Map<string, T>> {
             const entries = await backend.getMany(namespace, keys);
+            trackTouches(entries);
             return new Map(entries.map(({ key, value }) => [key, value as T]));
         },
 
         async set(key: string, value: T): Promise<void> {
+            await drainTouches();
             await backend.setMany(namespace, [{ key, value }], capacity);
         },
 
         async setMany(entries: ReadonlyArray<readonly [string, T]>): Promise<void> {
+            await drainTouches();
             await backend.setMany(
                 namespace,
                 entries.map(([key, value]) => ({ key, value })),
@@ -43,10 +65,12 @@ export function createAsyncCache<T>(namespace: string, capacity: number): AsyncC
         },
 
         async delete(key: string): Promise<void> {
+            await drainTouches();
             await backend.deleteMany(namespace, [key]);
         },
 
         async deleteMany(keys: string[]): Promise<void> {
+            await drainTouches();
             await backend.deleteMany(namespace, keys);
         }
     };

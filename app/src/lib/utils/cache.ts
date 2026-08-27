@@ -4,9 +4,14 @@
  * Common cache implementations used across the application.
  */
 
+interface LRUCacheOptions<V> {
+    /** Turns maxSize into a budget of estimateSize units instead of a count. */
+    estimateSize?: (value: V) => number;
+}
+
 /**
- * Simple LRU (Least Recently Used) cache implementation.
- * Entries are evicted in FIFO order when the cache is full.
+ * Simple LRU cache. Limit is an entry count, or a total-size budget when
+ * `estimateSize` is given. A lone oversized value is kept rather than rejected.
  *
  * @example
  * ```typescript
@@ -18,9 +23,16 @@
 export class LRUCache<K, V> {
     private cache = new Map<K, V>();
     private readonly maxSize: number;
+    private readonly estimateSize?: (value: V) => number;
+    private currentBudget = 0;
 
-    constructor(maxSize = 100) {
+    constructor(maxSize = 100, options?: LRUCacheOptions<V>) {
         this.maxSize = maxSize;
+        this.estimateSize = options?.estimateSize;
+    }
+
+    private sizeOf(value: V): number {
+        return this.estimateSize ? this.estimateSize(value) : 1;
     }
 
     /**
@@ -39,19 +51,30 @@ export class LRUCache<K, V> {
 
     /**
      * Set value in cache.
-     * If full, evicts the least recently used entry first.
+     * If over budget, evicts least recently used entries first until it fits.
      */
     set(key: K, value: V): void {
-        if (this.cache.has(key)) {
+        const incomingSize = this.sizeOf(value);
+        const existing = this.cache.get(key);
+        if (existing !== undefined) {
+            this.currentBudget -= this.sizeOf(existing);
             this.cache.delete(key);
-        } else if (this.cache.size >= this.maxSize) {
-            // Remove first (least recently used)
-            const firstKey = this.cache.keys().next().value;
-            if (firstKey !== undefined) {
-                this.cache.delete(firstKey);
+        } else if (this.estimateSize) {
+            while (this.cache.size > 0 && this.currentBudget + incomingSize > this.maxSize) {
+                this.evictOldest();
             }
+        } else if (this.cache.size >= this.maxSize) {
+            this.evictOldest();
         }
+        this.currentBudget += incomingSize;
         this.cache.set(key, value);
+    }
+
+    private evictOldest(): void {
+        const firstEntry = this.cache.entries().next();
+        if (firstEntry.done) return;
+        this.currentBudget -= this.sizeOf(firstEntry.value[1]);
+        this.cache.delete(firstEntry.value[0]);
     }
 
     /**
@@ -65,7 +88,11 @@ export class LRUCache<K, V> {
      * Delete a specific key from the cache.
      */
     delete(key: K): boolean {
-        return this.cache.delete(key);
+        const existing = this.cache.get(key);
+        if (existing === undefined) return false;
+        this.currentBudget -= this.sizeOf(existing);
+        this.cache.delete(key);
+        return true;
     }
 
     /**
@@ -73,6 +100,7 @@ export class LRUCache<K, V> {
      */
     clear(): void {
         this.cache.clear();
+        this.currentBudget = 0;
     }
 
     /**
