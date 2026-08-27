@@ -2,6 +2,7 @@ import type { Macro } from './types';
 import { createAssetUri, type AssetReadLocator } from '$lib/services/asset';
 import { ChatService } from '$lib/services';
 import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
+import { escapeHtml } from '$lib/utils/text';
 
 export type AssetNameIndex = Map<string, Map<string, AssetReadLocator[]>>;
 
@@ -23,7 +24,7 @@ export function createBackgroundMacros(
                 `background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)),url("${escapeCssString(createAssetUri(resolved))}")`,
                 'background-size: cover'
             ].join(';');
-            return `<div style="${escapeHtmlAttribute(style)}"></div>`;
+            return `<div style="${escapeHtml(style)}"></div>`;
         }
     });
     return macros;
@@ -96,7 +97,7 @@ export function createDisplayMacros(
 
 function renderMediaElement(locator: AssetReadLocator, mediaType: AssetMediaType): string {
     const src = createAssetUri(locator);
-    const source = ` src="${escapeHtmlAttribute(src)}"`;
+    const source = ` src="${escapeHtml(src)}"`;
     const dimensions =
         isAssetDimension(locator.width) && isAssetDimension(locator.height)
             ? ` width="${locator.width}" height="${locator.height}"`
@@ -209,15 +210,6 @@ function getDistance(a: string, b: string): number {
         }
     }
     return d[h * w - 1];
-}
-
-function escapeHtmlAttribute(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
 }
 
 function escapeCssString(str: string): string {

@@ -38,7 +38,10 @@ export function extensionForFileKind(kind: DetectedFileKind): string | null {
 
 function startsWith(bytes: Uint8Array, signature: number[]): boolean {
     if (bytes.length < signature.length) return false;
-    return signature.every((value, index) => bytes[index] === value);
+    for (let index = 0; index < signature.length; index += 1) {
+        if (bytes[index] !== signature[index]) return false;
+    }
+    return true;
 }
 
 function asciiAt(bytes: Uint8Array, offset: number, value: string): boolean {

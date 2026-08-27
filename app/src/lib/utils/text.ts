@@ -42,6 +42,22 @@ function normalizeCharset(charset?: string): string | undefined {
     return normalized;
 }
 
+const HTML_ESCAPE_MAP: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+};
+
+export function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char] ?? char);
+}
+
 function startsWith(bytes: Uint8Array, prefix: readonly number[]): boolean {
-    return prefix.every((value, index) => bytes[index] === value);
+    if (bytes.length < prefix.length) return false;
+    for (let index = 0; index < prefix.length; index += 1) {
+        if (bytes[index] !== prefix[index]) return false;
+    }
+    return true;
 }

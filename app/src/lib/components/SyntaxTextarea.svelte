@@ -272,20 +272,12 @@
         while (cursor < value.length && !/[\s:]/.test(value[cursor])) cursor += 1;
         return cursor;
     }
-
-    function escapeHtml(value: string): string {
-        return value
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
-    }
 </script>
 
 <script lang="ts">
     import { onMount } from 'svelte';
     import { cn } from '$lib/utils';
+    import { escapeHtml } from '$lib/utils/text';
 
     type Props = SyntaxTextareaProps;
 

@@ -329,14 +329,6 @@ function bool(value: boolean): string {
     return value ? '1' : '0';
 }
 
-function escapeHtmlAttribute(value: string): string {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('"', '&quot;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;');
-}
-
 function isTruthy(value: string | undefined): boolean {
     const normalized = (value ?? '').trim().toLowerCase();
     return (
