@@ -258,16 +258,16 @@ export async function rerank(
 }
 
 function normalizeEmbeddingVector(vector: Float32Array): Float32Array {
-    if (
-        !(vector instanceof Float32Array) ||
-        vector.length === 0 ||
-        !vector.every(Number.isFinite)
-    ) {
+    if (!(vector instanceof Float32Array) || vector.length === 0) {
         throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector');
     }
 
     let squaredMagnitude = 0;
-    for (const component of vector) squaredMagnitude += component * component;
+    for (let index = 0; index < vector.length; index += 1) {
+        const component = vector[index];
+        squaredMagnitude += component * component;
+    }
+
     const magnitude = Math.sqrt(squaredMagnitude);
     if (!Number.isFinite(magnitude) || magnitude === 0) {
         throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector');
@@ -276,9 +276,6 @@ function normalizeEmbeddingVector(vector: Float32Array): Float32Array {
     const normalized = new Float32Array(vector.length);
     for (let index = 0; index < vector.length; index += 1) {
         normalized[index] = vector[index] / magnitude;
-        if (!Number.isFinite(normalized[index])) {
-            throw new AppError('NETWORK_ERROR', 'Embedding returned an invalid vector');
-        }
     }
     return normalized;
 }
