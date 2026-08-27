@@ -7,6 +7,7 @@
 
 import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { fromBase64 } from '$lib/crypto';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
@@ -115,7 +116,7 @@ export class OpenAIImageGenHandler implements ImageGenHandler {
         }
 
         return {
-            base64: image.b64_json,
+            data: image.b64_json ? fromBase64(image.b64_json) : undefined,
             url: image.url
         };
     }

@@ -2,7 +2,6 @@
  * Mock Image Generation Handler — Development / Testing
  */
 
-import { toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import type { ImageGenHandler, ImageGenImage, ImageGenInput, ImageGenRequest } from '../types';
 
@@ -207,7 +206,7 @@ function drawWrappedText(
 async function canvasImage(canvas: OffscreenCanvas): Promise<ImageGenImage> {
     const blob = await canvas.convertToBlob({ type: 'image/png' });
     return {
-        base64: toBase64(new Uint8Array(await blob.arrayBuffer())),
+        data: new Uint8Array(await blob.arrayBuffer()),
         mimeType: 'image/png'
     };
 }

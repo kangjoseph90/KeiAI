@@ -1,5 +1,4 @@
 import { appHttp } from '$lib/adapters/http';
-import { toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buildUrl } from '$lib/utils/url';
@@ -235,7 +234,7 @@ export class ComfyUIImageGenHandler implements ImageGenHandler {
         }
 
         return {
-            base64: toBase64(new Uint8Array(await response.arrayBuffer())),
+            data: new Uint8Array(await response.arrayBuffer()),
             mimeType: response.headers.get('content-type')?.split(';')[0] || 'image/png'
         };
     }

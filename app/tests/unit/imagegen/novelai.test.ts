@@ -40,7 +40,7 @@ function createHandler(): NovelAIImageGenHandler {
 }
 
 function generationResponse(): Response {
-    return new Response(JSON.stringify({ images: [{ image: 'generated-image' }] }), {
+    return new Response(JSON.stringify({ images: [{ image: 'AQID' }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
     });
@@ -62,7 +62,7 @@ describe('NovelAI vibe encoding cache', () => {
                 referenceImages: [],
                 styleImages: [{ data: new Uint8Array([1, 2, 3]), mimeType: 'image/png' }]
             })
-        ).resolves.toEqual({ base64: 'generated-image', mimeType: 'image/png' });
+        ).resolves.toEqual({ data: new Uint8Array([1, 2, 3]), mimeType: 'image/png' });
 
         expect(mocks.fetch).toHaveBeenCalledTimes(1);
         expect(mocks.fetch.mock.calls[0][0]).toBe('https://image.example/ai/generate-image');

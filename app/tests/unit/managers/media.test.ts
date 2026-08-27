@@ -108,7 +108,7 @@ describe('media manager', () => {
 
     it('returns normalized image bytes from the configured handler', async () => {
         mocks.generate.mockResolvedValue({
-            base64: 'AQID',
+            data: new Uint8Array([1, 2, 3]),
             mimeType: 'image/png'
         });
 
@@ -151,7 +151,7 @@ describe('media manager', () => {
 
     it('resolves image inlays and stores the generated image in the same chat', async () => {
         mocks.generate.mockResolvedValue({
-            base64: 'AQID',
+            data: new Uint8Array([1, 2, 3]),
             mimeType: 'image/png'
         });
 

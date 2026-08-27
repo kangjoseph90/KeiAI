@@ -1,6 +1,6 @@
 import { appHttp } from '$lib/adapters/http';
 import { createAsyncCache } from '$lib/adapters/cache';
-import { sha256, toBase64 } from '$lib/crypto';
+import { fromBase64, sha256, toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { buildUrl } from '$lib/utils/url';
 import type { ImageGenHandler, ImageGenImage, ImageGenInput, ImageGenRequest } from '../types';
@@ -123,7 +123,7 @@ export class NovelAIImageGenHandler implements ImageGenHandler {
         if (!image) {
             throw new AppError('NETWORK_ERROR', 'NovelAI ImageGen returned no image');
         }
-        return { base64: image, mimeType: 'image/png' };
+        return { data: fromBase64(image), mimeType: 'image/png' };
     }
 
     private async encodeVibes(images: ImageGenInput[], signal?: AbortSignal): Promise<string[]> {

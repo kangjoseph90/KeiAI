@@ -7,7 +7,6 @@
 
 import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
-import { toBase64 } from '$lib/crypto';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
@@ -82,7 +81,7 @@ export class StabilityImageGenHandler implements ImageGenHandler {
 
         const format = this.config.outputFormat ?? 'png';
         return {
-            base64: toBase64(new Uint8Array(await response.arrayBuffer())),
+            data: new Uint8Array(await response.arrayBuffer()),
             mimeType: `image/${format === 'jpg' ? 'jpeg' : format}`
         };
     }

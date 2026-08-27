@@ -1,5 +1,4 @@
 import { appHttp } from '$lib/adapters/http';
-import { fromBase64 } from '$lib/crypto';
 import { selectImageGenHandler } from '$lib/imagegen';
 import type { Chat } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
@@ -258,7 +257,6 @@ async function createGeneratedInlay(
 async function resolveGeneratedImage(
     image: {
         data?: Uint8Array<ArrayBuffer>;
-        base64?: string;
         url?: string;
         mimeType?: string;
     },
@@ -269,14 +267,6 @@ async function resolveGeneratedImage(
         validateMediaType(mimeType, 'image', 'generated image');
         return {
             data: image.data,
-            mimeType
-        };
-    }
-    if (image.base64) {
-        const mimeType = normalizeMimeType(image.mimeType ?? 'image/png');
-        validateMediaType(mimeType, 'image', 'generated image');
-        return {
-            data: fromBase64(image.base64),
             mimeType
         };
     }

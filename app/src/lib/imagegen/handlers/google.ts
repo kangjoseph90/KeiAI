@@ -8,7 +8,7 @@ import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
-import { toBase64 } from '$lib/crypto';
+import { fromBase64, toBase64 } from '$lib/crypto';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ export class GoogleImageGenHandler implements ImageGenHandler {
                 const inlineData = part.inlineData;
                 if (!inlineData?.data || !inlineData.mimeType?.startsWith('image/')) continue;
                 return {
-                    base64: inlineData.data,
+                    data: fromBase64(inlineData.data),
                     mimeType: inlineData.mimeType
                 };
             }

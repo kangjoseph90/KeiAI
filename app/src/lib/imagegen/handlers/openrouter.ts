@@ -1,5 +1,5 @@
 import { appHttp } from '$lib/adapters/http';
-import { toBase64 } from '$lib/crypto';
+import { fromBase64, toBase64 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { buildUrl } from '$lib/utils/url';
 import type { ImageGenHandler, ImageGenImage, ImageGenRequest } from '../types';
@@ -86,7 +86,7 @@ export class OpenRouterImageGenHandler implements ImageGenHandler {
         }
 
         return {
-            base64,
+            data: base64 ? fromBase64(base64) : undefined,
             url,
             mimeType:
                 typeof image.media_type === 'string'
