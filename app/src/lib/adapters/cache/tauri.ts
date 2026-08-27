@@ -17,7 +17,7 @@ function nextAccessedAt(): number {
     return lastAccessedAt;
 }
 
-const pendingTouches = new Set<string>();
+const pendingTouches = new Map<string, Set<string>>();
 let touchFlushChain: Promise<void> = Promise.resolve();
 const TOUCH_FLUSH_THRESHOLD = 256;
 
@@ -25,8 +25,9 @@ const TOUCH_FLUSH_THRESHOLD = 256;
  * Tauri SQLite Cache Backend.
  *
  * Separate DB file (KeiCacheDB.db) so cache data never mixes with domain
- * records and is never synced. Values live in TEXT encoded by float-codec.ts:
- * base64 little-endian Float32 for typed arrays, JSON for everything else.
+ * records and is never synced. Rows are identified by (namespace, key) and
+ * values live in TEXT encoded by float-codec.ts: base64 little-endian
+ * Float32 for typed arrays, JSON for everything else.
  */
 export class TauriCacheBackend implements CacheBackend {
     private dbPromise: Promise<Database> | null = null;
@@ -38,13 +39,12 @@ export class TauriCacheBackend implements CacheBackend {
             const db = await Database.load('sqlite:KeiCacheDB.db');
             await db.execute(`
                 CREATE TABLE IF NOT EXISTS entries (
-                    nskey TEXT PRIMARY KEY,
                     namespace TEXT NOT NULL,
                     key TEXT NOT NULL,
                     value TEXT,
-                    accessed_at INTEGER NOT NULL DEFAULT 0
+                    accessed_at INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (namespace, key)
                 );
-                CREATE INDEX IF NOT EXISTS idx_entries_namespace ON entries (namespace);
                 CREATE INDEX IF NOT EXISTS idx_entries_namespace_accessed
                     ON entries (namespace, accessed_at);
             `);
@@ -75,7 +75,7 @@ export class TauriCacheBackend implements CacheBackend {
     async loadAll(namespace: string): Promise<CacheEntry[]> {
         return this.runExclusive(async (db) => {
             const rows = await db.select<CacheRow[]>(
-                'SELECT key, value FROM entries WHERE namespace = $1 ORDER BY accessed_at ASC, nskey ASC',
+                'SELECT key, value FROM entries WHERE namespace = $1 ORDER BY accessed_at ASC, key ASC',
                 [namespace]
             );
             return rows.map(({ key, value }) => ({
@@ -94,31 +94,27 @@ export class TauriCacheBackend implements CacheBackend {
                 const chunk = puts.slice(i, i + CHUNK_SIZE);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 5 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4})`;
+                        const start = idx * 4 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
                 for (const { key, value } of chunk) {
-                    values.push(
-                        `${namespace}:${key}`,
-                        namespace,
-                        key,
-                        encodeCacheValue(value),
-                        accessedAt
-                    );
+                    values.push(namespace, key, encodeCacheValue(value), accessedAt);
                 }
                 await db.execute(
-                    `INSERT OR REPLACE INTO entries (nskey, namespace, key, value, accessed_at) VALUES ${placeholders}`,
+                    `INSERT OR REPLACE INTO entries (namespace, key, value, accessed_at) VALUES ${placeholders}`,
                     values
                 );
             }
 
             for (let i = 0; i < deletes.length; i += CHUNK_SIZE) {
                 const chunk = deletes.slice(i, i + CHUNK_SIZE);
-                const placeholders = chunk.map((_, idx) => `$${idx + 1}`).join(', ');
-                const nskeys = chunk.map((key) => `${namespace}:${key}`);
-                await db.execute(`DELETE FROM entries WHERE nskey IN (${placeholders})`, nskeys);
+                const placeholders = chunk.map((_, idx) => `$${idx + 2}`).join(', ');
+                await db.execute(
+                    `DELETE FROM entries WHERE namespace = $1 AND key IN (${placeholders})`,
+                    [namespace, ...chunk]
+                );
             }
         });
     }
@@ -131,12 +127,11 @@ export class TauriCacheBackend implements CacheBackend {
             const rows: CacheRow[] = [];
             for (let index = 0; index < uniqueKeys.length; index += CHUNK_SIZE) {
                 const chunk = uniqueKeys.slice(index, index + CHUNK_SIZE);
-                const nskeys = chunk.map((key) => `${namespace}:${key}`);
-                const placeholders = nskeys.map((_, itemIndex) => `$${itemIndex + 1}`).join(', ');
+                const placeholders = chunk.map((_, itemIndex) => `$${itemIndex + 2}`).join(', ');
                 rows.push(
                     ...(await db.select<CacheRow[]>(
-                        `SELECT key, value FROM entries WHERE nskey IN (${placeholders})`,
-                        nskeys
+                        `SELECT key, value FROM entries WHERE namespace = $1 AND key IN (${placeholders})`,
+                        [namespace, ...chunk]
                     ))
                 );
             }
@@ -145,27 +140,38 @@ export class TauriCacheBackend implements CacheBackend {
     }
 
     queueTouch(namespace: string, keys: string[]): boolean {
-        for (const key of keys) pendingTouches.add(`${namespace}:${key}`);
-        return pendingTouches.size >= TOUCH_FLUSH_THRESHOLD;
+        let pending = pendingTouches.get(namespace);
+        if (!pending) {
+            pending = new Set();
+            pendingTouches.set(namespace, pending);
+        }
+        for (const key of keys) pending.add(key);
+        return pending.size >= TOUCH_FLUSH_THRESHOLD;
     }
 
     flushTouches(): Promise<void> {
         const run = touchFlushChain.then(async () => {
             if (pendingTouches.size === 0) return;
-            const nskeys = [...pendingTouches];
+            const snapshots = [...pendingTouches].map(([namespace, keys]) => ({
+                namespace,
+                keys: [...keys]
+            }));
             pendingTouches.clear();
             const accessedAt = nextAccessedAt();
 
             await this.runExclusive(async (db) => {
-                for (let index = 0; index < nskeys.length; index += CHUNK_SIZE) {
-                    const chunk = nskeys.slice(index, index + CHUNK_SIZE);
-                    const placeholders = chunk
-                        .map((_, itemIndex) => `$${itemIndex + 2}`)
-                        .join(', ');
-                    await db.execute(
-                        `UPDATE entries SET accessed_at = $1 WHERE nskey IN (${placeholders})`,
-                        [accessedAt, ...chunk]
-                    );
+                for (const { namespace, keys } of snapshots) {
+                    for (let index = 0; index < keys.length; index += CHUNK_SIZE) {
+                        const chunk = keys.slice(index, index + CHUNK_SIZE);
+                        const placeholders = chunk
+                            .map((_, itemIndex) => `$${itemIndex + 3}`)
+                            .join(', ');
+                        await db.execute(
+                            `UPDATE entries SET accessed_at = $1
+                             WHERE namespace = $2 AND key IN (${placeholders})`,
+                            [accessedAt, namespace, ...chunk]
+                        );
+                    }
                 }
             });
         });
@@ -182,34 +188,29 @@ export class TauriCacheBackend implements CacheBackend {
                 const chunk = uniqueEntries.slice(index, index + CHUNK_SIZE);
                 const placeholders = chunk
                     .map((_, itemIndex) => {
-                        const start = itemIndex * 5 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4})`;
+                        const start = itemIndex * 4 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
                 for (const [key, value] of chunk) {
-                    values.push(
-                        `${namespace}:${key}`,
-                        namespace,
-                        key,
-                        encodeCacheValue(value),
-                        nextAccessedAt()
-                    );
+                    values.push(namespace, key, encodeCacheValue(value), nextAccessedAt());
                 }
                 await db.execute(
-                    `INSERT OR REPLACE INTO entries (nskey, namespace, key, value, accessed_at) VALUES ${placeholders}`,
+                    `INSERT OR REPLACE INTO entries (namespace, key, value, accessed_at) VALUES ${placeholders}`,
                     values
                 );
             }
 
             await db.execute(
                 `DELETE FROM entries
-                 WHERE nskey IN (
-                     SELECT nskey FROM entries
+                 WHERE namespace = $1
+                   AND key IN (
+                     SELECT key FROM entries
                      WHERE namespace = $1
-                     ORDER BY accessed_at DESC, nskey DESC
+                     ORDER BY accessed_at DESC, key DESC
                      LIMIT -1 OFFSET $2
-                )`,
+                 )`,
                 [namespace, capacity]
             );
         });
@@ -221,9 +222,11 @@ export class TauriCacheBackend implements CacheBackend {
         await this.runExclusive(async (db) => {
             for (let index = 0; index < uniqueKeys.length; index += CHUNK_SIZE) {
                 const chunk = uniqueKeys.slice(index, index + CHUNK_SIZE);
-                const nskeys = chunk.map((key) => `${namespace}:${key}`);
-                const placeholders = nskeys.map((_, itemIndex) => `$${itemIndex + 1}`).join(', ');
-                await db.execute(`DELETE FROM entries WHERE nskey IN (${placeholders})`, nskeys);
+                const placeholders = chunk.map((_, itemIndex) => `$${itemIndex + 2}`).join(', ');
+                await db.execute(
+                    `DELETE FROM entries WHERE namespace = $1 AND key IN (${placeholders})`,
+                    [namespace, ...chunk]
+                );
             }
         });
     }

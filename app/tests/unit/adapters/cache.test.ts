@@ -22,10 +22,16 @@ import Dexie from 'dexie';
 // storage, bypassing the cache's in-memory state.
 function readNamespace(namespace: string): Promise<Map<string, unknown>> {
     const db = new Dexie('KeiCacheDB');
-    db.version(1).stores({ entries: 'nskey, namespace, [namespace+accessedAt]' });
+    db.version(1).stores({ entries: '[namespace+key], [namespace+accessedAt]' });
     return db
         .open()
-        .then(() => db.table('entries').where('namespace').equals(namespace).toArray())
+        .then(() =>
+            db
+                .table('entries')
+                .where('[namespace+key]')
+                .between([namespace, Dexie.minKey], [namespace, Dexie.maxKey])
+                .toArray()
+        )
         .then((rows) => {
             const map = new Map<string, unknown>();
             for (const row of rows) map.set(row.key, row.value);
@@ -38,10 +44,16 @@ function readNamespace(namespace: string): Promise<Map<string, unknown>> {
 // assertions.
 function readRecords(namespace: string): Promise<Map<string, Record<string, unknown>>> {
     const db = new Dexie('KeiCacheDB');
-    db.version(1).stores({ entries: 'nskey, namespace, [namespace+accessedAt]' });
+    db.version(1).stores({ entries: '[namespace+key], [namespace+accessedAt]' });
     return db
         .open()
-        .then(() => db.table('entries').where('namespace').equals(namespace).toArray())
+        .then(() =>
+            db
+                .table('entries')
+                .where('[namespace+key]')
+                .between([namespace, Dexie.minKey], [namespace, Dexie.maxKey])
+                .toArray()
+        )
         .then((rows) => {
             const map = new Map<string, Record<string, unknown>>();
             for (const row of rows) map.set(row.key as string, { ...row });
