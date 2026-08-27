@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { deflateSync, strToU8 } from 'fflate';
 import { DataRecordSyncEngine } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
@@ -73,8 +74,8 @@ vi.mock('$lib/services/session', () => ({
 vi.mock('$lib/crypto', () => ({
     toBase64: vi.fn((b) => 'base64-' + b),
     fromBase64: vi.fn(() => new Uint8Array([1, 2, 3])),
-    encrypt: vi.fn(() => ({ ciphertext: new Uint8Array(), iv: new Uint8Array() })),
-    decrypt: vi.fn(() => '{}')
+    encryptBytes: vi.fn(() => ({ ciphertext: new Uint8Array(), iv: new Uint8Array() })),
+    decryptBytes: vi.fn(() => Promise.resolve(deflateSync(strToU8('{}'))))
 }));
 
 vi.mock('$lib/utils/clock', () => ({

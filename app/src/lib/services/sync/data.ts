@@ -11,7 +11,8 @@
 
 import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '../session';
-import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
+import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { decryptBytes, encryptBytes, fromBase64, toBase64, type EncryptedData } from '$lib/crypto';
 import {
     localDB,
     type TableName,
@@ -593,7 +594,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             assetEntries,
             ...rest
         } = record;
-        const { ciphertext, iv } = await encrypt(syncScope.key, JSON.stringify(rest));
+        const { ciphertext, iv } = await encodeRecordPayload(syncScope.key, JSON.stringify(rest));
 
         return {
             id,
@@ -615,7 +616,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const table = this.toTableName(pbRecord.kind);
         const encData = fromBase64(pbRecord.encryptedData as string);
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
-        const json = await decrypt(syncScope.key, { ciphertext: encData, iv: encIV });
+        const json = await decodeRecordPayload(syncScope.key, { ciphertext: encData, iv: encIV });
         const payload = JSON.parse(json) as Record<string, unknown>;
         const isDeleted = Boolean(pbRecord.isDeleted);
 
@@ -711,3 +712,12 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 }
 
 export const DataRecordSyncEngine = new DataRecordSyncEngineImpl();
+
+/** Deflate must precede AES-GCM: ciphertext is incompressible, record JSON is not. */
+async function encodeRecordPayload(key: CryptoKey, json: string): Promise<EncryptedData> {
+    return encryptBytes(key, deflateSync(strToU8(json)));
+}
+
+async function decodeRecordPayload(key: CryptoKey, data: EncryptedData): Promise<string> {
+    return strFromU8(inflateSync(await decryptBytes(key, data)));
+}
