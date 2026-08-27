@@ -1,0 +1,19 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "rules": {
+        // Enforced-off everywhere else too: app/eslint.config.js disables both
+        // eslint and @typescript-eslint unused-vars rules by deliberate choice.
+        "eslint/no-unused-vars": "off",
+        // These bundled unicorn ports suggest unsafe edits without type info:
+        // app/src/lib/components/hydrate.ts copies a Set that stopObserving()
+        // mutates while iterating, and tts/handlers/mock.ts relies on string
+        // code-point iteration. Revisit only if TypeScript-checked equivalents
+        // become available.
+        "unicorn/no-useless-spread": "off",
+        "unicorn/no-useless-fallback-in-spread": "off",
+        "unicorn/no-new-array": "off",
+        // Warning-only for rollout so exceeding functions surface locally
+        // without failing lint gates; promote to error once triaged.
+        "complexity": ["warn", { "max": 25 }]
+    }
+}
