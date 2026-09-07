@@ -134,7 +134,6 @@ export const workflowMessages = {
     'workflow.agent.historyLastText': 'Last text part',
     'workflow.agent.historyFullTrace': 'Full trace',
     'workflow.agent.memoryAlgorithm': 'Memory algorithm',
-    'workflow.agent.memoryAlgorithmMock': 'Mock',
     'workflow.agent.importance': 'Importance',
     'workflow.agent.messageFormat': 'Message format',
     'workflow.agent.entryFormat': 'Entry format',

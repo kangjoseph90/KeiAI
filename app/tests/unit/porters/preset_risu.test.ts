@@ -23,7 +23,7 @@ describe('Risu preset porter', () => {
             enabled: true,
             name: 'Past conversation',
             type: 'memory',
-            algorithmId: 'mock',
+            algorithmId: 'semantic',
             importance: 1,
             role: 'system',
             format: '<memory>\n{{slot}}\n{{user}}\n</memory>'

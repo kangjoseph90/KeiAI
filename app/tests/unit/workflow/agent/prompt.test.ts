@@ -901,6 +901,40 @@ describe('buildPrompt', () => {
         ]);
     });
 
+    it('selects memory phrases by importance but emits them in the algorithm order', async () => {
+        const messages = makePagedMessages([], 10);
+        mockResolveMemoryAlgorithm.mockResolvedValue([
+            { content: 'ccc', importance: 2 },
+            { content: 'aaaaaaaa', importance: 1 },
+            { content: 'bb', importance: 3 }
+        ]);
+        const preset = {
+            ...makePreset({
+                memory: {
+                    id: 'memory',
+                    name: 'Memory',
+                    type: 'memory',
+                    algorithmId: 'mock',
+                    importance: 1,
+                    role: 'system',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            maxContext: 20,
+            maxResponse: 0,
+            memoryRatio: 0.5
+        };
+
+        const prompt = await buildTestPrompt({ chat, preset, lorebooks: [], messages });
+
+        // 'aaaaaaaa' is the least important and no longer fits once the other two are in.
+        expect(toTextMessages(prompt)).toEqual([
+            { role: 'system', content: 'ccc' },
+            { role: 'system', content: 'bb' }
+        ]);
+    });
+
     it('plans every history block as atomic layers and cuts off at the first failed index', async () => {
         const messages = makePagedMessages([
             { message: makeMessage('msg-1', 'user', 'cc'), index: 0 },

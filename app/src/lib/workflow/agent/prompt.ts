@@ -360,7 +360,9 @@ async function buildMemoryBlocks(
         if (!bucket) continue;
         let remaining = blockBudget;
 
-        for (const { phrase } of ordered) {
+        const selected: Array<{ index: number; messages: LLMMessage[] }> = [];
+
+        for (const { phrase, index } of ordered) {
             const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
             const content = await renderWithFormat(
                 phrase.content,
@@ -374,9 +376,16 @@ async function buildMemoryBlocks(
             if (messages.length === 0 || tokens === 0) continue;
             if (tokens > remaining) continue;
 
-            bucket.messages.push(...messages);
+            selected.push({ index, messages });
             bucket.tokens += tokens;
             remaining -= tokens;
+        }
+
+        // Importance decides what survives the budget; the algorithm's own order decides
+        // how the surviving phrases are laid out.
+        selected.sort((a, b) => a.index - b.index);
+        for (const entry of selected) {
+            bucket.messages.push(...entry.messages);
         }
     }
 

@@ -133,7 +133,6 @@ export const workflowMessages = {
     'workflow.agent.historyLastText': '마지막 텍스트 파트',
     'workflow.agent.historyFullTrace': '전체 추적',
     'workflow.agent.memoryAlgorithm': '메모리 알고리즘',
-    'workflow.agent.memoryAlgorithmMock': 'Mock',
     'workflow.agent.importance': '중요도',
     'workflow.agent.messageFormat': '메시지 포맷',
     'workflow.agent.entryFormat': '항목 포맷',

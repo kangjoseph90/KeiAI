@@ -209,7 +209,7 @@ function risuPromptToKeiBlock(
         return {
             name,
             type: 'memory',
-            algorithmId: 'mock',
+            algorithmId: 'semantic',
             importance: 1,
             role: 'system',
             ...(format ? { format } : {})

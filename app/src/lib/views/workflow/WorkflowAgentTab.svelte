@@ -58,6 +58,7 @@
         type WorkflowNodeChanges
     } from '$lib/workflow';
     import { listAgentTools } from '$lib/workflow/agent/tool';
+    import { listMemoryAlgorithms, MOCK_MEMORY_ALGORITHM_ID } from '$lib/workflow/agent/memory';
 
     interface Props {
         workflow: WorkflowDefinition;
@@ -84,6 +85,10 @@
     const blocks = $derived(agent?.promptBlocks ?? {});
     const blockCount = $derived(Object.keys(blocks).length);
     const agentTools = listAgentTools();
+    const memoryAlgorithms = listMemoryAlgorithms().map(({ id, label }) => ({
+        value: id,
+        label
+    }));
     const inputEntries = $derived(Object.entries(agent?.slotNames ?? {}));
 
     function updateAgentSettings(changes: WorkflowNodeChanges) {
@@ -175,7 +180,7 @@
             case 'memory':
                 return applyBlockEdit(blockId, {
                     type,
-                    algorithmId: 'mock',
+                    algorithmId: MOCK_MEMORY_ALGORITHM_ID,
                     importance: 1,
                     role: 'system'
                 });
@@ -795,14 +800,7 @@
                                                         id={`workflow-block-${block.id}-memory-algorithm`}
                                                         class="h-9 w-full rounded-md border bg-background px-3 text-xs shadow-2xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                                                         value={block.algorithmId}
-                                                        options={[
-                                                            {
-                                                                value: 'mock',
-                                                                label: $t(
-                                                                    'workflow.agent.memoryAlgorithmMock'
-                                                                )
-                                                            }
-                                                        ]}
+                                                        options={memoryAlgorithms}
                                                         onChange={(value) =>
                                                             applyBlockEdit(block.id, {
                                                                 algorithmId: value
