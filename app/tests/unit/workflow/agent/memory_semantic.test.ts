@@ -110,7 +110,23 @@ describe('semantic memory algorithm', () => {
         await resolve();
 
         expect(mockSearchDocuments).toHaveBeenCalledTimes(1);
-        expect(documentChunks()).toEqual([['m2', 'm3'], ['m4', 'm5', 'm6', 'm7'], ['m8']]);
+        expect(documentChunks()).toEqual([
+            ['m2', 'm3'],
+            ['m4', 'm5', 'm6', 'm7']
+        ]);
+    });
+
+    it('withholds the trailing partial window so a window is embedded only once', async () => {
+        // Window 2 would hold m8 alone, and admitting it would re-embed the window on
+        // every turn as it fills.
+        await resolve();
+        expect(documentChunks().flat()).not.toContain('m8');
+
+        mockSearchDocuments.mockClear();
+        await resolve({ messages: makePagedMessages(makeMessages(13)), start: 2, end: 12 });
+
+        // end already sits on a window boundary, so nothing is withheld.
+        expect(documentChunks().flat()).toContain('m11');
     });
 
     it('queries with the newest messages after the range and excludes them from candidates', async () => {
@@ -141,14 +157,17 @@ describe('semantic memory algorithm', () => {
 
         const phrases = await resolve({ messages: makePagedMessages(makeMessages(10, [5])) });
 
-        expect(documentChunks()).toEqual([['m2', 'm3'], ['m4', 'm6', 'm7'], ['m8']]);
+        expect(documentChunks()).toEqual([
+            ['m2', 'm3'],
+            ['m4', 'm6', 'm7']
+        ]);
         expect(phrases).toEqual([{ content: 'user: m6', importance: 1 }]);
     });
 
     it('drops windows whose messages all render empty', async () => {
         await resolve({ messages: makePagedMessages(makeMessages(10, [4, 5, 6, 7])) });
 
-        expect(documentChunks()).toEqual([['m2', 'm3'], ['m8']]);
+        expect(documentChunks()).toEqual([['m2', 'm3']]);
     });
 
     it('returns nothing for an empty range without searching', async () => {

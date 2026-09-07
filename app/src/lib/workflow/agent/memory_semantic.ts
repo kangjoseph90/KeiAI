@@ -73,7 +73,13 @@ async function resolveSemanticMemory(input: MemoryAlgorithmInput): Promise<Memor
         ? Math.max(end, messages.length - config.queryDepth)
         : Math.max(start, end - config.queryDepth);
     const queryEnd = hasTail ? messages.length : end;
-    const candidateEnd = hasTail ? end : queryStart;
+    // Rounded down to a window boundary so the trailing window is never partial. The
+    // document cache key covers a whole window, so admitting a window that grows by one
+    // message per turn would re-embed it every turn; this way each window is embedded
+    // once, when it fills. The cost is that the newest few messages the range covers wait
+    // up to groupSize turns to become candidates.
+    const candidateEnd =
+        Math.floor((hasTail ? end : queryStart) / config.groupSize) * config.groupSize;
     const candidateStart = Math.max(start, candidateEnd - config.maxCandidates);
     if (candidateStart >= candidateEnd) return [];
 
