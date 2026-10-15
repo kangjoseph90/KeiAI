@@ -1,3 +1,4 @@
+import { LOCAL_UPDATE_CLOCK_SQL, localUpdateTriggers, localUpsert } from '../local-updates/tauri';
 import Database from '@tauri-apps/plugin-sql';
 import { MultiWriteEventEmitter } from './events';
 import type {
@@ -11,6 +12,17 @@ import type {
     MultiWriteOptions
 } from './types';
 
+const INDEX_COLUMNS = ['id', 'ownerUserId', 'visibility', 'publicName', 'createdAt', 'updatedAt'];
+const MEMBER_COLUMNS = [
+    'id',
+    'roomId',
+    'userId',
+    'status',
+    'encryptedRoomKey',
+    'createdAt',
+    'updatedAt'
+];
+
 interface MultiRoomIndexRow {
     id: string;
     ownerUserId: string;
@@ -18,6 +30,7 @@ interface MultiRoomIndexRow {
     publicName: string | null;
     createdAt: number;
     updatedAt: number;
+    localUpdatedAt: number;
 }
 
 interface MultiRoomMemberRow {
@@ -28,6 +41,7 @@ interface MultiRoomMemberRow {
     encryptedRoomKey: string | null;
     createdAt: number;
     updatedAt: number;
+    localUpdatedAt: number;
 }
 
 interface MultiUserKeyTrustRow {
@@ -44,6 +58,14 @@ export class TauriMultiAdapter implements IMultiAdapter {
 
     subscribeWriteEvents(listener: MultiWriteEventListener): () => void {
         return this.writeEvents.subscribe(listener);
+    }
+
+    async getLocalUpdateUpper(): Promise<number> {
+        const db = await this.getSQLite();
+        const rows = await db.select<{ value: number }[]>(
+            'SELECT value FROM local_update_clock WHERE id = 1'
+        );
+        return rows[0].value;
     }
 
     flush(): Promise<void> {
@@ -69,6 +91,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
 
         this.sqlitePromise = (async () => {
             const db = await Database.load('sqlite:KeiLocalDB.db');
+            await db.execute(LOCAL_UPDATE_CLOCK_SQL);
             await db.execute(`
                 CREATE TABLE IF NOT EXISTS multi_room_index (
                     id         TEXT    PRIMARY KEY,
@@ -76,7 +99,8 @@ export class TauriMultiAdapter implements IMultiAdapter {
                     visibility TEXT    NOT NULL,
                     publicName TEXT,
                     createdAt  INTEGER NOT NULL,
-                    updatedAt  INTEGER NOT NULL
+                    updatedAt  INTEGER NOT NULL,
+                    localUpdatedAt INTEGER NOT NULL DEFAULT 0
                 )
             `);
             await db.execute(`
@@ -87,7 +111,8 @@ export class TauriMultiAdapter implements IMultiAdapter {
                     status             TEXT    NOT NULL,
                     encryptedRoomKey   TEXT,
                     createdAt          INTEGER NOT NULL,
-                    updatedAt          INTEGER NOT NULL
+                    updatedAt          INTEGER NOT NULL,
+                    localUpdatedAt INTEGER NOT NULL DEFAULT 0
                 )
             `);
             await db.execute(`
@@ -100,20 +125,22 @@ export class TauriMultiAdapter implements IMultiAdapter {
                 )
             `);
             await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_multi_room_index_owner_updatedAt ON multi_room_index (ownerUserId, updatedAt)`
+                `CREATE INDEX IF NOT EXISTS idx_multi_room_index_owner_localUpdatedAt ON multi_room_index (ownerUserId, localUpdatedAt)`
             );
             await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_multi_room_index_updatedAt ON multi_room_index (updatedAt)`
+                `CREATE INDEX IF NOT EXISTS idx_multi_room_index_localUpdatedAt ON multi_room_index (localUpdatedAt)`
             );
             await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_multi_room_members_user_updatedAt ON multi_room_members (userId, updatedAt)`
+                `CREATE INDEX IF NOT EXISTS idx_multi_room_members_user_localUpdatedAt ON multi_room_members (userId, localUpdatedAt)`
             );
             await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_multi_room_members_room_updatedAt ON multi_room_members (roomId, updatedAt)`
+                `CREATE INDEX IF NOT EXISTS idx_multi_room_members_room_localUpdatedAt ON multi_room_members (roomId, localUpdatedAt)`
             );
             await db.execute(
                 `CREATE UNIQUE INDEX IF NOT EXISTS idx_multi_room_members_room_user ON multi_room_members (roomId, userId)`
             );
+            await db.execute(localUpdateTriggers('multi_room_index', INDEX_COLUMNS));
+            await db.execute(localUpdateTriggers('multi_room_members', MEMBER_COLUMNS));
             return db;
         })();
 
@@ -127,6 +154,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
             visibility: row.visibility,
             publicName: row.publicName ?? undefined,
             createdAt: row.createdAt,
+            localUpdatedAt: row.localUpdatedAt,
             updatedAt: row.updatedAt
         };
     }
@@ -139,6 +167,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
             status: row.status,
             encryptedRoomKey: row.encryptedRoomKey ?? undefined,
             createdAt: row.createdAt,
+            localUpdatedAt: row.localUpdatedAt,
             updatedAt: row.updatedAt
         };
     }
@@ -156,9 +185,9 @@ export class TauriMultiAdapter implements IMultiAdapter {
     private async writeRoomIndex(record: MultiRoomIndexRecord): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO multi_room_index
+            `INSERT INTO multi_room_index
              (id, ownerUserId, visibility, publicName, createdAt, updatedAt)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+             VALUES ($1, $2, $3, $4, $5, $6) ${localUpsert(INDEX_COLUMNS)}`,
             [
                 record.id,
                 record.ownerUserId,
@@ -173,9 +202,9 @@ export class TauriMultiAdapter implements IMultiAdapter {
     private async writeMember(record: MultiRoomMemberRecord): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO multi_room_members
+            `INSERT INTO multi_room_members
              (id, roomId, userId, status, encryptedRoomKey, createdAt, updatedAt)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7) ${localUpsert(MEMBER_COLUMNS)}`,
             [
                 record.id,
                 record.roomId,
@@ -217,13 +246,13 @@ export class TauriMultiAdapter implements IMultiAdapter {
     }
 
     async getRoomIndexesBetween(
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomIndexRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomIndexRow[]>(
-            `SELECT * FROM multi_room_index WHERE updatedAt > $1 AND updatedAt <= $2`,
-            [afterUpdatedAt, throughUpdatedAt]
+            `SELECT * FROM multi_room_index WHERE localUpdatedAt > $1 AND localUpdatedAt <= $2`,
+            [afterLocalUpdatedAt, throughLocalUpdatedAt]
         );
         return rows.map((row) => this.toRoomIndex(row));
     }
@@ -278,16 +307,16 @@ export class TauriMultiAdapter implements IMultiAdapter {
 
     async getMembersByRoomsBetween(
         roomIds: string[],
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         if (roomIds.length === 0) return [];
         const records: MultiRoomMemberRecord[] = [];
         for (const roomId of roomIds) {
             const db = await this.getSQLite();
             const rows = await db.select<MultiRoomMemberRow[]>(
-                `SELECT * FROM multi_room_members WHERE roomId = $1 AND updatedAt > $2 AND updatedAt <= $3`,
-                [roomId, afterUpdatedAt, throughUpdatedAt]
+                `SELECT * FROM multi_room_members WHERE roomId = $1 AND localUpdatedAt > $2 AND localUpdatedAt <= $3`,
+                [roomId, afterLocalUpdatedAt, throughLocalUpdatedAt]
             );
             records.push(...rows.map((row) => this.toMember(row)));
         }
@@ -305,13 +334,13 @@ export class TauriMultiAdapter implements IMultiAdapter {
 
     async getMembersBetween(
         userId: string,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomMemberRow[]>(
-            `SELECT * FROM multi_room_members WHERE userId = $1 AND updatedAt > $2 AND updatedAt <= $3`,
-            [userId, afterUpdatedAt, throughUpdatedAt]
+            `SELECT * FROM multi_room_members WHERE userId = $1 AND localUpdatedAt > $2 AND localUpdatedAt <= $3`,
+            [userId, afterLocalUpdatedAt, throughLocalUpdatedAt]
         );
         return rows.map((row) => this.toMember(row));
     }

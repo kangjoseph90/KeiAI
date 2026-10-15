@@ -1,3 +1,5 @@
+import { canonicalJson } from '../local-updates';
+import { LOCAL_UPDATE_CLOCK_SQL, localUpdateTriggers, localUpsert } from '../local-updates/tauri';
 import Database from '@tauri-apps/plugin-sql';
 import type {
     IDatabaseAdapter,
@@ -26,6 +28,21 @@ import type { AssetEntries } from '$lib/types/asset';
  *  - `data` column: JSON.stringified domain fields (plaintext)
  */
 
+const RECORD_COLUMNS = [
+    'id',
+    'scopeType',
+    'scopeId',
+    'roomId',
+    'chatId',
+    'sortOrder',
+    'activeSwipeId',
+    'createdAt',
+    'updatedAt',
+    'isDeleted',
+    'assetEntries',
+    'data'
+];
+
 /** Raw shape of a database record as stored in SQLite */
 interface DatabaseSqlRow {
     id: string;
@@ -37,6 +54,7 @@ interface DatabaseSqlRow {
     activeSwipeId: string | null;
     createdAt: number | null;
     updatedAt: number | null;
+    localUpdatedAt: number;
     isDeleted: number; // 0 | 1
     assetEntries: string | null;
     data: string; // JSON.stringify(...)
@@ -58,10 +76,10 @@ interface RecordBindingShape {
 }
 
 // Convert record to DB row bindings safely
-function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
+function recordToBindings<T extends DataRecord>(record: T): Omit<DatabaseSqlRow, 'localUpdatedAt'> {
     const clone: RecordBindingShape = { ...record };
 
-    const bindings: DatabaseSqlRow = {
+    const bindings: Omit<DatabaseSqlRow, 'localUpdatedAt'> = {
         id: clone.id,
         scopeType: clone.scopeType ?? null,
         scopeId: clone.scopeId ?? null,
@@ -72,8 +90,8 @@ function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
         createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
         isDeleted: clone.isDeleted ? 1 : 0,
-        assetEntries: clone.assetEntries ? JSON.stringify(clone.assetEntries) : null,
-        data: JSON.stringify(clone.data ?? {})
+        assetEntries: clone.assetEntries ? canonicalJson(clone.assetEntries) : null,
+        data: canonicalJson(clone.data ?? {})
     };
 
     return bindings;
@@ -91,6 +109,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         activeSwipeId: row.activeSwipeId ?? undefined,
         createdAt: row.createdAt ?? 0,
         updatedAt: row.updatedAt ?? 0,
+        localUpdatedAt: row.localUpdatedAt,
         isDeleted: row.isDeleted === 1,
         assetEntries: row.assetEntries ? (JSON.parse(row.assetEntries) as AssetEntries) : undefined,
         data
@@ -130,6 +149,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return this.writeEvents.subscribe(listener);
     }
 
+    async getLocalUpdateUpper(): Promise<number> {
+        const db = await this.getDb();
+        const rows = await db.select<{ value: number }[]>(
+            'SELECT value FROM local_update_clock WHERE id = 1'
+        );
+        return rows[0].value;
+    }
+
     async flush(): Promise<void> {
         return Promise.resolve();
     }
@@ -147,7 +174,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
     }
 
     private async initDb(db: Database) {
-        let sql = '';
+        let sql = LOCAL_UPDATE_CLOCK_SQL;
         for (const table of TABLES) {
             sql += `
 					CREATE TABLE IF NOT EXISTS "${table}" (
@@ -160,6 +187,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         activeSwipeId TEXT,
                         createdAt INTEGER,
                         updatedAt INTEGER,
+                        localUpdatedAt INTEGER NOT NULL DEFAULT 0,
                         isDeleted INTEGER,
                         assetEntries TEXT,
                         data TEXT
@@ -169,10 +197,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             // Optimized indices for lookup and sync
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_deleted" ON "${table}" (scopeType, scopeId, isDeleted);
 `;
-            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_updatedAt" ON "${table}" (scopeType, scopeId, updatedAt);
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_localUpdatedAt" ON "${table}" (scopeType, scopeId, localUpdatedAt);
 `;
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scopeId" ON "${table}" (scopeId);
 `;
+        }
+
+        for (const table of TABLES) {
+            sql += localUpdateTriggers(table, RECORD_COLUMNS);
         }
 
         // FK indices for 1:N parent→child queries
@@ -212,9 +244,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const db = await this.getDb();
         const b = recordToBindings(record);
         await db.execute(
-            `INSERT OR REPLACE INTO ${tableName}
+            `INSERT INTO ${tableName}
 				(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ${localUpsert(RECORD_COLUMNS)}`,
             [
                 b.id,
                 b.scopeType,
@@ -270,9 +302,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             }
 
             await db.execute(
-                `INSERT OR REPLACE INTO ${tableName}
+                `INSERT INTO ${tableName}
 					(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
-					VALUES ${placeholders}`,
+					VALUES ${placeholders} ${localUpsert(RECORD_COLUMNS)}`,
                 values
             );
         }
@@ -403,9 +435,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     );
                 }
                 await db.execute(
-                    `INSERT OR REPLACE INTO ${tableName}
+                    `INSERT INTO ${tableName}
 	                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
-	                VALUES ${placeholders}`,
+	                VALUES ${placeholders} ${localUpsert(RECORD_COLUMNS)}`,
                     values
                 );
             }
@@ -661,14 +693,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
     async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND updatedAt > $3 AND updatedAt <= $4`,
-            [scope.scopeType, scope.scopeId, afterUpdatedAt, throughUpdatedAt]
+            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND localUpdatedAt > $3 AND localUpdatedAt <= $4`,
+            [scope.scopeType, scope.scopeId, afterLocalUpdatedAt, throughLocalUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));
     }

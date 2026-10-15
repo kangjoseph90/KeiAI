@@ -38,6 +38,7 @@ vi.mock('$lib/adapters/pb', () => ({
 
 vi.mock('$lib/adapters/multi', () => ({
     appMulti: {
+        getLocalUpdateUpper: vi.fn().mockResolvedValue(2500),
         getRoomIndex: vi.fn(),
         getRoomIndexesByOwner: vi.fn(),
         getRoomIndexesBetween: vi.fn(),

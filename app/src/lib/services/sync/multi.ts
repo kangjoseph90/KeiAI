@@ -100,7 +100,8 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
     protected override async syncRecords(): Promise<void> {
         if (!isReadyToSync()) return;
         const { userId } = getActiveSession();
-        const localUpper = clock.now();
+        // Changes accepted during this run remain beyond the committed Push bound.
+        const localUpper = await appMulti.getLocalUpdateUpper();
         const serverUpper = await getServerNow();
 
         await this.syncMeta(userId, localUpper, serverUpper);
@@ -226,19 +227,19 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
     private async pushLocalChanges(
         userId: string,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number,
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number,
         continueOnError: boolean
     ): Promise<void> {
         const ownedRoomIndexes = await appMulti.getRoomIndexesByOwner(userId);
         const activeOwnedRoomIds = ownedRoomIndexes.map((room) => room.id);
         const changedIndexes = (
-            await appMulti.getRoomIndexesBetween(afterUpdatedAt, throughUpdatedAt)
+            await appMulti.getRoomIndexesBetween(afterLocalUpdatedAt, throughLocalUpdatedAt)
         ).filter((index) => index.ownerUserId === userId);
         const ownedRoomMemberships = await appMulti.getMembersByRoomsBetween(
             activeOwnedRoomIds,
-            afterUpdatedAt,
-            throughUpdatedAt
+            afterLocalUpdatedAt,
+            throughLocalUpdatedAt
         );
         const memberById = new Map<string, MultiRoomMemberRecord>();
         for (const member of ownedRoomMemberships) memberById.set(member.id, member);

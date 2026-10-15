@@ -43,6 +43,7 @@ vi.mock('$lib/adapters/db', () => ({
     SYNC_TABLES: ['characters', 'chats'],
     TABLES: ['characters', 'chats'],
     localDB: {
+        getLocalUpdateUpper: vi.fn().mockResolvedValue(2500),
         getRecord: vi.fn(),
         putRecord: vi.fn(),
         putRecords: vi.fn(),

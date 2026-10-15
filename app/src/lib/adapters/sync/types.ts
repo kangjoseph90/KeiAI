@@ -11,7 +11,9 @@ export interface SyncCursorIdentity {
 }
 
 export interface SyncCursorState {
+    /** Server-owned serverUpdatedAt boundary. */
     serverPullCursor: number;
+    /** Locally committed localUpdatedAt boundary, independent of LWW updatedAt. */
     localPushCursor: number;
 }
 

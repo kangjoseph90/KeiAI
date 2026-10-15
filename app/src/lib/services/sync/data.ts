@@ -141,7 +141,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
         let firstError: unknown = null;
         let completed = 0;
-        const localUpper = clock.now();
+        // Changes accepted during this run remain beyond the committed Push bound.
+        const localUpper = await localDB.getLocalUpdateUpper();
         const serverUpper = await getServerNow();
         const scopes = getActiveSyncScopes(USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION);
 
@@ -345,16 +346,16 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
     private async collectUnsyncedChanges(
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<LocalChange[]> {
         const changes: LocalChange[] = [];
         for (const table of SYNC_TABLES) {
             const records = await localDB.getUnsyncedChanges<DataRecord>(
                 table,
                 scope,
-                afterUpdatedAt,
-                throughUpdatedAt
+                afterLocalUpdatedAt,
+                throughLocalUpdatedAt
             );
             for (const record of records) {
                 changes.push({ table, record });
@@ -590,6 +591,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             scopeType: _scopeType,
             createdAt,
             updatedAt,
+            localUpdatedAt: _localUpdatedAt,
             isDeleted,
             assetEntries,
             ...rest
@@ -618,6 +620,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
         const json = await decodeRecordPayload(syncScope.key, { ciphertext: encData, iv: encIV });
         const payload = JSON.parse(json) as Record<string, unknown>;
+        // Local sequencing is never imported, including from encrypted payloads.
+        Reflect.deleteProperty(payload, 'localUpdatedAt');
         const isDeleted = Boolean(pbRecord.isDeleted);
 
         return {

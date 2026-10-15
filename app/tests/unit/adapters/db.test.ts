@@ -598,7 +598,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     });
 
     describe('getUnsyncedChanges', () => {
-        it('should get records inside the requested timestamp window', async () => {
+        it('should get records inside the requested local change window', async () => {
             const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const now = Date.now();
             const old = now - 10000;
@@ -618,8 +618,8 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
-                now - 5000,
-                now
+                (await localDB.getRecord('settings', 'old-rec'))!.localUpdatedAt!,
+                await localDB.getLocalUpdateUpper()
             );
 
             expect(results).toHaveLength(1);
@@ -640,8 +640,8 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
-                now - 5001,
-                now - 5000
+                0,
+                (await localDB.getRecord('settings', 'edge-rec'))!.localUpdatedAt!
             );
 
             expect(results).toHaveLength(1);

@@ -13,6 +13,7 @@
  *         or EntityListConfig<ResourceRef> when per-context enabled state is required.
  */
 
+import type { LocalUpdateRecord } from '../local-updates';
 import type { AssetEntries } from '$lib/types/asset';
 
 // ─── Table Registry ──────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export interface DataScope {
 export type DataScopeType = 'user' | 'room';
 
 /** Standard record — stores domain fields as plaintext JSON */
-export interface DataRecord {
+export interface DataRecord extends LocalUpdateRecord {
     id: string;
     scopeType: DataScopeType;
     scopeId: string; // userId or roomId
@@ -150,6 +151,8 @@ export interface ToolCallRecord extends DataRecord {
 export interface IDatabaseAdapter {
     subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void;
     flush(): Promise<void>;
+    /** Committed local change sequence; bounds a Push scan independently of LWW. */
+    getLocalUpdateUpper(): Promise<number>;
     getRecord<T extends DataRecord>(tableName: TableName, id: string): Promise<T | undefined>;
     putRecord<T extends DataRecord>(
         tableName: TableName,
@@ -239,8 +242,8 @@ export interface IDatabaseAdapter {
     getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
     countByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<number>;
