@@ -14,6 +14,7 @@ import { TABLES } from './types';
 import { AppError } from '$lib/types/errors';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
+import { canonicalJson } from '$lib/utils/defaults';
 import type { AssetEntries } from '$lib/types/asset';
 
 /**
@@ -37,6 +38,7 @@ interface DatabaseSqlRow {
     activeSwipeId: string | null;
     createdAt: number | null;
     updatedAt: number | null;
+    localUpdatedAt: number;
     isDeleted: number; // 0 | 1
     assetEntries: string | null;
     data: string; // JSON.stringify(...)
@@ -71,9 +73,10 @@ function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
         activeSwipeId: clone.activeSwipeId ?? null,
         createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
+        localUpdatedAt: 0,
         isDeleted: clone.isDeleted ? 1 : 0,
-        assetEntries: clone.assetEntries ? JSON.stringify(clone.assetEntries) : null,
-        data: JSON.stringify(clone.data ?? {})
+        assetEntries: clone.assetEntries ? canonicalJson(clone.assetEntries) : null,
+        data: canonicalJson(clone.data ?? {})
     };
 
     return bindings;
@@ -91,6 +94,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         activeSwipeId: row.activeSwipeId ?? undefined,
         createdAt: row.createdAt ?? 0,
         updatedAt: row.updatedAt ?? 0,
+        localUpdatedAt: row.localUpdatedAt,
         isDeleted: row.isDeleted === 1,
         assetEntries: row.assetEntries ? (JSON.parse(row.assetEntries) as AssetEntries) : undefined,
         data
@@ -119,6 +123,42 @@ function parseIndexColumns(indexName: string): string[] | null {
         return null;
     }
     return cols;
+}
+
+/** Assign the local revision in the same SQL statement as the record write. */
+export async function initSqlLocalUpdates(db: Database, tables: string[]): Promise<void> {
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS local_updates (id INTEGER PRIMARY KEY, value INTEGER NOT NULL);
+        INSERT OR IGNORE INTO local_updates (id, value) VALUES (0, 0);
+    `);
+    for (const table of tables) {
+        const columns = await db.select<Array<{ name: string }>>(`PRAGMA table_info(${table})`);
+        const domain = columns.filter(({ name }) => name !== 'localUpdatedAt');
+        const equal = domain.map(({ name }) => `${name} IS NEW.${name}`).join(' AND ');
+        const changed = domain.map(({ name }) => `OLD.${name} IS NOT NEW.${name}`).join(' OR ');
+        const stamp = `
+            UPDATE local_updates SET value = value + 1 WHERE id = 0;
+            UPDATE ${table} SET localUpdatedAt = (SELECT value FROM local_updates WHERE id = 0)
+            WHERE id = NEW.id;
+        `;
+        await db.execute(`
+            CREATE TRIGGER IF NOT EXISTS ${table}_local_duplicate BEFORE INSERT ON ${table}
+            WHEN EXISTS (SELECT 1 FROM ${table} WHERE ${equal})
+            BEGIN SELECT RAISE(IGNORE); END;
+            CREATE TRIGGER IF NOT EXISTS ${table}_local_insert AFTER INSERT ON ${table}
+            BEGIN ${stamp} END;
+            CREATE TRIGGER IF NOT EXISTS ${table}_local_update AFTER UPDATE ON ${table}
+            WHEN ${changed}
+            BEGIN ${stamp} END;
+        `);
+    }
+}
+
+export async function getSqlLocalUpdatedAt(db: Database): Promise<number> {
+    const rows = await db.select<Array<{ value: number }>>(
+        'SELECT value FROM local_updates WHERE id = 0'
+    );
+    return rows[0].value;
 }
 
 export class TauriDatabaseAdapter implements IDatabaseAdapter {
@@ -160,6 +200,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         activeSwipeId TEXT,
                         createdAt INTEGER,
                         updatedAt INTEGER,
+                        localUpdatedAt INTEGER NOT NULL,
                         isDeleted INTEGER,
                         assetEntries TEXT,
                         data TEXT
@@ -169,7 +210,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             // Optimized indices for lookup and sync
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_deleted" ON "${table}" (scopeType, scopeId, isDeleted);
 `;
-            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_updatedAt" ON "${table}" (scopeType, scopeId, updatedAt);
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_localUpdatedAt" ON "${table}" (scopeType, scopeId, localUpdatedAt);
 `;
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scopeId" ON "${table}" (scopeId);
 `;
@@ -190,6 +231,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             `CREATE INDEX IF NOT EXISTS "idx_messages_identity"
              ON messages (chatId, sortOrder, activeSwipeId, scopeType, scopeId, id)`
         );
+        await initSqlLocalUpdates(db, TABLES);
     }
 
     async getRecord<T extends DataRecord>(
@@ -213,8 +255,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName}
-				(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+				(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [
                 b.id,
                 b.scopeType,
@@ -225,6 +267,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 b.activeSwipeId,
                 b.createdAt,
                 b.updatedAt,
+                b.localUpdatedAt,
                 b.isDeleted,
                 b.assetEntries,
                 b.data
@@ -238,6 +281,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         records: T[],
         options?: DatabaseWriteOptions
     ): Promise<void> {
+        records = [...new Map(records.map((record) => [record.id, record])).values()];
         const db = await this.getDb();
         const chunkSize = 50;
 
@@ -245,8 +289,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 12 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
+                    const start = idx * 13 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
                 })
                 .join(', ');
 
@@ -263,6 +307,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.activeSwipeId,
                     b.createdAt,
                     b.updatedAt,
+                    b.localUpdatedAt,
                     b.isDeleted,
                     b.assetEntries,
                     b.data
@@ -271,7 +316,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName}
-					(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
+					(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
 					VALUES ${placeholders}`,
                 values
             );
@@ -380,8 +425,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 12 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
+                        const start = idx * 13 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -397,6 +442,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.activeSwipeId,
                         b.createdAt,
                         b.updatedAt,
+                        b.localUpdatedAt,
                         b.isDeleted,
                         b.assetEntries,
                         b.data
@@ -404,7 +450,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-	                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, isDeleted, assetEntries, data)
+	                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
 	                VALUES ${placeholders}`,
                     values
                 );
@@ -658,17 +704,21 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
+    async getLocalUpdatedAt(): Promise<number> {
+        return getSqlLocalUpdatedAt(await this.getDb());
+    }
+
     async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND updatedAt > $3 AND updatedAt <= $4`,
-            [scope.scopeType, scope.scopeId, afterUpdatedAt, throughUpdatedAt]
+            `SELECT * FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2 AND localUpdatedAt > $3 AND localUpdatedAt <= $4`,
+            [scope.scopeType, scope.scopeId, afterLocalUpdatedAt, throughLocalUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));
     }

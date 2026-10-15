@@ -89,3 +89,14 @@ export function createPatch(before: unknown, after: unknown): unknown | typeof N
 
     return Object.keys(patch).length === 0 ? NO_CHANGE : patch;
 }
+
+/** Stable JSON for comparing canonical state and storing SQLite JSON columns. */
+export function canonicalJson(value: unknown): string {
+    return JSON.stringify(value, (_key, item: unknown) =>
+        item && typeof item === 'object' && !Array.isArray(item)
+            ? Object.fromEntries(
+                  Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+              )
+            : item
+    );
+}

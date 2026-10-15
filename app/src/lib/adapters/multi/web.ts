@@ -1,3 +1,4 @@
+import { putWebRecords, getWebLocalUpdatedAt } from '$lib/adapters/db';
 import Dexie from 'dexie';
 import { MultiWriteEventEmitter } from './events';
 import type {
@@ -19,16 +20,17 @@ class MultiDexie extends Dexie {
     constructor() {
         super('KeiMulti');
         this.version(1).stores({
+            localUpdates: 'id',
             roomIndex:
-                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, visibility, publicName',
+                'id, ownerUserId, [ownerUserId+localUpdatedAt], localUpdatedAt, visibility, publicName',
             members:
-                'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status'
+                'id, roomId, userId, [roomId+userId], [userId+localUpdatedAt], [roomId+localUpdatedAt], localUpdatedAt, status'
         });
         this.version(2).stores({
             roomIndex:
-                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, visibility, publicName',
+                'id, ownerUserId, [ownerUserId+localUpdatedAt], localUpdatedAt, visibility, publicName',
             members:
-                'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status',
+                'id, roomId, userId, [roomId+userId], [userId+localUpdatedAt], [roomId+localUpdatedAt], localUpdatedAt, status',
             userKeyTrust: 'userId, username, publicKeyFingerprint, lastSeenAt'
         });
     }
@@ -61,6 +63,10 @@ export class WebMultiAdapter implements IMultiAdapter {
         });
     }
 
+    getLocalUpdatedAt(): Promise<number> {
+        return getWebLocalUpdatedAt(multiDB);
+    }
+
     async getRoomIndex(roomId: string): Promise<MultiRoomIndexRecord | null> {
         return (await multiDB.roomIndex.get(roomId)) ?? null;
     }
@@ -77,17 +83,17 @@ export class WebMultiAdapter implements IMultiAdapter {
     }
 
     async getRoomIndexesBetween(
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomIndexRecord[]> {
         return await multiDB.roomIndex
-            .where('updatedAt')
-            .between(afterUpdatedAt, throughUpdatedAt, false, true)
+            .where('localUpdatedAt')
+            .between(afterLocalUpdatedAt, throughLocalUpdatedAt, false, true)
             .toArray();
     }
 
     async saveRoomIndex(record: MultiRoomIndexRecord, options?: MultiWriteOptions): Promise<void> {
-        await multiDB.roomIndex.put(record);
+        await putWebRecords(multiDB, multiDB.roomIndex, [record]);
         this.emitWriteEvent('multi_room_index', 'put', [record.id], options);
     }
 
@@ -96,7 +102,7 @@ export class WebMultiAdapter implements IMultiAdapter {
         options?: MultiWriteOptions
     ): Promise<void> {
         if (records.length === 0) return;
-        await multiDB.roomIndex.bulkPut(records);
+        await putWebRecords(multiDB, multiDB.roomIndex, records);
         this.emitWriteEvent(
             'multi_room_index',
             'putMany',
@@ -119,14 +125,14 @@ export class WebMultiAdapter implements IMultiAdapter {
 
     async getMembersByRoomsBetween(
         roomIds: string[],
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         if (roomIds.length === 0) return [];
         const roomIdSet = new Set(roomIds);
         return await multiDB.members
-            .where('updatedAt')
-            .between(afterUpdatedAt, throughUpdatedAt, false, true)
+            .where('localUpdatedAt')
+            .between(afterLocalUpdatedAt, throughLocalUpdatedAt, false, true)
             .filter((record) => roomIdSet.has(record.roomId))
             .toArray();
     }
@@ -140,17 +146,17 @@ export class WebMultiAdapter implements IMultiAdapter {
 
     async getMembersBetween(
         userId: string,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]> {
         return await multiDB.members
-            .where('[userId+updatedAt]')
-            .between([userId, afterUpdatedAt], [userId, throughUpdatedAt], false, true)
+            .where('[userId+localUpdatedAt]')
+            .between([userId, afterLocalUpdatedAt], [userId, throughLocalUpdatedAt], false, true)
             .toArray();
     }
 
     async saveMember(record: MultiRoomMemberRecord, options?: MultiWriteOptions): Promise<void> {
-        await multiDB.members.put(record);
+        await putWebRecords(multiDB, multiDB.members, [record]);
         this.emitWriteEvent('multi_room_members', 'put', [record.id], options);
     }
 
@@ -159,7 +165,7 @@ export class WebMultiAdapter implements IMultiAdapter {
         options?: MultiWriteOptions
     ): Promise<void> {
         if (records.length === 0) return;
-        await multiDB.members.bulkPut(records);
+        await putWebRecords(multiDB, multiDB.members, records);
         this.emitWriteEvent(
             'multi_room_members',
             'putMany',

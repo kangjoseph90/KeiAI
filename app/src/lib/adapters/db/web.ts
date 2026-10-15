@@ -28,6 +28,41 @@ import type {
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
+import { canonicalJson } from '$lib/utils/defaults';
+
+/** A single persistent revision shared by all writes in this IndexedDB database. */
+export async function putWebRecords<T extends { id: string; localUpdatedAt?: number }>(
+    db: Dexie,
+    table: Table<T, string>,
+    records: T[]
+): Promise<void> {
+    records = [...new Map(records.map((record) => [record.id, record])).values()];
+    const revisions = db.table<{ id: number; value: number }, number>('localUpdates');
+    await db.transaction('rw', table, revisions, async () => {
+        let value = (await revisions.get(0))?.value ?? 0;
+        const existing = await table.bulkGet(records.map((record) => record.id));
+        await table.bulkPut(
+            records.map((record, i) => {
+                const { localUpdatedAt: _incoming, ...state } = record;
+                const { localUpdatedAt: previous, ...before } = existing[i] ?? {};
+                return {
+                    ...record,
+                    localUpdatedAt:
+                        existing[i] && canonicalJson(state) === canonicalJson(before)
+                            ? previous
+                            : ++value
+                };
+            })
+        );
+        await revisions.put({ id: 0, value });
+    });
+}
+
+export async function getWebLocalUpdatedAt(db: Dexie): Promise<number> {
+    return (
+        (await db.table<{ id: number; value: number }, number>('localUpdates').get(0))?.value ?? 0
+    );
+}
 
 class DexieStore extends Dexie {
     rooms!: Table<RoomRecord, string>;
@@ -45,22 +80,23 @@ class DexieStore extends Dexie {
         super('KeiLocalDB');
 
         this.version(1).stores({
-            rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            localUpdates: 'id',
+            rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             characters:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
-            chats: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+roomId], [scopeType+scopeId+updatedAt], roomId, updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
+            chats: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+roomId], [scopeType+scopeId+localUpdatedAt], roomId, updatedAt, isDeleted',
             presets:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             messages:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+updatedAt], chatId, [chatId+sortOrder], [chatId+sortOrder+activeSwipeId+scopeType+scopeId], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+localUpdatedAt], chatId, [chatId+sortOrder], [chatId+sortOrder+activeSwipeId+scopeType+scopeId], updatedAt, isDeleted',
             settings:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             personas:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             modules:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             plugins:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             tool_calls:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], chatId, updatedAt, isDeleted'
         });
@@ -107,7 +143,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         record: T,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await this.getTable<T>(tableName).put(record);
+        await putWebRecords(this.db, this.getTable<T>(tableName), [record]);
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
@@ -116,7 +152,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         records: T[],
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await this.getTable<T>(tableName).bulkPut(records);
+        await putWebRecords(this.db, this.getTable<T>(tableName), records);
         this.emitWriteEvent(
             tableName,
             'putMany',
@@ -204,7 +240,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         for (const record of records) {
             scrubSoftDeletedRecord(record, now);
         }
-        await table.bulkPut(records);
+        await putWebRecords(this.db, table, records);
         this.emitWriteEvent(
             tableName,
             'softDeleteByIndex',
@@ -232,7 +268,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         for (const record of records) {
             scrubSoftDeletedRecord(record, now);
         }
-        await table.bulkPut(records);
+        await putWebRecords(this.db, table, records);
         this.emitWriteEvent(
             tableName,
             'softDeleteByCompoundIndex',
@@ -384,18 +420,22 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .count();
     }
 
+    getLocalUpdatedAt(): Promise<number> {
+        return getWebLocalUpdatedAt(this.db);
+    }
+
     async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
-            .where('[scopeType+scopeId+updatedAt]')
+            .where('[scopeType+scopeId+localUpdatedAt]')
             .between(
-                [scope.scopeType, scope.scopeId, afterUpdatedAt],
-                [scope.scopeType, scope.scopeId, throughUpdatedAt],
+                [scope.scopeType, scope.scopeId, afterLocalUpdatedAt],
+                [scope.scopeType, scope.scopeId, throughLocalUpdatedAt],
                 false,
                 true
             )
@@ -408,7 +448,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         callback: () => Promise<R>
     ): Promise<R> {
         await this.flush();
-        return await this.db.transaction(mode, tables, callback);
+        return await this.db.transaction(mode, [...tables, 'localUpdates'], callback);
     }
 
     async countByIndex(
