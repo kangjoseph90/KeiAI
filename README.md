@@ -4,6 +4,13 @@ KeiAI is a cross-platform AI character chat application and customizable workflo
 
 > KeiAI is under active development.
 
+## Deployments
+
+- Web app: [app.keiai.xyz](https://app.keiai.xyz)
+- Development preview: [dev.keiai.xyz](https://dev.keiai.xyz)
+- API server: [api.keiai.xyz](https://api.keiai.xyz)
+- Request proxy: [proxy.keiai.xyz](https://proxy.keiai.xyz)
+
 ## Features
 
 - Native multi-character and multi-persona conversations
