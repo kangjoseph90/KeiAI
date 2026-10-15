@@ -491,7 +491,7 @@ describe('DataRecordSyncEngine', () => {
             );
         });
 
-        it('deleted record with no local counterpart is skipped', async () => {
+        it('preserves a pulled tombstone with no local counterpart', async () => {
             const tableName = 'characters';
             vi.mocked(syncCursorDB.get).mockResolvedValue({
                 serverPullCursor: 500,
@@ -520,8 +520,19 @@ describe('DataRecordSyncEngine', () => {
 
             await DataRecordSyncEngine.trigger();
 
-            // Should NOT store a deleted record we never had
-            expect(localDB.putRecords).not.toHaveBeenCalled();
+            expect(localDB.putRecords).toHaveBeenCalledWith(
+                tableName,
+                [
+                    expect.objectContaining({
+                        id: 'rec-1',
+                        scopeType: 'user',
+                        scopeId: mockUserId,
+                        isDeleted: true,
+                        updatedAt: 1000
+                    })
+                ],
+                { origin: 'sync' }
+            );
         });
 
         it('both deleted uses LWW', async () => {

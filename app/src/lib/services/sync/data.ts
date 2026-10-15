@@ -235,16 +235,14 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         clock.observe(remoteAt);
 
                         if (!local) {
-                            if (!remote.record.isDeleted) {
-                                const records = grouped.get(remote.table) ?? [];
-                                records.push(remote.record);
-                                grouped.set(remote.table, records);
-                                assetReconciliations.push({
-                                    table: remote.table,
-                                    before: undefined,
-                                    after: remote.record
-                                });
-                            }
+                            const records = grouped.get(remote.table) ?? [];
+                            records.push(remote.record);
+                            grouped.set(remote.table, records);
+                            assetReconciliations.push({
+                                table: remote.table,
+                                before: undefined,
+                                after: remote.record
+                            });
                         } else if (remote.record.isDeleted && !local.isDeleted) {
                             // Delete-wins: remote deleted beats local live
                             const records = grouped.get(remote.table) ?? [];
