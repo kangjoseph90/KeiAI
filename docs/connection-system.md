@@ -41,6 +41,8 @@ A proxy change validates, persists, and applies the new HTTP runtime. Failure re
 
 A server change must preserve assets that currently exist only on the old server. Before switching URLs, `ConnectionService` pauses sync and eviction, localizes remote user assets, persists the new setting, and restores any auth session stored for the destination server. Failure restores the previous asset status, setting, and runtime.
 
+Sync cursors are independent per server. Pull uses server-owned `serverUpdatedAt`; Push uses client-only `localUpdatedAt`, assigned when local canonical records or multi-room metadata actually change, including accepted Pull, Realtime, and Push responses. Duplicate receives and rejected versions keep their local timestamp. `updatedAt` remains the LWW version, so a change accepted from another server is pushed back even when its version is below the previous Push cursor. `localUpdatedAt` stays out of server fields and encrypted payloads. The local value is a durable database revision, independent of wall time and the LWW clock. IndexedDB commits the revision with the record in one transaction; SQLite assigns it in the record statement through generated triggers. Push takes its upper bound from the stored local revision. Removing records never resets the revision. This schema assumes a clean local database; no data or cursor migration is provided.
+
 PocketBase auth tokens are stored by `userId × serverUrl`, so switching servers switches auth context without merging server sessions.
 
 ## Invariants

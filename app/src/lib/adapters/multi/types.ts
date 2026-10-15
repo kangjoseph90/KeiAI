@@ -17,6 +17,8 @@ export interface MultiRoomIndexRecord {
     publicName?: string;
     createdAt: number;
     updatedAt: number;
+    /** Assigned by local persistence, including accepted sync changes; absent before saving. */
+    localUpdatedAt?: number;
 }
 
 export interface MultiRoomMemberRecord {
@@ -27,6 +29,8 @@ export interface MultiRoomMemberRecord {
     encryptedRoomKey?: string;
     createdAt: number;
     updatedAt: number;
+    /** Assigned by local persistence, including accepted sync changes; absent before saving. */
+    localUpdatedAt?: number;
 }
 
 export interface MultiUserKeyTrustRecord {
@@ -55,6 +59,8 @@ export interface MultiWriteEvent {
 export type MultiWriteEventListener = (events: MultiWriteEvent[]) => void;
 
 export interface IMultiAdapter {
+    /** Last committed local revision; later writes must receive a greater value. */
+    getLocalUpdatedAt(): Promise<number>;
     subscribeWriteEvents(listener: MultiWriteEventListener): () => void;
     flush(): Promise<void>;
 
@@ -62,8 +68,8 @@ export interface IMultiAdapter {
     getRoomIndexes(roomIds: string[]): Promise<MultiRoomIndexRecord[]>;
     getRoomIndexesByOwner(ownerUserId: string): Promise<MultiRoomIndexRecord[]>;
     getRoomIndexesBetween(
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomIndexRecord[]>;
     saveRoomIndex(record: MultiRoomIndexRecord, options?: MultiWriteOptions): Promise<void>;
     saveRoomIndexes(records: MultiRoomIndexRecord[], options?: MultiWriteOptions): Promise<void>;
@@ -73,14 +79,14 @@ export interface IMultiAdapter {
     getMembersByRoom(roomId: string): Promise<MultiRoomMemberRecord[]>;
     getMembersByRoomsBetween(
         roomIds: string[],
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]>;
     getMembership(roomId: string, userId: string): Promise<MultiRoomMemberRecord | null>;
     getMembersBetween(
         userId: string,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<MultiRoomMemberRecord[]>;
     saveMember(record: MultiRoomMemberRecord, options?: MultiWriteOptions): Promise<void>;
     saveMembers(records: MultiRoomMemberRecord[], options?: MultiWriteOptions): Promise<void>;

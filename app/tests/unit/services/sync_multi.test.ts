@@ -40,6 +40,7 @@ vi.mock('$lib/adapters/multi', () => ({
     appMulti: {
         getRoomIndex: vi.fn(),
         getRoomIndexesByOwner: vi.fn(),
+        getLocalUpdatedAt: vi.fn().mockResolvedValue(2500),
         getRoomIndexesBetween: vi.fn(),
         saveRoomIndex: vi.fn(),
         purgeRoomLocal: vi.fn(),
@@ -173,9 +174,14 @@ describe('MultiRecordSyncEngine', () => {
     });
 
     it('pushes owned room indexes and writable members', async () => {
-        const ownedIndex = roomIndex({ updatedAt: 2000 });
-        const ownMember = member({ updatedAt: 2100 });
-        const invitedMember = member({ id: 'member-2', userId: 'user-2', updatedAt: 2200 });
+        const ownedIndex = roomIndex({ updatedAt: 20, localUpdatedAt: 2000 });
+        const ownMember = member({ updatedAt: 21, localUpdatedAt: 2100 });
+        const invitedMember = member({
+            id: 'member-2',
+            userId: 'user-2',
+            updatedAt: 22,
+            localUpdatedAt: 2200
+        });
 
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([ownedIndex]);
         vi.mocked(appMulti.getRoomIndexesBetween).mockResolvedValue([ownedIndex]);
@@ -184,6 +190,13 @@ describe('MultiRecordSyncEngine', () => {
 
         await service.trigger();
 
+        expect(appMulti.getRoomIndexesBetween).toHaveBeenCalledWith(1000, 2500);
+        expect(appMulti.getMembersByRoomsBetween).toHaveBeenCalledWith(['room-1'], 1000, 2500);
+        expect(
+            mockBatchCollection.upsert.mock.calls.every(
+                ([payload]) => !('localUpdatedAt' in payload)
+            )
+        ).toBe(true);
         expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_index');
         expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_members');
         expect(mockBatchCollection.upsert).toHaveBeenCalledWith(

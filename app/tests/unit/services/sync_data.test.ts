@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { deflateSync, strToU8 } from 'fflate';
+import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import Dexie from 'dexie';
+import fakeIndexedDB, { IDBKeyRange } from 'fake-indexeddb';
+import { WebDatabaseAdapter } from '$lib/adapters/db/web';
+import { clock } from '$lib/utils/clock';
+import { encryptBytes, decryptBytes } from '$lib/crypto';
 import { DataRecordSyncEngine } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
@@ -46,6 +51,7 @@ vi.mock('$lib/adapters/db', () => ({
         getRecord: vi.fn(),
         putRecord: vi.fn(),
         putRecords: vi.fn(),
+        getLocalUpdatedAt: vi.fn().mockResolvedValue(2500),
         getUnsyncedChanges: vi.fn(),
         transaction: vi.fn(async (_tables, _mode, callback) => callback()),
         subscribeWriteEvents: vi.fn(() => () => {})
@@ -78,12 +84,15 @@ vi.mock('$lib/crypto', () => ({
     decryptBytes: vi.fn(() => Promise.resolve(deflateSync(strToU8('{}'))))
 }));
 
-vi.mock('$lib/utils/clock', () => ({
-    clock: {
-        now: vi.fn(() => 2500),
-        observe: vi.fn()
-    }
-}));
+vi.mock('$lib/utils/clock', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/utils/clock')>();
+    vi.spyOn(actual.clock, 'now').mockReturnValue(2500);
+    vi.spyOn(actual.clock, 'observe').mockImplementation(() => {});
+    return actual;
+});
+
+Dexie.dependencies.indexedDB = fakeIndexedDB;
+Dexie.dependencies.IDBKeyRange = IDBKeyRange;
 
 describe('DataRecordSyncEngine', () => {
     const mockUserId = 'user-123';
@@ -100,6 +109,7 @@ describe('DataRecordSyncEngine', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(clock.now).mockReturnValue(2500);
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,
@@ -593,6 +603,184 @@ describe('DataRecordSyncEngine', () => {
                 expect.objectContaining({ id: 'rec-1', isDeleted: true }),
                 expect.objectContaining({ origin: 'sync' })
             );
+        });
+    });
+    describe('canonical local persistence', () => {
+        let db: WebDatabaseAdapter;
+        let tick: number;
+        const remote = {
+            id: 'low-version',
+            kind: 'characters',
+            userId: mockUserId,
+            createdAt: 1,
+            updatedAt: 10,
+            isDeleted: false,
+            localUpdatedAt: Number.MAX_SAFE_INTEGER,
+            encryptedData: 'data',
+            encryptedDataIV: 'iv'
+        };
+
+        beforeEach(async () => {
+            await Dexie.delete('KeiLocalDB');
+            db = new WebDatabaseAdapter();
+            tick = 10000;
+            vi.mocked(clock.now).mockImplementation(() => ++tick);
+            vi.mocked(localDB.getLocalUpdatedAt).mockImplementation(db.getLocalUpdatedAt.bind(db));
+            vi.mocked(localDB.getRecord).mockImplementation(db.getRecord.bind(db));
+            vi.mocked(localDB.putRecord).mockImplementation(db.putRecord.bind(db));
+            vi.mocked(localDB.putRecords).mockImplementation(db.putRecords.bind(db));
+            vi.mocked(localDB.getUnsyncedChanges).mockImplementation(
+                db.getUnsyncedChanges.bind(db)
+            );
+            vi.mocked(mockBatch.send).mockResolvedValue([]);
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [],
+                page: 1,
+                totalPages: 1
+            });
+            vi.mocked(decryptBytes).mockResolvedValue(
+                deflateSync(
+                    strToU8(
+                        JSON.stringify({
+                            data: { name: 'Remote' },
+                            localUpdatedAt: Number.MAX_SAFE_INTEGER
+                        })
+                    )
+                )
+            );
+        });
+
+        afterEach(async () => {
+            await Dexie.delete('KeiLocalDB');
+            pb.baseUrl = 'https://sync.example.test';
+            vi.mocked(localDB.getLocalUpdatedAt).mockResolvedValue(2500);
+            vi.mocked(localDB.getRecord).mockReset();
+            vi.mocked(localDB.putRecord).mockReset();
+            vi.mocked(localDB.putRecords).mockReset();
+            vi.mocked(localDB.getUnsyncedChanges).mockReset();
+            vi.mocked(syncCursorDB.get).mockReset();
+            vi.mocked(syncCursorDB.advance).mockReset();
+            vi.mocked(decryptBytes).mockResolvedValue(deflateSync(strToU8('{}')));
+        });
+
+        it('pushes a low updatedAt change received from another server back to the original server', async () => {
+            const cursors = new Map<
+                string,
+                { serverPullCursor: number; localPushCursor: number }
+            >();
+            vi.mocked(syncCursorDB.get).mockImplementation(
+                async ({ serverUrl }) =>
+                    cursors.get(serverUrl) ?? { serverPullCursor: 0, localPushCursor: 0 }
+            );
+            vi.mocked(syncCursorDB.advance).mockImplementation(async ({ serverUrl }, update) => {
+                cursors.set(serverUrl, { ...cursors.get(serverUrl)!, ...update });
+            });
+            for (let i = 0; i < 11; i++) {
+                await db.putRecord('characters', makeRecord('original', 1000 + i));
+            }
+            await DataRecordSyncEngine.trigger();
+            const originalCursor = cursors.get(pb.baseUrl)!.localPushCursor;
+
+            pb.baseUrl = 'https://other.example.test';
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [remote],
+                page: 1,
+                totalPages: 1
+            });
+            await DataRecordSyncEngine.trigger();
+            const stored = await db.getRecord('characters', remote.id);
+            expect(stored!.updatedAt).toBeLessThan(originalCursor);
+            expect(stored!.localUpdatedAt).toBeGreaterThan(originalCursor);
+            expect(stored!.localUpdatedAt).toBeLessThan(Number.MAX_SAFE_INTEGER);
+
+            pb.baseUrl = 'https://sync.example.test';
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [],
+                page: 1,
+                totalPages: 1
+            });
+            mockBatchCollection.upsert.mockClear();
+            await DataRecordSyncEngine.trigger();
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: remote.id, updatedAt: 10 })
+            );
+            expect(mockBatchCollection.upsert.mock.calls[0][0]).not.toHaveProperty(
+                'localUpdatedAt'
+            );
+            const compressed = vi.mocked(encryptBytes).mock.calls.at(-1)![1];
+            expect(JSON.parse(strFromU8(inflateSync(compressed)))).toEqual({
+                data: { name: 'Remote' }
+            });
+        });
+
+        it.each(['Pull', 'Realtime', 'Push'] as const)(
+            'stamps accepted %s changes with local time',
+            async (path) => {
+                await db.putRecord('characters', { ...makeRecord(remote.id, 5), createdAt: 1 });
+                const before = await db.getRecord('characters', remote.id);
+                if (path === 'Pull') {
+                    vi.mocked(mockCollection.getList).mockResolvedValue({
+                        items: [remote],
+                        page: 1,
+                        totalPages: 1
+                    });
+                } else if (path === 'Push') {
+                    vi.mocked(mockBatch.send).mockResolvedValue([{ status: 200, body: remote }]);
+                } else {
+                    await DataRecordSyncEngine.subscribeRealtime();
+                    const callback = mockCollection.subscribe.mock.calls.at(-1)![1] as (
+                        event: unknown
+                    ) => void;
+                    callback({ action: 'update', record: remote });
+                    await vi.waitFor(() => expect(localDB.transaction).toHaveBeenCalled());
+                    await vi.mocked(localDB.transaction).mock.results.at(-1)!.value;
+                    await DataRecordSyncEngine.unsubscribeRealtime();
+                }
+                if (path !== 'Realtime') await DataRecordSyncEngine.trigger();
+                const after = await db.getRecord('characters', remote.id);
+                expect(after?.updatedAt).toBe(10);
+                expect(after!.localUpdatedAt).toBeGreaterThan(before!.localUpdatedAt!);
+                expect(after!.localUpdatedAt).toBeLessThan(Number.MAX_SAFE_INTEGER);
+            }
+        );
+
+        it('keeps localUpdatedAt on duplicate Pull, Realtime, and Push responses and rejected versions', async () => {
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [remote],
+                page: 1,
+                totalPages: 1
+            });
+            await DataRecordSyncEngine.trigger();
+            const first = await db.getRecord('characters', remote.id);
+            await DataRecordSyncEngine.trigger();
+            expect((await db.getRecord('characters', remote.id))?.localUpdatedAt).toBe(
+                first?.localUpdatedAt
+            );
+
+            await DataRecordSyncEngine.subscribeRealtime();
+            const callback = mockCollection.subscribe.mock.calls.at(-1)![1] as (
+                event: unknown
+            ) => void;
+            callback({ action: 'update', record: remote });
+            await vi.waitFor(() => expect(localDB.transaction).toHaveBeenCalled());
+            await vi.mocked(localDB.transaction).mock.results.at(-1)!.value;
+            expect((await db.getRecord('characters', remote.id))?.localUpdatedAt).toBe(
+                first?.localUpdatedAt
+            );
+
+            vi.mocked(mockBatch.send).mockResolvedValue([{ status: 200, body: remote }]);
+            await DataRecordSyncEngine.trigger();
+            expect((await db.getRecord('characters', remote.id))?.localUpdatedAt).toBe(
+                first?.localUpdatedAt
+            );
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [{ ...remote, updatedAt: 5 }],
+                page: 1,
+                totalPages: 1
+            });
+            await DataRecordSyncEngine.trigger();
+            expect(await db.getRecord('characters', remote.id)).toEqual(first);
+            await DataRecordSyncEngine.unsubscribeRealtime();
         });
     });
 });

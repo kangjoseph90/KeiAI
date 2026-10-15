@@ -86,6 +86,8 @@ export interface DataRecord {
     scopeId: string; // userId or roomId
     createdAt: number;
     updatedAt: number;
+    /** Assigned by local persistence, including accepted sync changes; absent before saving. */
+    localUpdatedAt?: number;
     isDeleted: boolean;
     data: Record<string, unknown>;
     assetEntries?: AssetEntries;
@@ -148,6 +150,8 @@ export interface ToolCallRecord extends DataRecord {
 // ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
+    /** Last committed local revision; later writes must receive a greater value. */
+    getLocalUpdatedAt(): Promise<number>;
     subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void;
     flush(): Promise<void>;
     getRecord<T extends DataRecord>(tableName: TableName, id: string): Promise<T | undefined>;
@@ -239,8 +243,8 @@ export interface IDatabaseAdapter {
     getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
-        afterUpdatedAt: number,
-        throughUpdatedAt: number
+        afterLocalUpdatedAt: number,
+        throughLocalUpdatedAt: number
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
     countByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<number>;

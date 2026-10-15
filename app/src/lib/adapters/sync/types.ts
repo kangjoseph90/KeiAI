@@ -12,6 +12,7 @@ export interface SyncCursorIdentity {
 
 export interface SyncCursorState {
     serverPullCursor: number;
+    /** Local canonical changes through localUpdatedAt, independent of the LWW version. */
     localPushCursor: number;
 }
 

@@ -7,6 +7,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
 import Dexie from 'dexie';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
     IDatabaseAdapter,
     DataRecord,
@@ -29,6 +32,54 @@ Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 
 // Now we can import WebDatabaseAdapter
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
+import { TauriDatabaseAdapter } from '$lib/adapters/db/tauri';
+import { WebMultiAdapter, multiDB } from '$lib/adapters/multi/web';
+import { TauriMultiAdapter } from '$lib/adapters/multi/tauri';
+import { clock } from '$lib/utils/clock';
+
+const sqlite = vi.hoisted(() => ({
+    db: null as import('node:sqlite').DatabaseSync | null,
+    path: '',
+    beforeExecute: null as ((query: string) => Promise<void>) | null
+}));
+let sqliteDirectory: string | undefined;
+
+vi.mock('@tauri-apps/plugin-sql', () => ({
+    default: {
+        load: async () => {
+            const { DatabaseSync } = await import('node:sqlite');
+            const connection = () => (sqlite.db ??= new DatabaseSync(sqlite.path));
+            return {
+                execute: async (
+                    query: string,
+                    values: import('node:sqlite').SQLInputValue[] = []
+                ) => {
+                    await sqlite.beforeExecute?.(query);
+                    const db = connection();
+                    if (!values.length) {
+                        db.exec(query);
+                        return { rowsAffected: 0 };
+                    }
+                    return {
+                        rowsAffected: Number(
+                            db
+                                .prepare(query)
+                                .run(
+                                    Object.fromEntries(
+                                        values.map((value, i) => [`$${i + 1}`, value])
+                                    )
+                                ).changes
+                        )
+                    };
+                },
+                select: async (query: string, values: import('node:sqlite').SQLInputValue[] = []) =>
+                    connection()
+                        .prepare(query)
+                        .all(Object.fromEntries(values.map((value, i) => [`$${i + 1}`, value])))
+            };
+        }
+    }
+}));
 
 const userScope = { scopeType: 'user' as const, scopeId: 'user-123' };
 
@@ -55,11 +106,20 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     beforeEach(async () => {
         // Delete any existing database
         await Dexie.delete('KeiLocalDB').catch(() => {});
+        sqliteDirectory = mkdtempSync(join(tmpdir(), 'keiai-revisions-'));
+        sqlite.path = join(sqliteDirectory, 'local.db');
         // Create a fresh adapter instance for each test
         localDB = new WebDatabaseAdapter();
     });
 
     afterEach(async () => {
+        sqlite.db?.close();
+        sqlite.db = null;
+        sqlite.path = '';
+        sqlite.beforeExecute = null;
+        if (sqliteDirectory) rmSync(sqliteDirectory, { recursive: true });
+        sqliteDirectory = undefined;
+        vi.restoreAllMocks();
         // Delete the database after each test
         await Dexie.delete('KeiLocalDB').catch(() => {});
     });
@@ -597,54 +657,300 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
     });
 
-    describe('getUnsyncedChanges', () => {
-        it('should get records inside the requested timestamp window', async () => {
-            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
-            const now = Date.now();
-            const old = now - 10000;
-            const recent = now - 1000;
-
-            const records = [
-                createTestRecord({ id: 'old-rec', scopeId: testScope.scopeId, updatedAt: old }),
-                createTestRecord({
-                    id: 'recent-rec',
-                    scopeId: testScope.scopeId,
-                    updatedAt: recent
-                })
-            ];
-
-            await localDB.putRecords('settings', records);
-
-            const results = await localDB.getUnsyncedChanges<DataRecord>(
-                'settings',
-                testScope,
-                now - 5000,
-                now
-            );
-
-            expect(results).toHaveLength(1);
-            expect(results[0].id).toBe('recent-rec');
+    describe.each([
+        ['Web', WebDatabaseAdapter],
+        ['Tauri', TauriDatabaseAdapter]
+    ] as const)('%s localUpdatedAt', (_platform, Adapter) => {
+        beforeEach(() => {
+            localDB = new Adapter();
         });
 
-        it('should include records at the upper bound', async () => {
-            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
-            const now = Date.now();
+        it('selects canonical changes by local time even when updatedAt is below the cursor', async () => {
+            const old = createTestRecord({ id: 'old', updatedAt: 9000 });
+            await localDB.putRecord('settings', old);
+            const cursor = await localDB.getLocalUpdatedAt();
+            const remote = createTestRecord({ id: 'remote', updatedAt: 100, localUpdatedAt: 1 });
+            await localDB.putRecords('settings', [remote], { origin: 'sync' });
+            const stored = await localDB.getRecord('settings', remote.id);
+            const upper = stored!.localUpdatedAt!;
+
+            expect(stored?.updatedAt).toBe(100);
+            expect(upper).toBeGreaterThan(cursor);
+            expect(await localDB.getUnsyncedChanges('settings', userScope, cursor, upper)).toEqual([
+                stored
+            ]);
+            expect(
+                await localDB.getUnsyncedChanges(
+                    'settings',
+                    userScope,
+                    upper,
+                    await localDB.getLocalUpdatedAt()
+                )
+            ).toEqual([]);
+        });
+
+        it('preserves local time on duplicate saves and ignores incoming local time', async () => {
             const record = createTestRecord({
-                id: 'edge-rec',
-                scopeId: testScope.scopeId,
-                updatedAt: now - 5000
+                id: 'duplicate',
+                data: { a: 1, b: [2, 3], '\u00e9': 1, 'e\u0301': 2 }
             });
-
-            await localDB.putRecords('settings', [record]);
-
-            const results = await localDB.getUnsyncedChanges<DataRecord>(
+            await localDB.putRecord('settings', record);
+            const first = await localDB.getRecord('settings', record.id);
+            await localDB.putRecords(
                 'settings',
-                testScope,
-                now - 5001,
-                now - 5000
+                [
+                    {
+                        ...record,
+                        localUpdatedAt: Number.MAX_SAFE_INTEGER,
+                        data: { 'e\u0301': 2, '\u00e9': 1, b: [2, 3], a: 1 }
+                    }
+                ],
+                { origin: 'sync' }
+            );
+            expect((await localDB.getRecord('settings', record.id))?.localUpdatedAt).toBe(
+                first?.localUpdatedAt
             );
 
-            expect(results).toHaveLength(1);
+            await localDB.putRecord('settings', { ...record, data: { a: 2, b: [2, 3] } });
+            expect(
+                (await localDB.getRecord('settings', record.id))!.localUpdatedAt
+            ).toBeGreaterThan(first!.localUpdatedAt!);
+        });
+
+        it('keeps the persisted cursor floor after restart and deletion of the last record', async () => {
+            const time = vi.spyOn(clock, 'now').mockReturnValue(100000);
+            await localDB.putRecord('settings', createTestRecord({ id: 'before-restart' }));
+            const cursor = await localDB.getLocalUpdatedAt();
+            await localDB.deleteRecord('settings', 'before-restart');
+            if (_platform === 'Tauri') {
+                sqlite.db!.close();
+                sqlite.db = null;
+            } else {
+                (localDB as unknown as { db: Dexie }).db.close();
+            }
+            time.mockReturnValue(10);
+            localDB = new Adapter();
+            expect(await localDB.getLocalUpdatedAt()).toBe(cursor);
+            await localDB.putRecord('characters', createTestRecord({ id: 'after-restart' }));
+            const upper = await localDB.getLocalUpdatedAt();
+            expect(upper).toBeGreaterThan(cursor);
+            expect(
+                await localDB.getUnsyncedChanges('characters', userScope, cursor, upper)
+            ).toEqual([expect.objectContaining({ id: 'after-restart', localUpdatedAt: upper })]);
+        });
+
+        it('does not allocate extra revisions for concurrent or batched duplicates', async () => {
+            const record = createTestRecord({ id: 'concurrent' });
+            await Promise.all([
+                localDB.putRecord('settings', record),
+                new Adapter().putRecords('settings', [record, record], { origin: 'sync' })
+            ]);
+            expect(await localDB.getLocalUpdatedAt()).toBe(1);
+            await localDB.putRecords('settings', [{ ...record, data: { changed: true } }, record]);
+            expect(await localDB.getLocalUpdatedAt()).toBe(1);
+        });
+
+        it('rolls back the record and its revision together when a bulk statement fails', async () => {
+            const before = await localDB.getLocalUpdatedAt();
+            const valid = createTestRecord({ id: 'valid' });
+            const invalid = { ...valid, id: undefined } as unknown as DataRecord;
+            // SQLite text primary keys otherwise allow NULL; force a real constraint failure.
+            if (_platform === 'Tauri')
+                sqlite.db!.exec(
+                    `CREATE TRIGGER reject_invalid BEFORE INSERT ON settings WHEN NEW.id IS NULL BEGIN SELECT RAISE(ABORT, 'invalid id'); END`
+                );
+            await expect(localDB.putRecords('settings', [valid, invalid])).rejects.toThrow();
+            expect(await localDB.getRecord('settings', valid.id)).toBeUndefined();
+            expect(await localDB.getLocalUpdatedAt()).toBe(before);
+        });
+
+        it.each(['index', 'compound'] as const)(
+            'never skips a delayed %s delete when Push captures its upper bound',
+            async (path) => {
+                await localDB.putRecord(
+                    'messages',
+                    createTestRecord({ id: 'delayed', chatId: 'chat' })
+                );
+                const cursor = await localDB.getLocalUpdatedAt();
+                const entered = Promise.withResolvers<void>();
+                const release = Promise.withResolvers<void>();
+                if (_platform === 'Tauri') {
+                    sqlite.beforeExecute = async (query) => {
+                        if (
+                            !query.startsWith('UPDATE messages') &&
+                            !query.startsWith('INSERT OR REPLACE INTO messages')
+                        )
+                            return;
+                        sqlite.beforeExecute = null;
+                        entered.resolve();
+                        await release.promise;
+                    };
+                } else {
+                    const table = (localDB as unknown as { db: Dexie }).db.table<
+                        DataRecord,
+                        string
+                    >('messages');
+                    const prototype = Object.getPrototypeOf(table) as typeof table;
+                    const bulkPut = prototype.bulkPut;
+                    vi.spyOn(prototype, 'bulkPut').mockImplementationOnce(function (
+                        this: typeof table,
+                        ...args
+                    ) {
+                        entered.resolve();
+                        return Dexie.Promise.resolve(Dexie.waitFor(release.promise)).then(() =>
+                            bulkPut.apply(this, args)
+                        );
+                    });
+                }
+                const deleting =
+                    path === 'index'
+                        ? localDB.softDeleteByIndex('messages', 'chatId', 'chat')
+                        : localDB.softDeleteByCompoundIndex('messages', '[scopeType+scopeId]', [
+                              'user',
+                              userScope.scopeId
+                          ]);
+                await entered.promise;
+                const scanning = localDB.getLocalUpdatedAt().then(async (upper) => ({
+                    upper,
+                    records: await localDB.getUnsyncedChanges('messages', userScope, cursor, upper)
+                }));
+                if (_platform === 'Tauri') await scanning; // SQL write has not started; Push can finish first.
+                release.resolve();
+                await deleting;
+                const { upper, records } = await scanning;
+                const stored = (await localDB.getRecord('messages', 'delayed'))!;
+                const nextUpper = await localDB.getLocalUpdatedAt();
+                expect(stored.isDeleted).toBe(true);
+                expect(nextUpper).toBeGreaterThan(cursor);
+                expect(stored.localUpdatedAt).toBe(nextUpper);
+                if (stored.localUpdatedAt! <= upper) expect(records).toEqual([stored]);
+                else
+                    expect(
+                        await localDB.getUnsyncedChanges('messages', userScope, upper, nextUpper)
+                    ).toEqual([stored]);
+            }
+        );
+
+        it.each(['single', 'index', 'compound'] as const)(
+            'stamps %s soft deletes and preserves duplicate deletes',
+            async (path) => {
+                const record = createTestRecord({ id: 'delete', chatId: 'chat-1' });
+                await localDB.putRecord('messages', record);
+                const before = await localDB.getRecord('messages', record.id);
+                const remove = () =>
+                    path === 'single'
+                        ? localDB.softDeleteRecord('messages', record.id)
+                        : path === 'index'
+                          ? localDB.softDeleteByIndex('messages', 'chatId', 'chat-1')
+                          : localDB.softDeleteByCompoundIndex('messages', '[scopeType+scopeId]', [
+                                'user',
+                                userScope.scopeId
+                            ]);
+                await remove();
+                const deleted = await localDB.getRecord('messages', record.id);
+                expect(deleted!.localUpdatedAt).toBeGreaterThan(before!.localUpdatedAt!);
+                await remove();
+                expect((await localDB.getRecord('messages', record.id))?.localUpdatedAt).toBe(
+                    deleted?.localUpdatedAt
+                );
+            }
+        );
+    });
+
+    describe.each([
+        ['Web', WebMultiAdapter],
+        ['Tauri', TauriMultiAdapter]
+    ] as const)('%s multi_meta localUpdatedAt', (_platform, Adapter) => {
+        beforeEach(async () => {
+            await multiDB.delete();
+            await multiDB.open();
+        });
+
+        afterEach(async () => {
+            await multiDB.delete();
+        });
+
+        it('selects room indexes and memberships by local changes and preserves duplicate receives', async () => {
+            const adapter = new Adapter();
+            const room = {
+                id: 'room',
+                ownerUserId: 'owner',
+                visibility: 'private' as const,
+                createdAt: 1,
+                updatedAt: 10
+            };
+            const member = {
+                id: 'member',
+                roomId: room.id,
+                userId: 'owner',
+                status: 'accepted' as const,
+                createdAt: 1,
+                updatedAt: 10
+            };
+            const cursor = await adapter.getLocalUpdatedAt();
+            await adapter.saveRoomIndexes([room], { origin: 'sync' });
+            await adapter.saveMembers([member], { origin: 'sync' });
+            const upper = await adapter.getLocalUpdatedAt();
+            const storedRoom = await adapter.getRoomIndex(room.id);
+            const storedMember = await adapter.getMember(member.id);
+            expect(await adapter.getRoomIndexesBetween(cursor, upper)).toEqual([storedRoom]);
+            expect(await adapter.getMembersBetween('owner', cursor, upper)).toEqual([storedMember]);
+            expect(await adapter.getMembersByRoomsBetween([room.id], cursor, upper)).toEqual([
+                storedMember
+            ]);
+
+            await adapter.saveRoomIndex(
+                { ...room, localUpdatedAt: Number.MAX_SAFE_INTEGER },
+                { origin: 'sync' }
+            );
+            await adapter.saveMember(
+                { ...member, localUpdatedAt: Number.MAX_SAFE_INTEGER },
+                { origin: 'sync' }
+            );
+            expect(await adapter.getRoomIndex(room.id)).toEqual(storedRoom);
+            expect(await adapter.getMember(member.id)).toEqual(storedMember);
+            expect(
+                await adapter.getRoomIndexesBetween(upper, await adapter.getLocalUpdatedAt())
+            ).toEqual([]);
+            expect(
+                await adapter.getMembersBetween('owner', upper, await adapter.getLocalUpdatedAt())
+            ).toEqual([]);
+        });
+        it('keeps metadata revisions across adapters, purges, and concurrent duplicate receives', async () => {
+            const room = {
+                id: 'room',
+                ownerUserId: 'owner',
+                visibility: 'private' as const,
+                createdAt: 1,
+                updatedAt: 1
+            };
+            const adapter = new Adapter();
+            await Promise.all([
+                adapter.saveRoomIndex(room),
+                new Adapter().saveRoomIndexes([room, room], { origin: 'sync' })
+            ]);
+            const cursor = await adapter.getLocalUpdatedAt();
+            expect(cursor).toBe(1);
+            await adapter.saveRoomIndexes([{ ...room, publicName: 'temporary' }, room]);
+            expect(await adapter.getLocalUpdatedAt()).toBe(cursor);
+            await adapter.purgeRoomLocal(room.id);
+            const restarted = new Adapter();
+            expect(await restarted.getLocalUpdatedAt()).toBe(cursor);
+            await restarted.saveMembers([
+                {
+                    id: 'member',
+                    roomId: room.id,
+                    userId: 'owner',
+                    status: 'accepted',
+                    createdAt: 1,
+                    updatedAt: 1
+                }
+            ]);
+            const upper = await restarted.getLocalUpdatedAt();
+            expect(upper).toBeGreaterThan(cursor);
+            expect(await restarted.getMembersByRoomsBetween([room.id], cursor, upper)).toHaveLength(
+                1
+            );
         });
     });
 
