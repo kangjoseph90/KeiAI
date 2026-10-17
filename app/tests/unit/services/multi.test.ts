@@ -28,7 +28,8 @@ vi.mock('$lib/adapters/db', () => ({
             await callback();
         }),
         softDeleteByIndex: vi.fn(),
-        deleteByIndex: vi.fn()
+        deleteByIndex: vi.fn(),
+        setSyncScopeState: vi.fn()
     }
 }));
 
@@ -314,6 +315,11 @@ describe('MultiRoomService', () => {
         expect(buffer.flushTable).toHaveBeenCalledWith('rooms');
         expect(buffer.flushTable).toHaveBeenCalledWith('chats');
         expect(buffer.flushTable).toHaveBeenCalledWith('messages');
+        // The room replica is discarded, so a rejoin adopts it afresh.
+        expect(localDB.setSyncScopeState).toHaveBeenCalledWith(
+            { scopeType: 'room', scopeId: 'room-1' },
+            { lineage: null, adopting: false, bootstrapping: null }
+        );
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('chats', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('messages', 'scopeId', 'room-1');

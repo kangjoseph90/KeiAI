@@ -50,7 +50,7 @@ export interface ReplicaSafety {
 /**
  * - `sync`: same lineage, both directions proven.
  * - `adopt`: this client holds nothing; it replaces its replica with the server's.
- * - `bootstrap`: the server holds nothing (or this client's interrupted bootstrap); fill it.
+ * - `bootstrap`: the server holds nothing, or holds this client's unfinished bootstrap; fill it.
  * - `wait`: another client is initializing the server's scope.
  * - `conflict`: both hold data that cannot be merged safely; the user must choose.
  * - `init`: this never-synced client holds data, and the server holds another replica.
@@ -59,15 +59,20 @@ export type SessionPlan = 'sync' | 'adopt' | 'bootstrap' | 'wait' | 'conflict' |
 
 export interface LocalReplica {
     lineage: string | null;
-    /** Lineage of this client's own unfinished bootstrap of this server, if any. */
-    pendingLineage: string | null;
     hasRecords: boolean;
     safety: ReplicaSafety;
 }
 
+/** What the engine knows of its scope before the handshake. */
+export type LocalScope = Omit<LocalReplica, 'safety'> & {
+    /** Token of this client's own unfinished bootstrap of the server, if any. */
+    bootstrapToken?: string;
+};
+
 export interface RemoteReplica {
     lineage: string | null;
-    initializing: 'active' | 'stale' | null;
+    /** `own`: the lease is held by the bootstrap whose token this client presented. */
+    initializing: 'own' | 'active' | 'stale' | null;
     hasRecords: boolean;
     safety: ReplicaSafety;
 }
@@ -78,44 +83,28 @@ export function mergeCovered(local: ReplicaSafety, remote: ReplicaSafety): boole
 }
 
 /**
- * Lineage first, then History–Clean. Only a replica with no records is replaced without
- * asking: it has nothing to lose. A bare watermark of zero never stands in for an empty or
- * initialized replica.
+ * Lineage first, then History–Clean. Only a replica with nothing to lose is replaced without
+ * asking. Forgotten deletions count: a replica whose GC emptied it still knows them. Only a
+ * replica without lineage (never synced, or discarded by a purge) is empty once its records
+ * are gone. A bare watermark of zero never stands in for an empty or initialized replica.
  */
 export function planSession(local: LocalReplica, remote: RemoteReplica): SessionPlan {
+    const holdsState = local.hasRecords || (local.lineage !== null && local.safety.gcHigh > 0);
+    // Only the bootstrap holding the lease may resume it; another replica, even of the same
+    // lineage, may not know the deletions the partial server state was filled with.
+    if (remote.initializing === 'own') return 'bootstrap';
     if (remote.initializing) {
-        // Only the bootstrapping replica knows what the partial server state lacks; another
-        // replica of the same lineage may not know the deletions it was filled with.
-        if (local.pendingLineage !== null && remote.lineage === local.pendingLineage) {
-            return 'bootstrap';
-        }
-        return remote.initializing === 'stale' && local.hasRecords ? 'conflict' : 'wait';
+        return remote.initializing === 'stale' && holdsState ? 'conflict' : 'wait';
     }
     if (remote.lineage === null) {
         if (!remote.hasRecords) return 'bootstrap';
-        return local.hasRecords ? 'conflict' : 'adopt';
+        return holdsState ? 'conflict' : 'adopt';
     }
-    const lineage = currentLineage(local, remote);
-    if (lineage === null) return local.hasRecords ? 'init' : 'adopt';
-    if (lineage === remote.lineage && mergeCovered(local.safety, remote.safety)) {
+    if (local.lineage === null) return holdsState ? 'init' : 'adopt';
+    if (local.lineage === remote.lineage && mergeCovered(local.safety, remote.safety)) {
         return 'sync';
     }
-    return local.hasRecords ? 'conflict' : 'adopt';
-}
-
-/**
- * This replica's lineage on the server. A pending bootstrap whose lineage the server holds
- * outside a lease was committed, even if this client never saw the response.
- */
-export function currentLineage(
-    local: Pick<LocalReplica, 'lineage' | 'pendingLineage'>,
-    remote: Pick<RemoteReplica, 'lineage' | 'initializing'>
-): string | null {
-    return !remote.initializing &&
-        local.pendingLineage !== null &&
-        remote.lineage === local.pendingLineage
-        ? local.pendingLineage
-        : local.lineage;
+    return holdsState ? 'conflict' : 'adopt';
 }
 
 /** How a prepared session runs: under a given lineage, or as part of a bootstrap/adoption. */
@@ -180,7 +169,7 @@ export async function openSyncSession(
     syncScope: SyncScope,
     serverUrl: string,
     cursors: SyncCursorState,
-    local: Omit<LocalReplica, 'safety'>,
+    local: LocalScope,
     context?: SessionContext
 ): Promise<OpenedSession> {
     const { scope } = syncScope;
@@ -193,22 +182,23 @@ export async function openSyncSession(
         ...scope,
         pullCursor: cursors.serverPullCursor,
         checkpoints: checkpoints.map(({ id }) => id),
-        bootstrapToken: context?.bootstrapToken
+        bootstrapToken: context?.bootstrapToken ?? local.bootstrapToken
     });
     const serverCoverage = readNumber(response.coverage);
     const known = new Set(readIds(response.known));
     const localCoverage = coverage(cursors.localPushCursor, checkpoints, known);
-    const remote: RemoteReplica = {
-        lineage: readLineage(response.lineage),
-        initializing: readInitializing(response.initializing),
-        hasRecords: response.hasRecords === true,
-        safety: { gcHigh: readNumber(response.gcHigh), coverage: serverCoverage }
-    };
-    const remoteLineage = remote.lineage;
-    const lineage = context?.lineage ?? currentLineage(local, remote);
+    const initializing = readInitializing(response.initializing);
+    const remoteLineage = readLineage(response.lineage);
+    const lineage = context?.lineage ?? local.lineage;
     const plan = planSession(
-        { ...local, lineage, safety: { gcHigh, coverage: localCoverage } },
-        remote
+        { lineage, hasRecords: local.hasRecords, safety: { gcHigh, coverage: localCoverage } },
+        {
+            lineage: remoteLineage,
+            // A prepared bootstrap holds the lease: its session runs as a normal one.
+            initializing: context?.bootstrapToken && initializing === 'own' ? null : initializing,
+            hasRecords: response.hasRecords === true,
+            safety: { gcHigh: readNumber(response.gcHigh), coverage: serverCoverage }
+        }
     );
     if (context && plan !== 'sync') {
         throw new AppError('SYNC_UNSAFE', `Prepared ${scopeLabel(scope)} did not verify`);
@@ -229,7 +219,7 @@ export async function openSyncSession(
 
 /**
  * Start filling the server's scope from this replica. The server replaces the scope's state
- * in one transaction and stays initializing until this bootstrap commits.
+ * in one transaction and stays initializing until a bootstrap presenting `token` commits.
  */
 export async function beginBootstrap(
     syncScope: SyncScope,
@@ -238,20 +228,15 @@ export async function beginBootstrap(
         mode: 'init' | 'overwrite';
         expectedLineage: string | null;
         lineage: string;
+        /** Chosen and recorded by this client before the request. */
+        token: string;
         checkpoint: string;
         forgotten: boolean;
         /** Checkpoints this replica is clean on; the server takes them over at the anchor. */
         clean: string[];
     }
-): Promise<string> {
-    const response = await post(serverUrl, '/api/sync/bootstrap', {
-        ...syncScope.scope,
-        ...request
-    });
-    if (typeof response.token !== 'string' || !response.token) {
-        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid bootstrap');
-    }
-    return response.token;
+): Promise<void> {
+    await post(serverUrl, '/api/sync/bootstrap', { ...syncScope.scope, ...request });
 }
 
 /** The server's lineage, its forgotten-deletion watermark, and checkpoints that cover it. */
@@ -404,8 +389,8 @@ function readLineage(value: unknown): string | null {
     return value;
 }
 
-function readInitializing(value: unknown): 'active' | 'stale' | null {
-    return value === 'active' || value === 'stale' ? value : null;
+function readInitializing(value: unknown): RemoteReplica['initializing'] {
+    return value === 'own' || value === 'active' || value === 'stale' ? value : null;
 }
 
 function readIds(value: unknown): string[] {

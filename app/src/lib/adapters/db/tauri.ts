@@ -884,14 +884,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
      * Not atomic on the plugin's connection pool; the `adopting` mark makes any partial
      * reset restart from the beginning instead of being used.
      */
-    async resetSyncScope(scope: DataScope): Promise<void> {
+    async resetSyncScope(scope: DataScope, options?: { keepRecords?: boolean }): Promise<void> {
         await this.flush();
         if (!(await this.getSyncScopeState(scope)).adopting) {
             throw new Error('Only an adopting scope may be reset');
         }
         const db = await this.getDb();
         const params = [scope.scopeType, scope.scopeId];
-        for (const table of SYNC_TABLES) {
+        for (const table of options?.keepRecords ? [] : SYNC_TABLES) {
             const rows = await db.select<{ id: string }[]>(
                 `SELECT id FROM ${table} WHERE scopeType = $1 AND scopeId = $2`,
                 params

@@ -285,7 +285,6 @@ function sync(world: World, client: Client, srv: Server): SessionPlan {
     const plan = planSession(
         {
             lineage: client.lineage,
-            pendingLineage: null,
             hasRecords: client.rows.size > 0,
             safety: {
                 gcHigh: client.gcHigh,

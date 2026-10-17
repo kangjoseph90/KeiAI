@@ -728,6 +728,235 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(await b.db.getRecord('characters', rid('b-only'))).toBeUndefined();
         });
 
+        it('keeps a local write made while an empty device was planning adoption', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const source = await createDevice('Source', SERVERS[0]!, user);
+            await write(source, 'server', 'server');
+            await sync(source);
+            const fresh = await createDevice('Fresh', SERVERS[0]!, user);
+            const send = fresh.pb.send.bind(fresh.pb);
+            let written = false;
+            vi.spyOn(fresh.pb, 'send').mockImplementation(async (path, options) => {
+                const response = await send(path, options);
+                if (path === '/api/sync/handshake' && !written) {
+                    written = true;
+                    await write(fresh, 'newlocal', 'newlocal');
+                }
+                return response;
+            });
+            expect(await sync(fresh)).toBe('idle');
+            expect(written).toBe(true);
+            expect(await names(fresh)).toEqual(['newlocal', 'server']);
+            expect(serverRow(0, 'newlocal')).toMatchObject({ isDeleted: 0 });
+        });
+
+        it('does not adopt automatically once GC emptied a replica that knows deletions', async () => {
+            const user = await createUser(SERVERS[0]!);
+            await createUser(SERVERS[1]!, user);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await sync(a);
+            a.pb = await signIn(SERVERS[1]!, user);
+            expect(await sync(a)).toBe('idle');
+            // Back on the first server, A deletes x and collects the tombstone.
+            a.pb = await signIn(SERVERS[0]!, user);
+            restart(a);
+            await remove(a, 'x');
+            await sync(a);
+            await age(a, 'characters', { tombstoneAt: 1 });
+            expect(await sync(a)).toBe('idle');
+            expect(await a.db.hasScopeRecords(userScope(a))).toBe(false);
+            const gcHigh = await a.db.getSyncGcHigh(userScope(a));
+            expect(gcHigh).toBeGreaterThan(0);
+
+            // The second server still holds x live and cannot prove A's deletion.
+            a.pb = await signIn(SERVERS[1]!, user);
+            restart(a);
+            expect(await sync(a)).toBe('unsafe_merge');
+            expect(await names(a)).toEqual([]);
+            expect(await a.db.getSyncGcHigh(userScope(a))).toBe(gcHigh);
+        });
+
+        it('keeps an overwritten lineage apart even when the overwrite response was lost', async () => {
+            const user = await createUser(SERVERS[0]!);
+            await createUser(SERVERS[1]!, user);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await sync(a);
+            a.pb = await signIn(SERVERS[1]!, user);
+            await sync(a);
+            const b = await createDevice('B', SERVERS[1]!, user);
+            await sync(b);
+            await write(b, 'y', 'old-lineage-only');
+            await sync(b);
+            // Another device replaces the first server; A keeps its own copy over it.
+            const c = await createDevice('C', SERVERS[0]!, user);
+            await write(c, 'c-only', 'c-only');
+            expect(await sync(c)).toBe('init_required');
+            await on(c, () => c.engine.resolveConflict(conflicts(c)[0], 'local'));
+            a.pb = await signIn(SERVERS[0]!, user);
+            restart(a);
+            expect(await sync(a)).toBe('unsafe_merge');
+            loseCommitResponse(a);
+            await expect(
+                on(a, () => a.engine.resolveConflict(conflicts(a)[0], 'local'))
+            ).rejects.toThrow();
+            vi.restoreAllMocks();
+            const lineage = serverScope(0, userScope(a))!.lineage;
+            expect((await a.db.getSyncScopeState(userScope(a))).lineage).toBe(lineage);
+
+            // A's replica is the new lineage: the second server's old one does not merge in.
+            a.pb = await signIn(SERVERS[1]!, user);
+            restart(a);
+            expect(await sync(a)).toBe('unsafe_merge');
+            expect(await names(a)).toEqual(['x']);
+            a.pb = await signIn(SERVERS[0]!, user);
+            restart(a);
+            expect(await sync(a)).toBe('idle');
+            expect((await a.db.getSyncScopeState(userScope(a))).bootstrapping).toBeNull();
+            expect(serverRow(0, 'y')).toBeUndefined();
+        });
+
+        it('lets a replacement wait for a buffered Push in flight instead of sending after it', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await write(a, 'y', 'server-y');
+            await sync(a);
+            const b = await createDevice('B', SERVERS[0]!, user);
+            await sync(b);
+            await write(a, 'y', 'in-flight');
+            const engine = a.engine as unknown as {
+                pushBufferedWrites(writes: unknown[]): Promise<void>;
+                localToPbRecord(...args: unknown[]): Promise<Record<string, unknown>>;
+            };
+            const encode = engine.localToPbRecord.bind(engine);
+            let ready!: () => void;
+            let release!: () => void;
+            const paused = new Promise<void>((resolve) => (ready = resolve));
+            const resume = new Promise<void>((resolve) => (release = resolve));
+            let first = true;
+            vi.spyOn(engine, 'localToPbRecord').mockImplementation(async (...args) => {
+                const payload = await encode(...args);
+                if (first) {
+                    first = false;
+                    ready();
+                    await resume;
+                }
+                return payload;
+            });
+            await on(a, async () => {
+                const flushing = engine.pushBufferedWrites([
+                    { bucket: 'characters', id: rid('y') }
+                ]);
+                await paused;
+                await remove(b, 'x');
+                await sync(b);
+                await collectOnServer(0, 'x');
+                expect(await sync(a)).toBe('unsafe_merge');
+                let adopted = false;
+                const resolving = a.engine
+                    .resolveConflict(conflicts(a)[0], 'server')
+                    .then(() => (adopted = true));
+                // The adoption does not read the server while a Push of the old replica is
+                // in flight.
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                expect(adopted).toBe(false);
+                release();
+                await flushing;
+                await resolving;
+            });
+            // The Push landed before the adoption read the server, so it is part of the
+            // adopted state; nothing of the old replica arrives afterwards.
+            const after = await names(a);
+            expect(after).toEqual(['in-flight']);
+            expect(await sync(a)).toBe('idle');
+            expect(await names(a)).toEqual(after);
+        });
+
+        it('refuses to apply a conflict resolution twice', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const source = await createDevice('Source', SERVERS[0]!, user);
+            await write(source, 'x', 'server-x');
+            await sync(source);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'y', 'original-local');
+            expect(await sync(a)).toBe('init_required');
+            const conflict = conflicts(a)[0];
+            await on(a, () => a.engine.resolveConflict(conflict, 'server'));
+            await write(a, 'y', 'edit-after-resolution');
+            await expect(
+                on(a, () => a.engine.resolveConflict(conflict, 'server'))
+            ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+            expect(await names(a)).toEqual(['edit-after-resolution', 'server-x']);
+        });
+
+        it('keeps the gate closed until an adoption is durably recorded', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const source = await createDevice('Source', SERVERS[0]!, user);
+            await write(source, 'x', 'server-x');
+            await sync(source);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            const save = a.db.setSyncScopeState.bind(a.db);
+            vi.spyOn(a.db, 'setSyncScopeState').mockImplementation(async (scope, state) => {
+                if (state.lineage !== null && !state.adopting) throw new Error('storage failure');
+                return save(scope, state);
+            });
+            expect(await sync(a)).toBe('network_error');
+            vi.restoreAllMocks();
+            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBe(true);
+            await write(a, 'y', 'held');
+            await on(a, () =>
+                (
+                    a.engine as unknown as { pushBufferedWrites(writes: unknown[]): Promise<void> }
+                ).pushBufferedWrites([{ bucket: 'characters', id: rid('y') }])
+            ).catch(() => undefined);
+            expect(serverRow(0, 'y')).toBeUndefined();
+            restart(a);
+            expect(await sync(a)).toBe('idle');
+            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBe(false);
+        });
+
+        it('does not take over a lease it lost the race for', async () => {
+            const user = await createUser(SERVERS[0]!);
+            await createUser(SERVERS[1]!, user);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await write(a, 'y', 'y');
+            await sync(a);
+            const b = await createDevice('B', SERVERS[0]!, user);
+            await sync(b);
+            await remove(b, 'x');
+            await sync(b);
+            await age(b, 'characters', { tombstoneAt: 1 });
+            await sync(b);
+            expect(await b.db.getSyncGcHigh(userScope(b))).toBeGreaterThan(0);
+            a.pb = await signIn(SERVERS[1]!, user);
+            restart(a);
+            b.pb = await signIn(SERVERS[1]!, user);
+            restart(b);
+            // Both see the empty second server; B wins the initialization and is cut off.
+            const send = a.pb.send.bind(a.pb);
+            let raced = false;
+            vi.spyOn(a.pb, 'send').mockImplementation(async (path, options) => {
+                if (path === '/api/sync/bootstrap' && !raced) {
+                    raced = true;
+                    failCommit(b);
+                    expect(await sync(b)).toBe('network_error');
+                }
+                return send(path, options);
+            });
+            expect(await sync(a)).not.toBe('idle');
+            vi.restoreAllMocks();
+
+            expect(await sync(a)).toBe('server_initializing');
+            expect(serverRow(1, 'x')).toBeUndefined();
+            restart(b);
+            expect(await sync(b)).toBe('idle');
+            expect(serverRow(1, 'x')).toBeUndefined();
+            expect(serverRow(1, 'y')).toMatchObject({ isDeleted: 0 });
+        });
+
         it('re-adopts a purged room on rejoin while the user scope keeps syncing', async () => {
             const user = await createUser(SERVERS[0]!);
             const a = await createDevice('A', SERVERS[0]!, user);
@@ -765,7 +994,13 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             await write(b, 'mine', 'mine');
             expect(await names(b, room)).toEqual(['room-one']);
 
-            // Leaving purges the room locally, forgetting its tombstone.
+            // Leaving purges the room locally (MultiRoomService.purgeLocalRoomContent): the
+            // replica is discarded, and its tombstone forgotten.
+            await b.db.setSyncScopeState(room, {
+                lineage: null,
+                adopting: false,
+                bootstrapping: null
+            });
             await b.db.deleteByScope('characters', room);
             await on(b, async () => {
                 const { syncCursorDB } = await import('$lib/adapters/sync');

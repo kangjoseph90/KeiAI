@@ -1091,7 +1091,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const state = {
                 lineage: 'L',
                 adopting: false,
-                bootstrapping: { serverUrl: 'https://server.example', lineage: 'M' }
+                bootstrapping: { serverUrl: 'https://server.example', lineage: 'M', token: 'T' }
             };
             await localDB.setSyncScopeState(userScope, state);
             expect(await localDB.getSyncScopeState(userScope)).toEqual(state);
@@ -1122,6 +1122,12 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                 adopting: true,
                 bootstrapping: null
             });
+            // An adoption of a scope that held nothing drops only the knowledge.
+            await localDB.resetSyncScope(userScope, { keepRecords: true });
+            expect(await localDB.hasScopeRecords(userScope)).toBe(true);
+            expect(await localDB.getSyncGcHigh(userScope)).toBe(0);
+            expect(await localDB.getSyncCheckpoints(userScope)).toEqual([]);
+
             await localDB.resetSyncScope(userScope);
             expect(await localDB.hasScopeRecords(userScope)).toBe(false);
             expect(await localDB.getSyncGcHigh(userScope)).toBe(0);

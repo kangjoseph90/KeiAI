@@ -675,7 +675,7 @@ function syncHandshake(app, auth, body) {
   var known = [];
   for (var i = 0; i < held.length; i++)
     known.push(String(held[i].checkpointId));
-  // The bootstrap that holds the token sees its own scope as ready.
+  // Only the holder of the lease's token may resume or finish the bootstrap.
   var ownsBootstrap =
     !!state.initToken && body.bootstrapToken === state.initToken;
   return {
@@ -685,7 +685,9 @@ function syncHandshake(app, auth, body) {
       coverage: syncCoverage(request.pullCursor, anchorsOf(held)),
       known: known,
       lineage: state.lineage,
-      initializing: ownsBootstrap ? null : syncInitializing(state, Date.now()),
+      initializing: ownsBootstrap
+        ? "own"
+        : syncInitializing(state, Date.now()),
       hasRecords: syncScopeHasRecords(app, request.scopeType, request.scopeId),
     },
   };
@@ -881,7 +883,12 @@ function syncBootstrap(auth, body) {
       ? null
       : readSyncLineage(body.expectedLineage);
   var checkpoint = body.checkpoint;
+  // Chosen by the client and recorded before this request, so an interrupted
+  // bootstrap is recognized by its token, never by its lineage alone.
+  var token = body.token;
   if (
+    typeof token !== "string" ||
+    !/^[A-Za-z0-9]{32,128}$/.test(token) ||
     !scope ||
     (mode !== "init" && mode !== "overwrite") ||
     !lineage ||
@@ -923,7 +930,6 @@ function syncBootstrap(auth, body) {
       .bind(scope)
       .execute();
     var revision = nextSyncRevision(txApp);
-    var token = $security.randomString(32);
     writeSyncScopeState(txApp, scope.scopeType, scope.scopeId, {
       gcHigh: body.forgotten ? revision : 0,
       lineage: lineage,

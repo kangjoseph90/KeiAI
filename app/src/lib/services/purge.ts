@@ -92,6 +92,8 @@ async function collectOrphanScopeIds(
 async function purgeScope(scope: DataScope): Promise<number> {
     let purged = 0;
 
+    // The replica is discarded, not emptied by GC: syncing the scope again adopts it afresh.
+    await localDB.setSyncScopeState(scope, { lineage: null, adopting: false, bootstrapping: null });
     for (const table of TABLES) {
         purged += await localDB.deleteByScope(table, scope, { origin: 'sync' });
     }

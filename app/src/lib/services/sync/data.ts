@@ -186,6 +186,12 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         if (this.resolving.has(key)) {
             throw new AppError('INVALID_INPUT', 'This conflict is already being resolved');
         }
+        // A resolution answers the conflict still reported for that server state; a repeated
+        // or stale one must not replace a replica again after it changed.
+        const current = this.conflicts.get(key);
+        if (current?.kind !== conflict.kind || current.serverLineage !== conflict.serverLineage) {
+            throw new AppError('INVALID_INPUT', 'This conflict is no longer current');
+        }
         this.resolving.add(key);
         try {
             if (choice === 'server') {
@@ -316,19 +322,25 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         try {
             const state = await localDB.getSyncScopeState(scope);
             if (state.adopting) {
-                await this.adoptScope(syncScope, serverUrl);
+                // An interrupted adoption is redone from scratch: its partial state is not data.
+                await this.adoptScope(syncScope, serverUrl, false);
                 return;
             }
             const { userId } = getActiveSession();
             const cursors = await syncCursorDB.get(getSyncCursorIdentity('records', userId, scope));
-            const pendingLineage =
-                state.bootstrapping?.serverUrl === serverUrl ? state.bootstrapping.lineage : null;
+            const pending =
+                state.bootstrapping?.serverUrl === serverUrl ? state.bootstrapping : null;
             // Refuse before any data moves when GC may have forgotten a deletion the peer lacks.
             const opened = await openSyncSession(syncScope, serverUrl, cursors, {
                 lineage: state.lineage,
-                pendingLineage,
-                hasRecords: await localDB.hasScopeRecords(scope)
+                hasRecords: await localDB.hasScopeRecords(scope),
+                bootstrapToken: pending?.token
             });
+            if (pending && opened.plan !== 'bootstrap') {
+                // The server no longer holds this client's lease: the bootstrap committed (its
+                // response may have been lost), or it was refused or superseded.
+                await localDB.setSyncScopeState(scope, { ...state, bootstrapping: null });
+            }
             const overwrite = this.overwrites.get(key);
             if (overwrite && (opened.plan === 'conflict' || opened.plan === 'init')) {
                 await this.bootstrapServer(
@@ -343,14 +355,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
             switch (opened.plan) {
                 case 'sync':
-                    if (pendingLineage !== null && opened.session.lineage === pendingLineage) {
-                        // The bootstrap committed but its response was lost.
-                        await localDB.setSyncScopeState(scope, {
-                            lineage: pendingLineage,
-                            adopting: false,
-                            bootstrapping: null
-                        });
-                    }
                     this.sessions.set(key, opened.session);
                     this.blocked.delete(key);
                     await this.runSession(
@@ -364,7 +368,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     this.setConflict(key, null);
                     return;
                 case 'adopt':
-                    await this.adoptScope(syncScope, serverUrl);
+                    // Planned because the scope held nothing: whatever was written since is new.
+                    await this.adoptScope(syncScope, serverUrl, true);
                     return;
                 case 'bootstrap':
                     if (opened.remoteLineage === null) {
@@ -376,7 +381,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                             state.lineage ?? crypto.randomUUID()
                         );
                     } else {
-                        // Resume this replica's own interrupted bootstrap of the lineage.
+                        // This client holds the lease: redo its own interrupted bootstrap.
                         await this.bootstrapServer(
                             syncScope,
                             serverUrl,
@@ -412,12 +417,21 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
      * Replace this device's replica of the scope with the server's.
      *
      * The `adopting` mark is written first and cleared last, so an interrupted adoption is
-     * redone from the start rather than used. The scope's records, watermark, checkpoints and
-     * every server's cursors go; the server's forgotten deletions are taken over at one fresh
-     * local revision, with checkpoints the server is clean on anchored there; then a verified
-     * session pulls the server's state and commits only if no GC outran the adoption.
+     * redone from the start rather than used. The scope's watermark, checkpoints and every
+     * server's cursors go, and its records unless `keepRecords`; the server's forgotten
+     * deletions are taken over at one fresh local revision, with checkpoints the server is
+     * clean on anchored there; then a verified session pulls the server's state and commits
+     * only if no GC outran the adoption. The session serves other paths only once the replica
+     * is durably marked as adopted.
+     *
+     * `keepRecords` is for an adoption planned because the scope held nothing: records written
+     * since are new local data of the adopted replica, not state to discard.
      */
-    private async adoptScope(syncScope: SyncScope, serverUrl: string): Promise<void> {
+    private async adoptScope(
+        syncScope: SyncScope,
+        serverUrl: string,
+        keepRecords: boolean
+    ): Promise<void> {
         const { scope } = syncScope;
         const key = this.sessionKey(syncScope, serverUrl);
         const { userId } = getActiveSession();
@@ -429,14 +443,14 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             bootstrapping: null
         });
         await syncCursorDB.deleteByScope(userId, 'records', scope);
-        await AssetService.deleteScopeAssets(scope);
-        await localDB.resetSyncScope(scope);
+        if (!keepRecords) await AssetService.deleteScopeAssets(scope);
+        await localDB.resetSyncScope(scope, { keepRecords });
         const adopted = await adoptServerScope(syncScope, serverUrl);
         await localDB.adoptSyncState(scope, {
             forgotten: adopted.gcHigh > 0,
             checkpoints: adopted.checkpoints
         });
-        await this.runPrepared(syncScope, serverUrl, {
+        const session = await this.runPrepared(syncScope, serverUrl, {
             lineage: adopted.lineage,
             adoptedGcHigh: adopted.gcHigh
         });
@@ -445,16 +459,19 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             adopting: false,
             bootstrapping: null
         });
-        this.setConflict(key, null);
+        this.verified(key, session);
     }
 
     /**
      * Replace the server's replica of the scope with this device's.
      *
-     * The server replaces its scope state in one transaction and stays initializing until this
-     * bootstrap commits; the pending bootstrap is recorded locally so an interruption resumes
-     * it. A bootstrap checkpoint covers this replica's whole prefix: both sides are clean on it,
-     * which proves this replica's forgotten deletions. A verified session then pushes everything.
+     * This replica takes `lineage` before anything is sent: an overwrite is the user's choice,
+     * and nothing this replica receives from other servers afterwards may enter the new
+     * lineage as the old one. The bootstrap's token is recorded with it, so only the lease it
+     * identifies is ever resumed. The server replaces its scope state in one transaction and
+     * stays initializing until a commit after the complete Push. A bootstrap checkpoint covers
+     * this replica's whole prefix: both sides are clean on it, which proves this replica's
+     * forgotten deletions.
      */
     private async bootstrapServer(
         syncScope: SyncScope,
@@ -468,8 +485,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const { userId } = getActiveSession();
         this.sessions.delete(key);
         await this.replaceReplica(scope);
-        const state = await localDB.getSyncScopeState(scope);
-        await localDB.setSyncScopeState(scope, { ...state, bootstrapping: { serverUrl, lineage } });
+        const token =
+            crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
+        await localDB.setSyncScopeState(scope, {
+            lineage,
+            adopting: false,
+            bootstrapping: { serverUrl, lineage, token }
+        });
         assertSyncServer(serverUrl);
         await syncCursorDB.delete(getSyncCursorIdentity('records', userId, scope));
         const gcHigh = await localDB.getSyncGcHigh(scope);
@@ -480,27 +502,34 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             .sort((a, b) => b.heldAt - a.heldAt)
             .slice(0, MAX_BOOTSTRAP_CLEAN)
             .map(({ id }) => id);
-        const bootstrapToken = await beginBootstrap(syncScope, serverUrl, {
+        await beginBootstrap(syncScope, serverUrl, {
             mode,
             expectedLineage,
             lineage,
+            token,
             checkpoint,
             forgotten: gcHigh > 0,
             clean
         });
         await localDB.addSyncCheckpoints(scope, [{ id: checkpoint, anchor: prefix }]);
-        await this.runPrepared(syncScope, serverUrl, { lineage, bootstrapToken });
+        const session = await this.runPrepared(syncScope, serverUrl, {
+            lineage,
+            bootstrapToken: token
+        });
         await localDB.setSyncScopeState(scope, { lineage, adopting: false, bootstrapping: null });
-        this.setConflict(key, null);
+        // Once committed, the token is spent; the session continues as a normal one.
+        this.verified(key, { ...session, bootstrapToken: undefined });
     }
 
-    /** A session for a prepared scope; it must verify like any other before data moves. */
+    /**
+     * A session for a prepared scope; it must verify like any other before data moves. The
+     * caller publishes it to the gate only after recording the scope's final state.
+     */
     private async runPrepared(
         syncScope: SyncScope,
         serverUrl: string,
         context: SessionContext
-    ): Promise<void> {
-        const key = this.sessionKey(syncScope, serverUrl);
+    ): Promise<SyncSession> {
         const { userId } = getActiveSession();
         const cursors = await syncCursorDB.get(
             getSyncCursorIdentity('records', userId, syncScope.scope)
@@ -512,13 +541,18 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             syncScope,
             serverUrl,
             cursors,
-            { lineage: context.lineage, pendingLineage: null, hasRecords: true },
+            { lineage: context.lineage, hasRecords: true },
             context
         );
         await this.runSession(syncScope, serverUrl, localUpper, serverUpper, cursors, session);
-        // Once committed, the bootstrap token is spent; the session continues as a normal one.
-        this.sessions.set(key, { ...session, bootstrapToken: undefined });
+        return session;
+    }
+
+    /** Admit a scope to the gate after a replacement completed. */
+    private verified(key: string, session: SyncSession): void {
+        this.sessions.set(key, session);
         this.blocked.delete(key);
+        this.setConflict(key, null);
     }
 
     private async runSession(
@@ -805,71 +839,14 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
         for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
             const chunk = owned.slice(i, i + CHUNK_SIZE);
-            const batch = pb.createBatch();
-            for (const change of chunk) {
-                const payload = await this.localToPbRecord(change.table, change.record, syncScope);
-                batch.collection(syncScope.collection).upsert(payload, {
-                    headers: {
-                        [SYNC_COVERAGE_HEADER]: String(proof.coverage),
-                        [SYNC_LINEAGE_HEADER]: proof.lineage,
-                        ...(proof.bootstrapToken
-                            ? { [SYNC_BOOTSTRAP_HEADER]: proof.bootstrapToken }
-                            : {})
-                    }
-                });
-            }
-
             try {
-                assertSyncServer(serverUrl);
-                const results = await batch.send({ requestKey: null });
-                const remotes: DecodedRemoteRecord[] = [];
-                for (const result of results) {
-                    if (result.status < 200 || result.status >= 300 || !result.body) continue;
-                    remotes.push(
-                        await this.pbToLocalRecord(
-                            result.body as Record<string, unknown>,
-                            syncScope
-                        )
-                    );
-                }
-                if (remotes.length === 0) continue;
-                const tables = [...new Set(remotes.map(({ table }) => table))];
-                await this.mergeInto(syncScope.scope, proof.epoch, async () => {
-                    // As in Pull: decide against the local state committed when writing.
-                    const reconciliations = await localDB.transaction(tables, 'rw', async () => {
-                        const applied: AssetReconciliation[] = [];
-                        for (const remote of remotes) {
-                            const local = await localDB.getRecord<DataRecord>(
-                                remote.table,
-                                remote.record.id
-                            );
-                            if (!local || chooseWinner(local, remote.record) !== 'remote') {
-                                continue;
-                            }
-                            await localDB.putRecord(remote.table, remote.record, {
-                                origin: 'sync'
-                            });
-                            applied.push({
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            });
-                        }
-                        return applied;
-                    });
-                    const cascadeTargets = reconciliations
-                        .filter(({ before, after }) => after.isDeleted && !before?.isDeleted)
-                        .map(({ table, after }) => ({ table, id: after.id }));
-                    for (const { table, before, after } of reconciliations) {
-                        await this.reconcileAssetRegistry(table, before, after);
-                    }
-                    for (const { table, id } of cascadeTargets) {
-                        const cascadeResult = await cascadeDeleteChildren(table, id, {
-                            origin: 'local'
-                        });
-                        await cleanupCascadeAssets(cascadeResult);
-                    }
+                // Encoding, sending and merging the response all belong to the replica the
+                // proof was taken for: once it is replaced, nothing more of it is sent.
+                const sent = await this.mergeInto(syncScope.scope, proof.epoch, async () => {
+                    await this.pushChunk(syncScope, serverUrl, chunk, proof);
+                    return true;
                 });
+                if (sent === null) return;
             } catch (err) {
                 logger.error(`Failed to push batch to ${syncScope.collection}`, err);
                 const error = toSyncSafetyError(err);
@@ -878,6 +855,71 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     throw error;
                 }
             }
+        }
+    }
+
+    /** Send one batch under `proof` and merge the canonical results it returns. */
+    private async pushChunk(
+        syncScope: SyncScope,
+        serverUrl: string,
+        chunk: LocalChange[],
+        proof: PushProof
+    ): Promise<void> {
+        const batch = pb.createBatch();
+        for (const change of chunk) {
+            const payload = await this.localToPbRecord(change.table, change.record, syncScope);
+            batch.collection(syncScope.collection).upsert(payload, {
+                headers: {
+                    [SYNC_COVERAGE_HEADER]: String(proof.coverage),
+                    [SYNC_LINEAGE_HEADER]: proof.lineage,
+                    ...(proof.bootstrapToken
+                        ? { [SYNC_BOOTSTRAP_HEADER]: proof.bootstrapToken }
+                        : {})
+                }
+            });
+        }
+
+        assertSyncServer(serverUrl);
+        const results = await batch.send({ requestKey: null });
+        const remotes: DecodedRemoteRecord[] = [];
+        for (const result of results) {
+            if (result.status < 200 || result.status >= 300 || !result.body) continue;
+            remotes.push(
+                await this.pbToLocalRecord(result.body as Record<string, unknown>, syncScope)
+            );
+        }
+        if (remotes.length === 0) return;
+        const tables = [...new Set(remotes.map(({ table }) => table))];
+        // As in Pull: decide against the local state committed when writing.
+        const reconciliations = await localDB.transaction(tables, 'rw', async () => {
+            const applied: AssetReconciliation[] = [];
+            for (const remote of remotes) {
+                const local = await localDB.getRecord<DataRecord>(remote.table, remote.record.id);
+                if (!local || chooseWinner(local, remote.record) !== 'remote') {
+                    continue;
+                }
+                await localDB.putRecord(remote.table, remote.record, {
+                    origin: 'sync'
+                });
+                applied.push({
+                    table: remote.table,
+                    before: local,
+                    after: remote.record
+                });
+            }
+            return applied;
+        });
+        const cascadeTargets = reconciliations
+            .filter(({ before, after }) => after.isDeleted && !before?.isDeleted)
+            .map(({ table, after }) => ({ table, id: after.id }));
+        for (const { table, before, after } of reconciliations) {
+            await this.reconcileAssetRegistry(table, before, after);
+        }
+        for (const { table, id } of cascadeTargets) {
+            const cascadeResult = await cascadeDeleteChildren(table, id, {
+                origin: 'local'
+            });
+            await cleanupCascadeAssets(cascadeResult);
         }
     }
 

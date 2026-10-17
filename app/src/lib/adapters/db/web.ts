@@ -615,10 +615,12 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         return false;
     }
 
-    async resetSyncScope(scope: DataScope): Promise<void> {
+    async resetSyncScope(scope: DataScope, options?: { keepRecords?: boolean }): Promise<void> {
         await this.flush();
         const key: [string, string] = [scope.scopeType, scope.scopeId];
-        const tables = SYNC_TABLES.map((tableName) => this.getTable<DataRecord>(tableName));
+        const tables = options?.keepRecords
+            ? []
+            : SYNC_TABLES.map((tableName) => this.getTable<DataRecord>(tableName));
         const removed = await this.db.transaction(
             'rw',
             [...tables, this.db.syncGc, this.db.syncCheckpoints, this.db.syncScopeState],
@@ -639,8 +641,8 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
                 return ids;
             }
         );
-        SYNC_TABLES.forEach((tableName, i) =>
-            this.emitWriteEvent(tableName, 'purge', removed[i], { origin: 'sync' })
+        removed.forEach((ids, i) =>
+            this.emitWriteEvent(SYNC_TABLES[i], 'purge', ids, { origin: 'sync' })
         );
     }
 

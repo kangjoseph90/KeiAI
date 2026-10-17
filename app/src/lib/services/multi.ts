@@ -594,6 +594,12 @@ export class MultiRoomService {
         await AssetService.deleteScopeAssets(roomScope);
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
+        // The replica is discarded, not emptied by GC: a rejoin adopts the room afresh.
+        await localDB.setSyncScopeState(roomScope, {
+            lineage: null,
+            adopting: false,
+            bootstrapping: null
+        });
         await Promise.all([
             ...TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)),
             syncCursorDB.delete(getSyncCursorIdentity('records', userId, roomScope))

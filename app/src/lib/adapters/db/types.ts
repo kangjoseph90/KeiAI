@@ -171,7 +171,8 @@ export interface SyncCheckpoint {
 export interface SyncScopeState {
     lineage: string | null;
     adopting: boolean;
-    bootstrapping: { serverUrl: string; lineage: string } | null;
+    /** `token` identifies the bootstrap's lease on the server; it is recorded first. */
+    bootstrapping: { serverUrl: string; lineage: string; token: string } | null;
 }
 
 export interface TombstoneCollection {
@@ -303,8 +304,10 @@ export interface IDatabaseAdapter {
     /**
      * Drop the scope's records, tombstones, GC watermark and checkpoints. Only for a scope
      * marked `adopting`: its knowledge is being replaced by a server's, not forgotten.
+     * `keepRecords` drops only the knowledge, for a scope adopted because it held nothing:
+     * anything written since is new data of the adopted replica.
      */
-    resetSyncScope(scope: DataScope): Promise<void>;
+    resetSyncScope(scope: DataScope, options?: { keepRecords?: boolean }): Promise<void>;
     /**
      * Take over a server's forgotten deletions at one fresh local revision: the watermark
      * moves there when `forgotten`, and the server's checkpoints are anchored there.
