@@ -162,15 +162,26 @@ export interface SyncCheckpoint {
     createdAt: number;
 }
 
+/** An adoption of a server's replica in progress. */
+export interface SyncScopeAdoption {
+    /** The user chose the server: the local records go too. Otherwise they are kept. */
+    discard: boolean;
+    /**
+     * Set once the server's knowledge was taken over: an interruption then continues the
+     * adoption on that server instead of restarting it, so nothing kept is lost.
+     */
+    adopted: { serverUrl: string; lineage: string; gcHigh: number } | null;
+}
+
 /**
  * A scope's replica state on this client. `lineage` names the history its records descend
  * from; replicas of different lineages never merge. `adopting` marks a replacement by a
  * server's state in progress, and `bootstrapping` a server being filled from this replica:
- * neither partial state is a valid replica, and both restart after an interruption.
+ * neither partial state is a valid replica.
  */
 export interface SyncScopeState {
     lineage: string | null;
-    adopting: boolean;
+    adopting: SyncScopeAdoption | null;
     /** `token` identifies the bootstrap's lease on the server; it is recorded first. */
     bootstrapping: { serverUrl: string; lineage: string; token: string } | null;
 }

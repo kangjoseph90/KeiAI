@@ -82,7 +82,7 @@ type SyncCheckpointRow = DataScope & SyncCheckpoint;
 
 type SyncScopeStateRow = DataScope & SyncScopeState;
 
-const EMPTY_SCOPE_STATE: SyncScopeState = { lineage: null, adopting: false, bootstrapping: null };
+const EMPTY_SCOPE_STATE: SyncScopeState = { lineage: null, adopting: null, bootstrapping: null };
 
 class DexieStore extends Dexie {
     syncGc!: Table<SyncGcRow, [string, string]>;

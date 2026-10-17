@@ -318,7 +318,7 @@ describe('MultiRoomService', () => {
         // The room replica is discarded, so a rejoin adopts it afresh.
         expect(localDB.setSyncScopeState).toHaveBeenCalledWith(
             { scopeType: 'room', scopeId: 'room-1' },
-            { lineage: null, adopting: false, bootstrapping: null }
+            { lineage: null, adopting: null, bootstrapping: null }
         );
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('chats', 'scopeId', 'room-1');

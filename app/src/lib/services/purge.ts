@@ -14,6 +14,7 @@ import { appMulti } from '$lib/adapters/multi';
 import { localDB, TABLES, type DataScope, type DataScopeType } from '$lib/adapters/db';
 import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
+import { DataRecordSyncEngine } from './sync';
 
 export interface PurgeResult {
     users: number;
@@ -93,7 +94,9 @@ async function purgeScope(scope: DataScope): Promise<number> {
     let purged = 0;
 
     // The replica is discarded, not emptied by GC: syncing the scope again adopts it afresh.
-    await localDB.setSyncScopeState(scope, { lineage: null, adopting: false, bootstrapping: null });
+    // Merges and Pushes already authorized for it are dropped first.
+    await DataRecordSyncEngine.discardReplica(scope);
+    await localDB.setSyncScopeState(scope, { lineage: null, adopting: null, bootstrapping: null });
     for (const table of TABLES) {
         purged += await localDB.deleteByScope(table, scope, { origin: 'sync' });
     }

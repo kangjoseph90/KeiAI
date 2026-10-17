@@ -599,11 +599,11 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             failCommit(h2);
             expect(await sync(h2)).toBe('network_error');
             vi.restoreAllMocks();
-            expect((await h2.db.getSyncScopeState(userScope(h2))).adopting).toBe(true);
+            expect((await h2.db.getSyncScopeState(userScope(h2))).adopting).toBeTruthy();
 
             restart(h2);
             expect(await sync(h2)).toBe('idle');
-            expect((await h2.db.getSyncScopeState(userScope(h2))).adopting).toBe(false);
+            expect((await h2.db.getSyncScopeState(userScope(h2))).adopting).toBeNull();
             expect(await names(h2)).toEqual(['one']);
         });
 
@@ -674,7 +674,7 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(conflicts(g)).toEqual([]);
             expect(await g.db.getSyncScopeState(userScope(g))).toEqual({
                 lineage: server.lineage,
-                adopting: false,
+                adopting: null,
                 bootstrapping: null
             });
         });
@@ -904,7 +904,7 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             });
             expect(await sync(a)).toBe('network_error');
             vi.restoreAllMocks();
-            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBe(true);
+            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBeTruthy();
             await write(a, 'y', 'held');
             await on(a, () =>
                 (
@@ -914,7 +914,7 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(serverRow(0, 'y')).toBeUndefined();
             restart(a);
             expect(await sync(a)).toBe('idle');
-            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBe(false);
+            expect((await a.db.getSyncScopeState(userScope(a))).adopting).toBeNull();
         });
 
         it('does not take over a lease it lost the race for', async () => {
@@ -955,6 +955,132 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(await sync(b)).toBe('idle');
             expect(serverRow(1, 'x')).toBeUndefined();
             expect(serverRow(1, 'y')).toMatchObject({ isDeleted: 0 });
+        });
+
+        it('keeps records an automatic adoption kept when it is interrupted', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const source = await createDevice('Source', SERVERS[0]!, user);
+            await write(source, 'x', 'server-x');
+            await sync(source);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            const send = a.pb.send.bind(a.pb);
+            let written = false;
+            let failed = false;
+            vi.spyOn(a.pb, 'send').mockImplementation(async (path, options) => {
+                if (path === '/api/sync/adopt' && !failed) {
+                    failed = true;
+                    throw new Error('connection lost');
+                }
+                const response = await send(path, options);
+                if (path === '/api/sync/handshake' && !written) {
+                    written = true;
+                    await write(a, 'y', 'new-local');
+                }
+                return response;
+            });
+            // Interrupted before the server's knowledge was taken over: started again.
+            expect(await sync(a)).toBe('network_error');
+            vi.restoreAllMocks();
+            restart(a);
+            // Interrupted after it, while pulling: continued.
+            failCommit(a);
+            await write(a, 'z', 'during-adoption');
+            expect(await sync(a)).toBe('network_error');
+            expect((await a.db.getSyncScopeState(userScope(a))).adopting?.adopted).toBeTruthy();
+            vi.restoreAllMocks();
+            restart(a);
+            expect(await sync(a)).toBe('idle');
+            expect(await names(a)).toEqual(['during-adoption', 'new-local', 'server-x']);
+            expect(serverRow(0, 'y')).toMatchObject({ isDeleted: 0 });
+            expect(serverRow(0, 'z')).toMatchObject({ isDeleted: 0 });
+        });
+
+        it('drops a merge authorized for a room replica that was purged meanwhile', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            const roomId = unique('room');
+            const now = Date.now();
+            await a.pb.collection('multi_room_index').create({
+                id: roomId,
+                ownerUserId: user.id,
+                visibility: 'private',
+                createdAt: now,
+                updatedAt: now
+            });
+            await a.pb.collection('multi_room_members').create({
+                roomId,
+                userId: user.id,
+                status: 'accepted',
+                createdAt: now,
+                updatedAt: now
+            });
+            const roomKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 },
+                true,
+                ['encrypt', 'decrypt']
+            );
+            const room: DataScope = { scopeType: 'room', scopeId: roomId };
+            a.session = { ...a.session, roomId, roomKey };
+            await write(a, 'x', 'old-x', room);
+            await sync(a);
+            const old = await a.pb.collection('multi_room_records').getOne(rid('x'));
+            const engine = a.engine as unknown as {
+                pbToLocalRecord(...args: unknown[]): Promise<unknown>;
+                handleRealtimeEvent(...args: unknown[]): Promise<void>;
+            };
+            const decode = engine.pbToLocalRecord.bind(engine);
+            let release!: () => void;
+            let ready!: () => void;
+            const held = new Promise<void>((resolve) => (release = resolve));
+            const started = new Promise<void>((resolve) => (ready = resolve));
+            let first = true;
+            vi.spyOn(engine, 'pbToLocalRecord').mockImplementation(async (...args) => {
+                if (first) {
+                    first = false;
+                    ready();
+                    await held;
+                }
+                return decode(...args);
+            });
+
+            await on(a, async () => {
+                // A room event of the old replica is still decrypting...
+                const merging = engine.handleRealtimeEvent(
+                    'multi_room_records',
+                    normalizeUrl(SERVERS[0]!),
+                    { action: 'update', record: old }
+                );
+                await started;
+                // ...while another device replaces the room and A leaves it.
+                const c = await createDevice('C', SERVERS[0]!, user);
+                c.session = { ...c.session, roomId, roomKey };
+                await write(c, 'y', 'new-y', room);
+                expect(await sync(c)).toBe('init_required');
+                await on(c, () =>
+                    c.engine.resolveConflict(
+                        conflicts(c).find(({ scope }) => scope.scopeType === 'room')!,
+                        'local'
+                    )
+                );
+                a.session = { ...a.session, roomId: undefined, roomKey: undefined };
+                const { MultiRoomService } = await import('$lib/services/multi');
+                const { DataRecordSyncEngine } = await import('$lib/services/sync');
+                // The service purges through the app's engine; here that is A's.
+                vi.spyOn(DataRecordSyncEngine, 'discardReplica').mockImplementation((scope) =>
+                    a.engine.discardReplica(scope)
+                );
+                await MultiRoomService.purgeLocalRoomContent(roomId);
+                // The event resumes only after the purge.
+                release();
+                await merging;
+            });
+            expect(await a.db.hasScopeRecords(room)).toBe(false);
+
+            // Rejoining adopts the room afresh; the old event is not part of it.
+            a.session = { ...a.session, roomId, roomKey };
+            expect(await sync(a)).toBe('idle');
+            expect(await names(a, room)).toEqual(['new-y']);
+            expect(serverRow(0, 'x')).toBeUndefined();
         });
 
         it('re-adopts a purged room on rejoin while the user scope keeps syncing', async () => {
@@ -998,7 +1124,7 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             // replica is discarded, and its tombstone forgotten.
             await b.db.setSyncScopeState(room, {
                 lineage: null,
-                adopting: false,
+                adopting: null,
                 bootstrapping: null
             });
             await b.db.deleteByScope('characters', room);

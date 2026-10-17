@@ -856,7 +856,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
         return rows[0]
             ? (JSON.parse(rows[0].state) as SyncScopeState)
-            : { lineage: null, adopting: false, bootstrapping: null };
+            : { lineage: null, adopting: null, bootstrapping: null };
     }
 
     async setSyncScopeState(scope: DataScope, state: SyncScopeState): Promise<void> {

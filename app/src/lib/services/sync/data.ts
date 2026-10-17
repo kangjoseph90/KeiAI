@@ -19,7 +19,8 @@ import {
     SYNC_TABLES,
     type DataRecord,
     type DataScope,
-    type DatabaseWriteEvent
+    type DatabaseWriteEvent,
+    type SyncScopeAdoption
 } from '$lib/adapters/db';
 import { syncCursorDB, type SyncCursorState } from '$lib/adapters/sync';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
@@ -198,7 +199,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                 const state = await localDB.getSyncScopeState(conflict.scope);
                 await localDB.setSyncScopeState(conflict.scope, {
                     ...state,
-                    adopting: true,
+                    adopting: { discard: true, adopted: null },
                     bootstrapping: null
                 });
             } else {
@@ -321,9 +322,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const key = this.sessionKey(syncScope, serverUrl);
         try {
             const state = await localDB.getSyncScopeState(scope);
+            if (state.adopting?.adopted) {
+                await this.resumeAdoption(syncScope, serverUrl, state.adopting.adopted);
+                return;
+            }
             if (state.adopting) {
-                // An interrupted adoption is redone from scratch: its partial state is not data.
-                await this.adoptScope(syncScope, serverUrl, false);
+                // Nothing was pulled yet: start over with the same intent.
+                await this.adoptScope(syncScope, serverUrl, state.adopting.discard);
                 return;
             }
             const { userId } = getActiveSession();
@@ -369,7 +374,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     return;
                 case 'adopt':
                     // Planned because the scope held nothing: whatever was written since is new.
-                    await this.adoptScope(syncScope, serverUrl, true);
+                    await this.adoptScope(syncScope, serverUrl, false);
                     return;
                 case 'bootstrap':
                     if (opened.remoteLineage === null) {
@@ -416,50 +421,94 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
     /**
      * Replace this device's replica of the scope with the server's.
      *
-     * The `adopting` mark is written first and cleared last, so an interrupted adoption is
-     * redone from the start rather than used. The scope's watermark, checkpoints and every
-     * server's cursors go, and its records unless `keepRecords`; the server's forgotten
-     * deletions are taken over at one fresh local revision, with checkpoints the server is
-     * clean on anchored there; then a verified session pulls the server's state and commits
-     * only if no GC outran the adoption. The session serves other paths only once the replica
-     * is durably marked as adopted.
-     *
-     * `keepRecords` is for an adoption planned because the scope held nothing: records written
-     * since are new local data of the adopted replica, not state to discard.
+     * The `adopting` mark is written first and cleared last, so a partial adoption is never
+     * used as a replica. The scope's watermark, checkpoints and every server's cursors go,
+     * and its records only if the user chose the server (`discard`): an automatic adoption was
+     * planned because the scope held nothing, so whatever was written since is new local data
+     * of the adopted replica. The server's forgotten deletions are taken over at one fresh
+     * local revision, with checkpoints the server is clean on anchored there, and recorded in
+     * the mark; from then on an interruption continues the adoption (resumeAdoption) instead of
+     * restarting it, so no record kept so far is dropped. A verified session then pulls the
+     * server's state and commits only if no GC outran the adoption; it serves other paths
+     * only once the replica is durably marked as adopted.
      */
     private async adoptScope(
         syncScope: SyncScope,
         serverUrl: string,
-        keepRecords: boolean
+        discard: boolean
     ): Promise<void> {
         const { scope } = syncScope;
-        const key = this.sessionKey(syncScope, serverUrl);
         const { userId } = getActiveSession();
-        this.sessions.delete(key);
+        this.sessions.delete(this.sessionKey(syncScope, serverUrl));
         await this.replaceReplica(scope);
         await localDB.setSyncScopeState(scope, {
             lineage: null,
-            adopting: true,
+            adopting: { discard, adopted: null },
             bootstrapping: null
         });
         await syncCursorDB.deleteByScope(userId, 'records', scope);
-        if (!keepRecords) await AssetService.deleteScopeAssets(scope);
-        await localDB.resetSyncScope(scope, { keepRecords });
-        const adopted = await adoptServerScope(syncScope, serverUrl);
+        if (discard) await AssetService.deleteScopeAssets(scope);
+        await localDB.resetSyncScope(scope, { keepRecords: !discard });
+        const response = await adoptServerScope(syncScope, serverUrl);
         await localDB.adoptSyncState(scope, {
-            forgotten: adopted.gcHigh > 0,
-            checkpoints: adopted.checkpoints
+            forgotten: response.gcHigh > 0,
+            checkpoints: response.checkpoints
         });
-        const session = await this.runPrepared(syncScope, serverUrl, {
+        const adopted = { serverUrl, lineage: response.lineage, gcHigh: response.gcHigh };
+        await localDB.setSyncScopeState(scope, {
+            lineage: null,
+            adopting: { discard, adopted },
+            bootstrapping: null
+        });
+        await this.finishAdoption(syncScope, adopted);
+    }
+
+    /**
+     * Continue an interrupted adoption on the server whose knowledge was taken over. Its
+     * session proves itself like any other, so records pulled before the interruption are
+     * only kept while the server can still vouch for them. If it cannot (another server, a
+     * replaced lineage, or a GC past the adopted watermark), the mark is dropped and the scope
+     * is planned again: holding records, it is a conflict for the user, never discarded.
+     */
+    private async resumeAdoption(
+        syncScope: SyncScope,
+        serverUrl: string,
+        adopted: NonNullable<SyncScopeAdoption['adopted']>
+    ): Promise<void> {
+        const { scope } = syncScope;
+        this.sessions.delete(this.sessionKey(syncScope, serverUrl));
+        await this.replaceReplica(scope);
+        try {
+            if (adopted.serverUrl !== serverUrl) {
+                throw new AppError('SYNC_UNSAFE', 'The adoption began on another server');
+            }
+            await this.finishAdoption(syncScope, adopted);
+        } catch (err) {
+            if (isSafetyError(err)) {
+                await localDB.setSyncScopeState(scope, {
+                    lineage: null,
+                    adopting: null,
+                    bootstrapping: null
+                });
+            }
+            throw err;
+        }
+    }
+
+    private async finishAdoption(
+        syncScope: SyncScope,
+        adopted: NonNullable<SyncScopeAdoption['adopted']>
+    ): Promise<void> {
+        const session = await this.runPrepared(syncScope, adopted.serverUrl, {
             lineage: adopted.lineage,
             adoptedGcHigh: adopted.gcHigh
         });
-        await localDB.setSyncScopeState(scope, {
+        await localDB.setSyncScopeState(syncScope.scope, {
             lineage: adopted.lineage,
-            adopting: false,
+            adopting: null,
             bootstrapping: null
         });
-        this.verified(key, session);
+        this.verified(this.sessionKey(syncScope, adopted.serverUrl), session);
     }
 
     /**
@@ -489,7 +538,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
         await localDB.setSyncScopeState(scope, {
             lineage,
-            adopting: false,
+            adopting: null,
             bootstrapping: { serverUrl, lineage, token }
         });
         assertSyncServer(serverUrl);
@@ -516,7 +565,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             lineage,
             bootstrapToken: token
         });
-        await localDB.setSyncScopeState(scope, { lineage, adopting: false, bootstrapping: null });
+        await localDB.setSyncScopeState(scope, { lineage, adopting: null, bootstrapping: null });
         // Once committed, the token is spent; the session continues as a normal one.
         this.verified(key, { ...session, bootstrapToken: undefined });
     }
@@ -1038,6 +1087,18 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
      * current one are dropped, and merges already writing finish first. This orders them by
      * awaiting, not by storage transactions.
      */
+    /**
+     * The scope's local replica is being discarded (a purge): nothing authorized for it may
+     * merge or send any more, on any server.
+     */
+    async discardReplica(scope: DataScope): Promise<void> {
+        const suffix = `\u0000${this.replicaKey(scope)}`;
+        for (const key of [...this.sessions.keys()]) {
+            if (key.endsWith(suffix)) this.sessions.delete(key);
+        }
+        await this.replaceReplica(scope);
+    }
+
     private async replaceReplica(scope: DataScope): Promise<void> {
         const key = this.replicaKey(scope);
         this.epochs.set(key, this.epoch(scope) + 1);

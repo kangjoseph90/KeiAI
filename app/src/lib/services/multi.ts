@@ -32,7 +32,7 @@ import { buffer } from './content/record_buffer';
 import { parseFields as parseRoomFields, type Room } from './content/room';
 import { appHttp } from '$lib/adapters/http';
 import { pb } from '$lib/adapters/pb';
-import { MultiRecordSyncEngine, SyncManager } from './sync';
+import { DataRecordSyncEngine, MultiRecordSyncEngine, SyncManager } from './sync';
 import { syncCursorDB } from '$lib/adapters/sync';
 import { getSyncCursorIdentity } from './sync/utils';
 import { buildUrl } from '$lib/utils/url';
@@ -594,10 +594,12 @@ export class MultiRoomService {
         await AssetService.deleteScopeAssets(roomScope);
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
-        // The replica is discarded, not emptied by GC: a rejoin adopts the room afresh.
+        // The replica is discarded, not emptied by GC: a rejoin adopts the room afresh. Merges
+        // and Pushes already authorized for it are dropped first.
+        await DataRecordSyncEngine.discardReplica(roomScope);
         await localDB.setSyncScopeState(roomScope, {
             lineage: null,
-            adopting: false,
+            adopting: null,
             bootstrapping: null
         });
         await Promise.all([

@@ -168,7 +168,7 @@ describe('DataRecordSyncEngine', () => {
         vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([]);
         vi.mocked(localDB.getSyncScopeState).mockResolvedValue({
             lineage: LINEAGE,
-            adopting: false,
+            adopting: null,
             bootstrapping: null
         });
         vi.mocked(localDB.hasScopeRecords).mockResolvedValue(true);
@@ -753,7 +753,7 @@ describe('DataRecordSyncEngine', () => {
         it('reports initialization when a never-synced device holds data and the server another replica', async () => {
             vi.mocked(localDB.getSyncScopeState).mockResolvedValue({
                 lineage: null,
-                adopting: false,
+                adopting: null,
                 bootstrapping: null
             });
             serve({
@@ -1336,7 +1336,7 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(localDB.hasScopeRecords).mockImplementation(db.hasScopeRecords.bind(db));
             await db.setSyncScopeState(
                 { scopeType: 'user', scopeId: mockUserId },
-                { lineage: LINEAGE, adopting: false, bootstrapping: null }
+                { lineage: LINEAGE, adopting: null, bootstrapping: null }
             );
             vi.mocked(mockBatch.send).mockResolvedValue([]);
             vi.mocked(mockCollection.getList).mockResolvedValue({

@@ -1085,12 +1085,12 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         it('keeps the scope replica state and reports whether the scope holds anything', async () => {
             expect(await localDB.getSyncScopeState(userScope)).toEqual({
                 lineage: null,
-                adopting: false,
+                adopting: null,
                 bootstrapping: null
             });
             const state = {
                 lineage: 'L',
-                adopting: false,
+                adopting: null,
                 bootstrapping: { serverUrl: 'https://server.example', lineage: 'M', token: 'T' }
             };
             await localDB.setSyncScopeState(userScope, state);
@@ -1119,7 +1119,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.setSyncScopeState(userScope, {
                 lineage: null,
-                adopting: true,
+                adopting: { discard: true, adopted: null },
                 bootstrapping: null
             });
             // An adoption of a scope that held nothing drops only the knowledge.

@@ -304,7 +304,7 @@ beforeEach(async () => {
     Dexie.dependencies.IDBKeyRange = IDBKeyRange;
     await Dexie.delete('KeiLocalDB');
     h.db = new WebDatabaseAdapter();
-    await h.db.setSyncScopeState(scope, { lineage: LINEAGE, adopting: false, bootstrapping: null });
+    await h.db.setSyncScopeState(scope, { lineage: LINEAGE, adopting: null, bootstrapping: null });
     h.cursors = { serverPullCursor: 0, localPushCursor: 0 };
     h.rows.clear();
     h.revision = 0;
