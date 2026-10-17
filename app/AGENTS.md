@@ -47,6 +47,7 @@ A Workflow is the execution graph inside a Task. Workflow nodes compute or call 
 - Local domain records are plaintext. Sync encrypts records at the remote boundary.
 - Sync uses independent cursors: remote pulls advance on server-owned `serverUpdatedAt`, while local pushes advance on client-only `localUpdatedAt`. `updatedAt` remains the LWW version. Local persistence stamps actual canonical state changes, including accepted Pull, Realtime, and Push responses; duplicates and rejected changes do not advance it. Its revision is durable and committed atomically with the record; Push takes its upper bound from the committed storage revision, never the wall clock. `localUpdatedAt` is never sent to the server or included in encrypted payloads.
 - Sync cursors are structured local database records. Never encode cursor identity into key-value storage keys.
+- Tombstones are garbage-collected after retention. A forgotten deletion must never be merged back: every hard delete of a sync tombstone raises the scope's GC watermark first, and every scope session proves merge safety with cursors or History–Clean checkpoints before Pull or Push. See [`docs/sync-gc.md`](../docs/sync-gc.md).
 - Every syncable record has an explicit user or room scope, and Services validate that scope on access.
 - The local database is authoritative; remote sync must not block local behavior.
 - Each entity uses one domain record. Keep inseparable child data inline and reference independently stored entities. Messages remain separate because of their write volume.

@@ -98,7 +98,7 @@ migrate(
         new Field({ name: "updatedAt", type: "number", required: true }),
       );
       collection.fields.add(
-        new Field({ name: "serverUpdatedAt", type: "number", required: true }),
+        new Field({ name: "serverUpdatedAt", type: "number" }),
       );
       collection.fields.add(
         new Field({
@@ -112,6 +112,8 @@ migrate(
         new Field({ name: "encryptedDataIV", type: "text", required: true }),
       );
       collection.fields.add(new Field({ name: "isDeleted", type: "bool" }));
+      // Server time this server first held the record as a tombstone; 0 while live.
+      collection.fields.add(new Field({ name: "tombstoneAt", type: "number" }));
       collection.fields.add(
         new Field({
           name: "assetEntries",
@@ -131,7 +133,9 @@ migrate(
         viewRule: userRule,
         createRule: userRule,
         updateRule: userRule,
-        deleteRule: userRule,
+        // Hard deletes would forget tombstones without raising sync_scopes.gcHigh;
+        // records leave only through GC or the server's scope-ending endpoints.
+        deleteRule: null,
       });
 
       collection.fields.add(
@@ -161,6 +165,12 @@ migrate(
           `CREATE INDEX IF NOT EXISTS "idx_${name}_server_sync" ON "${name}" (userId, serverUpdatedAt)`,
         )
         .execute();
+      app
+        .db()
+        .newQuery(
+          `CREATE INDEX IF NOT EXISTS "idx_${name}_tombstones" ON "${name}" (isDeleted, tombstoneAt)`,
+        )
+        .execute();
       if (includeKind) {
         app
           .db()
@@ -181,7 +191,9 @@ migrate(
         viewRule: activeMemberRule,
         createRule: activeMemberRule,
         updateRule: activeMemberRule,
-        deleteRule: activeMemberRule,
+        // Hard deletes would forget tombstones without raising sync_scopes.gcHigh;
+        // records leave only through GC or the server's scope-ending endpoints.
+        deleteRule: null,
       });
 
       collection.fields.add(
@@ -209,6 +221,12 @@ migrate(
         .db()
         .newQuery(
           `CREATE INDEX IF NOT EXISTS "idx_${name}_server_sync" ON "${name}" (roomId, serverUpdatedAt)`,
+        )
+        .execute();
+      app
+        .db()
+        .newQuery(
+          `CREATE INDEX IF NOT EXISTS "idx_${name}_tombstones" ON "${name}" (isDeleted, tombstoneAt)`,
         )
         .execute();
       if (includeKind) {
@@ -247,7 +265,7 @@ migrate(
       new Field({ name: "updatedAt", type: "number", required: true }),
     );
     roomIndex.fields.add(
-      new Field({ name: "serverUpdatedAt", type: "number", required: true }),
+      new Field({ name: "serverUpdatedAt", type: "number" }),
     );
     roomIndex.fields.add(new Field({ name: "isDeleted", type: "bool" }));
     app.save(roomIndex);
@@ -301,9 +319,7 @@ migrate(
     members.fields.add(
       new Field({ name: "updatedAt", type: "number", required: true }),
     );
-    members.fields.add(
-      new Field({ name: "serverUpdatedAt", type: "number", required: true }),
-    );
+    members.fields.add(new Field({ name: "serverUpdatedAt", type: "number" }));
     app.save(members);
 
     app
@@ -469,10 +485,80 @@ migrate(
         'CREATE UNIQUE INDEX IF NOT EXISTS "idx_asset_accounts_user" ON "asset_accounts" (userId)',
       )
       .execute();
+
+    // ─── 5. Tombstone GC merge safety (server-only) ──────────────────
+    const syncScopes = new Collection({
+      name: "sync_scopes",
+      type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
+    });
+    syncScopes.fields.add(
+      new Field({ name: "scopeType", type: "text", required: true }),
+    );
+    syncScopes.fields.add(
+      new Field({ name: "scopeId", type: "text", required: true }),
+    );
+    // Highest serverUpdatedAt of a tombstone this server garbage-collected.
+    syncScopes.fields.add(new Field({ name: "gcHigh", type: "number" }));
+    app.save(syncScopes);
+    app
+      .db()
+      .newQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_sync_scopes_scope" ON "sync_scopes" (scopeType, scopeId)',
+      )
+      .execute();
+
+    const syncCheckpoints = new Collection({
+      name: "sync_checkpoints",
+      type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
+    });
+    syncCheckpoints.fields.add(
+      new Field({ name: "scopeType", type: "text", required: true }),
+    );
+    syncCheckpoints.fields.add(
+      new Field({ name: "scopeId", type: "text", required: true }),
+    );
+    syncCheckpoints.fields.add(
+      new Field({ name: "checkpointId", type: "text", required: true }),
+    );
+    // serverUpdatedAt prefix covered by a co-issued checkpoint; 0 when inherited.
+    syncCheckpoints.fields.add(new Field({ name: "anchor", type: "number" }));
+    // Sync revision by which this server knew the checkpoint's deletions.
+    syncCheckpoints.fields.add(
+      new Field({ name: "heldAt", type: "number", required: true }),
+    );
+    // Wall time, used only for retention.
+    syncCheckpoints.fields.add(
+      new Field({ name: "createdAt", type: "number", required: true }),
+    );
+    app.save(syncCheckpoints);
+    app
+      .db()
+      .newQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_sync_checkpoints_id" ON "sync_checkpoints" (scopeType, scopeId, checkpointId)',
+      )
+      .execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_sync_checkpoints_held" ON "sync_checkpoints" (scopeType, scopeId, heldAt)',
+      )
+      .execute();
   },
   (app) => {
     // DOWN — drop everything
     const tables = [
+      "sync_checkpoints",
+      "sync_scopes",
       "multi_room_records",
       "multi_room_members",
       "multi_room_index",

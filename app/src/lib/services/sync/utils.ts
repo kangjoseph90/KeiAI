@@ -32,15 +32,27 @@ export function getSyncCursorIdentity(
     };
 }
 
+/** Highest committed server revision; every change at or below it is visible. */
 export async function getServerNow(): Promise<number> {
     const response = (await pb.send('/api/now', {
         method: 'GET',
         requestKey: null
     })) as { now?: unknown };
-    if (typeof response.now !== 'number' || !Number.isFinite(response.now) || response.now <= 0) {
-        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid timestamp');
+    if (
+        typeof response.now !== 'number' ||
+        !Number.isSafeInteger(response.now) ||
+        response.now < 0
+    ) {
+        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid revision');
     }
     return response.now;
+}
+
+/** Proofs belong to one server; a run aborts instead of reaching another one. */
+export function assertSyncServer(serverUrl: string): void {
+    if (normalizeUrl(pb.baseUrl) !== serverUrl) {
+        throw new AppError('NETWORK_ERROR', 'Sync server changed during the session');
+    }
 }
 
 export function belongsToScope(
@@ -131,6 +143,8 @@ export function isAuthError(error: unknown): boolean {
 }
 
 export function toErrorState(error: unknown): SyncState {
+    if (isErrorCode(error, 'SYNC_UNSAFE')) return 'unsafe_merge';
+    if (isErrorCode(error, 'SYNC_NEEDS_INIT')) return 'init_required';
     if (isQuotaError(error)) return 'quota_error';
     if (isAuthError(error)) return 'auth_error';
     return 'network_error';

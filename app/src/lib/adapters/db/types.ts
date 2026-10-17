@@ -88,6 +88,8 @@ export interface DataRecord {
     updatedAt: number;
     /** Assigned by local persistence, including accepted sync changes; absent before saving. */
     localUpdatedAt?: number;
+    /** Local wall time when this replica first held the record as a tombstone; never synced. */
+    tombstoneAt?: number;
     isDeleted: boolean;
     data: Record<string, unknown>;
     assetEntries?: AssetEntries;
@@ -145,6 +147,26 @@ export type PresetRecord = DataRecord;
 
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
+}
+
+// ─── Sync Safety ─────────────────────────────────────────────────────
+
+/** A History–Clean checkpoint held by this replica for one scope. See docs/sync-gc.md. */
+export interface SyncCheckpoint {
+    id: string;
+    /** Own local revision whose prefix the checkpoint covers; 0 when inherited. */
+    anchor: number;
+    /** Local revision by which this replica knew the checkpoint's deletions. */
+    heldAt: number;
+    /** Local wall time, used only for retention. */
+    createdAt: number;
+}
+
+export interface TombstoneCollection {
+    /** Only tombstones first received at or before this wall time. */
+    receivedThrough: number;
+    /** Only tombstones at or below this local revision. */
+    throughLocalUpdatedAt: number;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────
@@ -248,4 +270,18 @@ export interface IDatabaseAdapter {
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
     countByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<number>;
+    /**
+     * Highest local revision of a sync-table tombstone this replica no longer stores.
+     * Every hard delete of such a tombstone raises it before the row disappears.
+     */
+    getSyncGcHigh(scope: DataScope): Promise<number>;
+    /** Garbage-collect expired tombstones in every sync table; returns the new GC watermark. */
+    collectTombstones(scope: DataScope, options: TombstoneCollection): Promise<number>;
+    getSyncCheckpoints(scope: DataScope): Promise<SyncCheckpoint[]>;
+    /** Add unknown checkpoints with a fresh local revision as `heldAt`; known ids are kept as-is. */
+    addSyncCheckpoints(
+        scope: DataScope,
+        checkpoints: Array<Pick<SyncCheckpoint, 'id' | 'anchor'>>
+    ): Promise<void>;
+    pruneSyncCheckpoints(scope: DataScope, createdBefore: number): Promise<void>;
 }

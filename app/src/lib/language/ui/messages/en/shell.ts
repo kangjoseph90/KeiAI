@@ -16,6 +16,8 @@ export const shellMessages = {
     'shell.sidebar.sync.statusNetworkError': 'Network error',
     'shell.sidebar.sync.statusQuotaError': 'Quota error',
     'shell.sidebar.sync.statusAuthError': 'Authentication error',
+    'shell.sidebar.sync.statusUnsafeMerge': 'Merge blocked',
+    'shell.sidebar.sync.statusInitRequired': 'Setup required',
     'shell.sidebar.sync.user': 'User',
     'shell.sidebar.sync.records': 'Records',
     'shell.sidebar.sync.assets': 'Assets',
@@ -28,6 +30,10 @@ export const shellMessages = {
     'shell.sidebar.sync.indicatorQuota':
         'Sync paused: remote storage quota reached. Activate to retry.',
     'shell.sidebar.sync.indicatorAuth': 'Sync paused: sign-in needs attention. Activate to retry.',
+    'shell.sidebar.sync.indicatorUnsafeMerge':
+        'Sync stopped: deleted data could reappear if these copies merged. Nothing was changed.',
+    'shell.sidebar.sync.indicatorInitRequired':
+        'Sync stopped: this copy must be set up from the server before it can merge.',
     'shell.sidebar.sync.indicatorServerTransition': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionTitle': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionBody': 'Sync is paused until the server change finishes.',

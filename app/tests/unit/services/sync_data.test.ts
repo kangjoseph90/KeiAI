@@ -5,7 +5,7 @@ import fakeIndexedDB, { IDBKeyRange } from 'fake-indexeddb';
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 import { clock } from '$lib/utils/clock';
 import { encryptBytes, decryptBytes } from '$lib/crypto';
-import { DataRecordSyncEngine } from '$lib/services/sync/data';
+import { DataRecordSyncEngine, DataRecordSyncEngineImpl } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
 import { syncCursorDB } from '$lib/adapters/sync';
@@ -37,7 +37,7 @@ vi.mock('$lib/adapters/pb', () => ({
     pb: {
         baseUrl: 'https://sync.example.test',
         authStore: { isValid: true },
-        send: vi.fn().mockResolvedValue({ now: 3000 }),
+        send: vi.fn(),
         collection: vi.fn(() => mockCollection),
         filter: vi.fn((s) => s),
         createBatch: vi.fn(() => mockBatch)
@@ -54,9 +54,32 @@ vi.mock('$lib/adapters/db', () => ({
         getLocalUpdatedAt: vi.fn().mockResolvedValue(2500),
         getUnsyncedChanges: vi.fn(),
         transaction: vi.fn(async (_tables, _mode, callback) => callback()),
-        subscribeWriteEvents: vi.fn(() => () => {})
+        subscribeWriteEvents: vi.fn(() => () => {}),
+        getSyncGcHigh: vi.fn(),
+        collectTombstones: vi.fn(),
+        getSyncCheckpoints: vi.fn(),
+        addSyncCheckpoints: vi.fn(),
+        pruneSyncCheckpoints: vi.fn()
     }
 }));
+
+/** A server that has never garbage-collected: every merge is trivially safe. */
+function serveSync(path: string, options?: { body?: Record<string, unknown> }): unknown {
+    if (path === '/api/now') return { now: 3000 };
+    if (path === '/api/sync/handshake') {
+        return {
+            gcHigh: 0,
+            coverage: options?.body?.pullCursor ?? 0,
+            known: [],
+            initialized: true
+        };
+    }
+    if (path === '/api/sync/commit') return { checkpoints: [] };
+    throw new Error(`Unexpected request ${path}`);
+}
+
+/** Push options carry the server-side coverage proof. */
+const coverageHeader = { headers: { 'X-Kei-Sync-Coverage': expect.any(String) } };
 
 vi.mock('$lib/adapters/sync', () => ({
     syncCursorDB: {
@@ -125,7 +148,31 @@ describe('DataRecordSyncEngine', () => {
         vi.mocked(mockCollection.subscribe).mockResolvedValue(() => {});
         vi.mocked(mockCollection.unsubscribe).mockResolvedValue(() => {});
         vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([]);
+        vi.mocked(pb.send).mockImplementation(async (path, options) =>
+            serveSync(path, options as { body?: Record<string, unknown> })
+        );
+        vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(0);
+        vi.mocked(localDB.collectTombstones).mockResolvedValue(0);
+        vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([]);
+        DataRecordSyncEngine.stop();
     });
+
+    /** Verify the active scopes through one full session, then forget its calls. */
+    async function verifySession(engine: DataRecordSyncEngineImpl = DataRecordSyncEngine) {
+        const getList = vi.mocked(mockCollection.getList);
+        const previous = getList.getMockImplementation();
+        getList.mockResolvedValue({ items: [], page: 1, totalPages: 1 } as never);
+        await engine.trigger();
+        if (previous) getList.mockImplementation(previous);
+        vi.mocked(pb.send).mockClear();
+        vi.mocked(localDB.getRecord).mockClear();
+        vi.mocked(localDB.putRecord).mockClear();
+        vi.mocked(localDB.putRecords).mockClear();
+        vi.mocked(localDB.transaction).mockClear();
+        vi.mocked(syncCursorDB.advance).mockClear();
+        mockBatch.send.mockClear();
+        mockBatchCollection.upsert.mockClear();
+    }
 
     afterEach(() => {
         vi.useRealTimers();
@@ -223,7 +270,8 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
 
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'rec-1' })
+                expect.objectContaining({ id: 'rec-1' }),
+                coverageHeader
             );
             expect(mockBatch.send).toHaveBeenCalled();
         });
@@ -355,6 +403,7 @@ describe('DataRecordSyncEngine', () => {
 
     describe('Local write buffer', () => {
         it('coalesces local write events and pushes latest records using upsert batch', async () => {
+            await verifySession();
             vi.useFakeTimers();
             const record = makeRecord('existing-1');
             vi.mocked(localDB.getRecord).mockResolvedValue(record);
@@ -376,12 +425,14 @@ describe('DataRecordSyncEngine', () => {
 
             expect(localDB.getRecord).toHaveBeenCalledTimes(1);
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'existing-1' })
+                expect.objectContaining({ id: 'existing-1' }),
+                coverageHeader
             );
             expect(mockBatch.send).toHaveBeenCalled();
         });
 
         it('keeps the network error state when a buffered push fails', async () => {
+            await verifySession();
             vi.useFakeTimers();
             vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('existing-1'));
             mockBatch.send.mockRejectedValueOnce(new Error('network down'));
@@ -450,7 +501,8 @@ describe('DataRecordSyncEngine', () => {
             );
             // No repair push for this record
             expect(mockBatchCollection.upsert).not.toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'rec-1' })
+                expect.objectContaining({ id: 'rec-1' }),
+                coverageHeader
             );
         });
 
@@ -487,7 +539,8 @@ describe('DataRecordSyncEngine', () => {
             expect(localDB.putRecords).not.toHaveBeenCalled();
             // Should queue repair push
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'rec-1', isDeleted: true })
+                expect.objectContaining({ id: 'rec-1', isDeleted: true }),
+                coverageHeader
             );
         });
 
@@ -616,6 +669,556 @@ describe('DataRecordSyncEngine', () => {
             );
         });
     });
+    describe('merge safety', () => {
+        const serverRecord = (id: string, isDeleted = false) => ({
+            id,
+            kind: 'characters',
+            userId: mockUserId,
+            updatedAt: 2000,
+            updated: '2000',
+            isDeleted,
+            encryptedData: 'base64-data',
+            encryptedDataIV: 'base64-iv'
+        });
+        const page = (items: unknown[]) =>
+            ({ items, page: 1, totalPages: 1 }) as unknown as {
+                items: unknown[];
+                page: number;
+                totalPages: number;
+            };
+        const sent = (path: string) =>
+            vi
+                .mocked(pb.send)
+                .mock.calls.filter(([p]) => p === path)
+                .map(([, options]) => (options as { body: Record<string, unknown> }).body);
+        const serve = (overrides: Record<string, unknown>) =>
+            vi.mocked(pb.send).mockImplementation(async (path, options) => {
+                const value = overrides[path];
+                if (typeof value === 'function') return value(options);
+                if (value instanceof Error) throw value;
+                return value ?? serveSync(path, options as { body?: Record<string, unknown> });
+            });
+
+        beforeEach(() => {
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
+            vi.mocked(mockCollection.getList).mockResolvedValue(page([]));
+            vi.mocked(mockBatch.send).mockResolvedValue([]);
+        });
+
+        it('refuses before any Pull or Push when the server forgot an uncovered deletion', async () => {
+            vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([
+                { id: 'unknown-to-server', anchor: 900, heldAt: 900, createdAt: Date.now() }
+            ]);
+            serve({
+                '/api/sync/handshake': {
+                    gcHigh: 1500,
+                    coverage: 1000,
+                    known: [],
+                    initialized: true
+                }
+            });
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(mockCollection.getList).not.toHaveBeenCalled();
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(syncCursorDB.advance).not.toHaveBeenCalled();
+            expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
+        });
+
+        it('reports initialization when an uninitialized server meets collected deletions', async () => {
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(1500);
+            serve({
+                '/api/sync/handshake': { gcHigh: 0, coverage: 1000, known: [], initialized: false }
+            });
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(mockCollection.getList).not.toHaveBeenCalled();
+            expect(DataRecordSyncEngine.getState().state).toBe('init_required');
+        });
+
+        it('proves local deletions through a checkpoint the server holds', async () => {
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(1500);
+            vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([
+                { id: 'k', anchor: 1600, heldAt: 1700, createdAt: Date.now() }
+            ]);
+            serve({
+                '/api/sync/handshake': {
+                    gcHigh: 0,
+                    coverage: 1000,
+                    known: ['k'],
+                    initialized: true
+                }
+            });
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(mockCollection.getList).toHaveBeenCalled();
+            expect(DataRecordSyncEngine.getState().state).toBe('idle');
+        });
+
+        it('keeps the Pull cursor when the commit end-check fails', async () => {
+            const refusal = Object.assign(new Error('conflict'), {
+                status: 409,
+                response: { code: 'sync_unsafe' }
+            });
+            serve({ '/api/sync/commit': refusal });
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(syncCursorDB.advance).toHaveBeenCalledWith(expect.anything(), {
+                serverPullCursor: undefined,
+                localPushCursor: 2500
+            });
+            expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
+        });
+
+        it('refuses an unknown live record once GC outruns the session coverage', async () => {
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValueOnce(0).mockResolvedValue(1200);
+            vi.mocked(mockCollection.getList).mockResolvedValue(page([serverRecord('new')]));
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(localDB.putRecords).not.toHaveBeenCalled();
+            expect(syncCursorDB.advance).not.toHaveBeenCalledWith(
+                expect.anything(),
+                expect.objectContaining({ serverPullCursor: expect.any(Number) })
+            );
+            expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
+        });
+
+        it('still accepts unknown tombstones while uncovered', async () => {
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValueOnce(0).mockResolvedValue(1200);
+            vi.mocked(mockCollection.getList).mockResolvedValue(page([serverRecord('gone', true)]));
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(localDB.putRecords).toHaveBeenCalledWith(
+                'characters',
+                [expect.objectContaining({ id: 'gone', isDeleted: true })],
+                { origin: 'sync' }
+            );
+        });
+
+        it('pushes with the server coverage proven by the handshake', async () => {
+            serve({
+                '/api/sync/handshake': { gcHigh: 0, coverage: 1700, known: [], initialized: true }
+            });
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'local' }),
+                { headers: { 'X-Kei-Sync-Coverage': '1700' } }
+            );
+        });
+
+        it('confirms own pushes, issues and exchanges checkpoints, then collects pushed tombstones', async () => {
+            let now = 3000;
+            serve({
+                '/api/now': () => ({ now: now++ === 3000 ? 3000 : 3500 }),
+                '/api/sync/commit': { checkpoints: ['server-held'] }
+            });
+            const old = Date.now() - 2 * 24 * 60 * 60 * 1000;
+            vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([
+                { id: 'sent-before', anchor: 0, heldAt: 900, createdAt: old },
+                { id: 'to-send', anchor: 0, heldAt: 2000, createdAt: old }
+            ]);
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+
+            await DataRecordSyncEngine.trigger();
+
+            const [commit] = sent('/api/sync/commit');
+            expect(commit).toMatchObject({
+                scopeType: 'user',
+                scopeId: mockUserId,
+                pullCursor: 1000,
+                serverUpper: 3500,
+                checkpoints: ['to-send', 'sent-before'],
+                inherit: ['to-send'],
+                checkpoint: expect.any(String)
+            });
+            expect(localDB.addSyncCheckpoints).toHaveBeenCalledWith(
+                { scopeType: 'user', scopeId: mockUserId },
+                [
+                    { id: 'server-held', anchor: 0 },
+                    { id: commit.checkpoint, anchor: 2500 }
+                ]
+            );
+            expect(syncCursorDB.advance).toHaveBeenCalledWith(expect.anything(), {
+                serverPullCursor: 3500,
+                localPushCursor: 2500
+            });
+            expect(localDB.collectTombstones).toHaveBeenCalledWith(
+                { scopeType: 'user', scopeId: mockUserId },
+                {
+                    receivedThrough: expect.any(Number),
+                    throughLocalUpdatedAt: 2500
+                }
+            );
+            const [[, { receivedThrough }]] = vi.mocked(localDB.collectTombstones).mock.calls;
+            expect(Date.now() - receivedThrough).toBeGreaterThanOrEqual(30 * 24 * 60 * 60 * 1000);
+        });
+
+        it('neither issues a checkpoint nor collects tombstones when the Push fails', async () => {
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+            vi.mocked(mockBatch.send).mockRejectedValueOnce(new Error('offline'));
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(sent('/api/sync/commit')[0]).toMatchObject({
+                inherit: [],
+                checkpoint: undefined
+            });
+            expect(localDB.collectTombstones).not.toHaveBeenCalled();
+        });
+
+        it('reports a server refusal of an unproven create as an unsafe merge', async () => {
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+            vi.mocked(mockBatch.send).mockRejectedValueOnce(
+                Object.assign(new Error('Batch transaction failed.'), {
+                    status: 400,
+                    response: {
+                        data: {
+                            requests: {
+                                0: {
+                                    response: { message: 'Merge is not proven safe (Sync_unsafe).' }
+                                }
+                            }
+                        }
+                    }
+                })
+            );
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
+        });
+    });
+
+    describe('Realtime and buffered Push safety gate', () => {
+        const serverRecord = (id: string, isDeleted = false, updatedAt = 2000) => ({
+            id,
+            kind: 'characters',
+            userId: mockUserId,
+            updatedAt,
+            updated: String(updatedAt),
+            isDeleted,
+            encryptedData: 'base64-data',
+            encryptedDataIV: 'base64-iv'
+        });
+        const handshakes = () =>
+            vi.mocked(pb.send).mock.calls.filter(([path]) => path === '/api/sync/handshake').length;
+        const refuseHandshake = () =>
+            vi
+                .mocked(pb.send)
+                .mockImplementation(async (path, options) =>
+                    path === '/api/sync/handshake'
+                        ? { gcHigh: 1500, coverage: 1000, known: [], initialized: true }
+                        : serveSync(path, options as { body?: Record<string, unknown> })
+                );
+        const localWrite = (engine: DataRecordSyncEngineImpl, id: string) =>
+            engine.handleLocalWrite({
+                tableName: 'characters',
+                operation: 'put',
+                ids: [id],
+                origin: 'local'
+            });
+        const makeDeletedRecordFor = (id: string): DataRecord => ({
+            ...makeRecord(id, 3000),
+            isDeleted: true
+        });
+        /** Let the buffered write flush interval elapse. */
+        const flushBuffer = () => vi.advanceTimersByTimeAsync(3_100);
+        let engine: DataRecordSyncEngineImpl;
+        let deliver: (event: unknown) => void;
+
+        beforeEach(async () => {
+            engine = new DataRecordSyncEngineImpl();
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 1000
+            });
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [],
+                page: 1,
+                totalPages: 1
+            } as never);
+            vi.mocked(mockBatch.send).mockResolvedValue([]);
+            vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([
+                { id: 'held', anchor: 900, heldAt: 900, createdAt: Date.now() }
+            ]);
+            await engine.subscribeRealtime();
+            deliver = mockCollection.subscribe.mock.calls.at(-1)![1] as (event: unknown) => void;
+        });
+
+        afterEach(async () => {
+            await engine.unsubscribeRealtime();
+            pb.baseUrl = 'https://sync.example.test';
+        });
+
+        it('merges nothing from an unverified scope and recovers the event through a verified Pull', async () => {
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [serverRecord('late')],
+                page: 1,
+                totalPages: 1
+            } as never);
+
+            deliver({ action: 'create', record: serverRecord('late') });
+
+            await vi.waitFor(() =>
+                expect(localDB.putRecords).toHaveBeenCalledWith(
+                    'characters',
+                    [expect.objectContaining({ id: 'late' })],
+                    { origin: 'sync' }
+                )
+            );
+            expect(localDB.putRecord).not.toHaveBeenCalled();
+            expect(handshakes()).toBe(1);
+        });
+
+        it('applies realtime events on a verified scope as before', async () => {
+            await verifySession(engine);
+            vi.mocked(localDB.getRecord).mockResolvedValueOnce(undefined);
+            deliver({ action: 'create', record: serverRecord('new') });
+            await vi.waitFor(() =>
+                expect(localDB.putRecord).toHaveBeenCalledWith(
+                    'characters',
+                    expect.objectContaining({ id: 'new' }),
+                    { origin: 'sync' }
+                )
+            );
+
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('known', 1000));
+            deliver({ action: 'update', record: serverRecord('known') });
+            await vi.waitFor(() =>
+                expect(localDB.putRecord).toHaveBeenCalledWith(
+                    'characters',
+                    expect.objectContaining({ id: 'known', updatedAt: 2000 }),
+                    { origin: 'sync' }
+                )
+            );
+            expect(handshakes()).toBe(0);
+        });
+
+        it('refuses an unknown live realtime record once local GC outruns coverage, and re-verifies', async () => {
+            await verifySession(engine);
+            // The session proved local coverage through its Push bound (2500).
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(2600);
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            deliver({ action: 'create', record: serverRecord('resurrected') });
+
+            await vi.waitFor(() => expect(handshakes()).toBe(1));
+            expect(localDB.putRecord).not.toHaveBeenCalled();
+        });
+
+        it('drops events of a refused scope without re-triggering, and merges nothing', async () => {
+            refuseHandshake();
+            await engine.trigger();
+            expect(engine.getState().state).toBe('unsafe_merge');
+            vi.mocked(pb.send).mockClear();
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeDeletedRecordFor('x'));
+
+            vi.useFakeTimers();
+            deliver({ action: 'update', record: serverRecord('x') });
+            localWrite(engine, 'x');
+            await flushBuffer();
+
+            expect(localDB.transaction).not.toHaveBeenCalled();
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(handshakes()).toBe(0);
+        });
+
+        it('keeps a realtime correction Push behind the gate and the server guard', async () => {
+            await verifySession(engine);
+            // Local tombstone beats remote live: the correction is pushed with proof.
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeDeletedRecordFor('x'));
+            deliver({ action: 'update', record: serverRecord('x') });
+            await vi.waitFor(() =>
+                expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                    expect.objectContaining({ id: 'x', isDeleted: true }),
+                    // The session proved server coverage through its confirmed Pull bound.
+                    { headers: { 'X-Kei-Sync-Coverage': '3000' } }
+                )
+            );
+
+            // The server refuses an unproven create: the scope stops sending.
+            mockBatch.send.mockRejectedValueOnce(
+                Object.assign(new Error('Batch transaction failed.'), {
+                    response: { message: 'Merge is not proven safe (Sync_unsafe).' }
+                })
+            );
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('y', 3000));
+            deliver({ action: 'update', record: serverRecord('y', false, 1000) });
+            await vi.waitFor(() => expect(mockBatch.send).toHaveBeenCalledTimes(2));
+            mockBatch.send.mockClear();
+            vi.mocked(pb.send).mockClear();
+
+            vi.useFakeTimers();
+            deliver({ action: 'update', record: serverRecord('y', false, 1000) });
+            localWrite(engine, 'y');
+            await flushBuffer();
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(handshakes()).toBe(0);
+        });
+
+        it('holds buffered Pushes for an unverified scope and requests a verified session', async () => {
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('held'));
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('held')]);
+            refuseHandshake();
+
+            vi.useFakeTimers();
+            localWrite(engine, 'held');
+            await flushBuffer();
+            await vi.waitFor(() => expect(handshakes()).toBe(1));
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(engine.getState().state).toBe('unsafe_merge');
+        });
+
+        it('pages the Pull by revision so a row moving mid-Pull cannot shift an unread row out', async () => {
+            const page = Array.from({ length: 200 }, (_, i) => ({
+                ...serverRecord(`r${i}`),
+                serverUpdatedAt: 1001 + i
+            }));
+            // Same versions locally: nothing to merge or correct, only paging is observed.
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('known', 2000));
+            vi.mocked(mockCollection.getList)
+                .mockResolvedValueOnce({ items: page, page: 1, totalPages: 9 } as never)
+                .mockResolvedValue({ items: [], page: 1, totalPages: 1 } as never);
+
+            await engine.trigger();
+
+            const pulls = vi.mocked(mockCollection.getList).mock.calls;
+            expect(pulls.map(([pageNumber]) => pageNumber)).toEqual([1, 1]);
+            const bounds = vi.mocked(pb.filter).mock.calls.map(([, params]) => params);
+            expect(bounds).toEqual([
+                { scopeId: mockUserId, after: 1000, through: 3000 },
+                { scopeId: mockUserId, after: 1200, through: 3000 }
+            ]);
+        });
+
+        it('offers own anchored checkpoints first and caps the offered set', async () => {
+            vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([
+                ...Array.from({ length: 600 }, (_, i) => ({
+                    id: `inherited-${i}`,
+                    anchor: 0,
+                    heldAt: 1000 + i,
+                    createdAt: Date.now()
+                })),
+                { id: 'own', anchor: 50, heldAt: 1, createdAt: Date.now() }
+            ]);
+
+            await engine.trigger();
+
+            const [handshake] = vi
+                .mocked(pb.send)
+                .mock.calls.filter(([path]) => path === '/api/sync/handshake')
+                .map(([, options]) => (options as { body: { checkpoints: string[] } }).body);
+            expect(handshake.checkpoints).toHaveLength(500);
+            expect(handshake.checkpoints[0]).toBe('own');
+            expect(handshake.checkpoints[1]).toBe('inherited-599');
+        });
+
+        it('does not retry per event after an ordinary session failure, and keeps reporting it', async () => {
+            vi.mocked(pb.send).mockImplementation(async (path, options) => {
+                if (path === '/api/sync/handshake') throw new Error('offline');
+                return serveSync(path, options as { body?: Record<string, unknown> });
+            });
+            await engine.trigger();
+            expect(engine.getState().state).toBe('network_error');
+            vi.mocked(pb.send).mockClear();
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('x'));
+
+            vi.useFakeTimers();
+            deliver({ action: 'update', record: serverRecord('x') });
+            localWrite(engine, 'x');
+            await flushBuffer();
+
+            expect(handshakes()).toBe(0);
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(engine.getState().state).toBe('network_error');
+        });
+
+        it('still pushes a verified scope when another scope is blocked', async () => {
+            vi.mocked(getActiveSession).mockReturnValue({
+                userId: mockUserId,
+                masterKey: {} as CryptoKey,
+                identityKeyPair: {} as CryptoKeyPair,
+                roomId: mockRoomId,
+                roomKey: {} as CryptoKey
+            });
+            vi.mocked(pb.send).mockImplementation(async (path, options) => {
+                const body = (options as { body?: Record<string, unknown> }).body;
+                if (path === '/api/sync/handshake' && body?.scopeType === 'user') {
+                    return { gcHigh: 1500, coverage: 1000, known: [], initialized: true };
+                }
+                return serveSync(path, options as { body?: Record<string, unknown> });
+            });
+            await engine.trigger();
+            mockBatchCollection.upsert.mockClear();
+            vi.mocked(localDB.getRecord).mockResolvedValue({
+                ...makeRecord('room-chat'),
+                scopeType: 'room',
+                scopeId: mockRoomId
+            });
+
+            vi.useFakeTimers();
+            localWrite(engine, 'room-chat');
+            await flushBuffer();
+
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'room-chat', roomId: mockRoomId }),
+                coverageHeader
+            );
+            expect(engine.getState().state).toBe('unsafe_merge');
+        });
+
+        it('neither commits nor advances cursors when the server changes mid-session', async () => {
+            vi.mocked(mockCollection.getList).mockImplementation(async () => {
+                pb.baseUrl = 'https://other.example.test';
+                return { items: [], page: 1, totalPages: 1 } as never;
+            });
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
+
+            await engine.trigger();
+
+            expect(vi.mocked(pb.send).mock.calls.map(([path]) => path)).not.toContain(
+                '/api/sync/commit'
+            );
+            expect(mockBatch.send).not.toHaveBeenCalled();
+            expect(syncCursorDB.advance).not.toHaveBeenCalled();
+        });
+
+        it('sends nothing to a server other than the verified one', async () => {
+            await verifySession(engine);
+            pb.baseUrl = 'https://other.example.test';
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            refuseHandshake();
+
+            // Stale subscription of the previous server.
+            deliver({ action: 'create', record: serverRecord('stale') });
+            // A local write must be verified against the new server first.
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('moved'));
+            vi.useFakeTimers();
+            localWrite(engine, 'moved');
+            await flushBuffer();
+
+            await vi.waitFor(() => expect(handshakes()).toBe(1));
+            expect(localDB.transaction).not.toHaveBeenCalled();
+            expect(mockBatch.send).not.toHaveBeenCalled();
+        });
+    });
+
     describe('canonical local persistence', () => {
         let db: WebDatabaseAdapter;
         let tick: number;
@@ -642,6 +1245,17 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(localDB.putRecords).mockImplementation(db.putRecords.bind(db));
             vi.mocked(localDB.getUnsyncedChanges).mockImplementation(
                 db.getUnsyncedChanges.bind(db)
+            );
+            vi.mocked(localDB.getSyncGcHigh).mockImplementation(db.getSyncGcHigh.bind(db));
+            vi.mocked(localDB.collectTombstones).mockImplementation(db.collectTombstones.bind(db));
+            vi.mocked(localDB.getSyncCheckpoints).mockImplementation(
+                db.getSyncCheckpoints.bind(db)
+            );
+            vi.mocked(localDB.addSyncCheckpoints).mockImplementation(
+                db.addSyncCheckpoints.bind(db)
+            );
+            vi.mocked(localDB.pruneSyncCheckpoints).mockImplementation(
+                db.pruneSyncCheckpoints.bind(db)
             );
             vi.mocked(mockBatch.send).mockResolvedValue([]);
             vi.mocked(mockCollection.getList).mockResolvedValue({
@@ -672,6 +1286,55 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(syncCursorDB.get).mockReset();
             vi.mocked(syncCursorDB.advance).mockReset();
             vi.mocked(decryptBytes).mockResolvedValue(deflateSync(strToU8('{}')));
+        });
+
+        it('sends a change held while unsafe once a later session is verified', async () => {
+            const cursors = { serverPullCursor: 0, localPushCursor: 0 };
+            vi.mocked(syncCursorDB.get).mockImplementation(async () => ({ ...cursors }));
+            vi.mocked(syncCursorDB.advance).mockImplementation(async (_identity, update) => {
+                cursors.serverPullCursor = update.serverPullCursor ?? cursors.serverPullCursor;
+                cursors.localPushCursor = update.localPushCursor ?? cursors.localPushCursor;
+            });
+            await db.addSyncCheckpoints({ scopeType: 'user', scopeId: mockUserId }, [
+                { id: 'held', anchor: 0 }
+            ]);
+            let safe = false;
+            vi.mocked(pb.send).mockImplementation(async (path, options) =>
+                path === '/api/sync/handshake' && !safe
+                    ? { gcHigh: 10, coverage: 0, known: [], initialized: true }
+                    : serveSync(path, options as { body?: Record<string, unknown> })
+            );
+            await DataRecordSyncEngine.trigger();
+            expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
+
+            const states: string[] = [];
+            const unsubscribe = DataRecordSyncEngine.subscribeStatus(({ state }) =>
+                states.push(state)
+            );
+            states.length = 0;
+            await db.putRecord('characters', makeRecord('written-while-unsafe'));
+            DataRecordSyncEngine.handleLocalWrite({
+                tableName: 'characters',
+                operation: 'put',
+                ids: ['written-while-unsafe'],
+                origin: 'local'
+            });
+            // The flush runs, holds the change, and keeps reporting why.
+            await vi.waitFor(() => expect(states).toEqual(['syncing', 'unsafe_merge']), {
+                timeout: 5_000
+            });
+            unsubscribe();
+            expect(mockBatchCollection.upsert).not.toHaveBeenCalled();
+            expect(cursors.localPushCursor).toBe(0);
+
+            safe = true;
+            await DataRecordSyncEngine.trigger();
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'written-while-unsafe' }),
+                coverageHeader
+            );
+            const held = await db.getRecord('characters', 'written-while-unsafe');
+            expect(cursors.localPushCursor).toBeGreaterThanOrEqual(held!.localUpdatedAt!);
         });
 
         it('pushes a low updatedAt change received from another server back to the original server', async () => {
@@ -713,7 +1376,8 @@ describe('DataRecordSyncEngine', () => {
             mockBatchCollection.upsert.mockClear();
             await DataRecordSyncEngine.trigger();
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({ id: remote.id, updatedAt: 10 })
+                expect.objectContaining({ id: remote.id, updatedAt: 10 }),
+                coverageHeader
             );
             expect(mockBatchCollection.upsert.mock.calls[0][0]).not.toHaveProperty(
                 'localUpdatedAt'
@@ -738,6 +1402,7 @@ describe('DataRecordSyncEngine', () => {
                 } else if (path === 'Push') {
                     vi.mocked(mockBatch.send).mockResolvedValue([{ status: 200, body: remote }]);
                 } else {
+                    await DataRecordSyncEngine.trigger();
                     await DataRecordSyncEngine.subscribeRealtime();
                     const callback = mockCollection.subscribe.mock.calls.at(-1)![1] as (
                         event: unknown

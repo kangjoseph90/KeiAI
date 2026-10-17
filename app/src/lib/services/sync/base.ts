@@ -1,7 +1,16 @@
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { toErrorState, isAbortError } from './utils';
 
-export type SyncState = 'idle' | 'syncing' | 'network_error' | 'quota_error' | 'auth_error';
+export type SyncState =
+    | 'idle'
+    | 'syncing'
+    | 'network_error'
+    | 'quota_error'
+    | 'auth_error'
+    /** GC may have forgotten a deletion the peer still holds live; nothing was merged. */
+    | 'unsafe_merge'
+    /** A replica without safety state meets one that has forgotten deletions. */
+    | 'init_required';
 
 export interface SyncProgress {
     completed: number;
