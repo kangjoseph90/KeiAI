@@ -91,8 +91,6 @@
             $assetSyncStatus.state,
             $multiSyncStatus.state
         ];
-        if (states.includes('unsafe_merge')) return 'unsafe_merge';
-        if (states.includes('init_required')) return 'init_required';
         if (states.includes('auth_error')) return 'auth_error';
         if (states.includes('quota_error')) return 'quota_error';
         if (states.includes('network_error')) return 'network_error';
@@ -110,11 +108,7 @@
                   ? $t('shell.sidebar.sync.indicatorQuota')
                   : syncState === 'auth_error'
                     ? $t('shell.sidebar.sync.indicatorAuth')
-                    : syncState === 'unsafe_merge'
-                      ? $t('shell.sidebar.sync.indicatorUnsafeMerge')
-                      : syncState === 'init_required'
-                        ? $t('shell.sidebar.sync.indicatorInitRequired')
-                        : $t('shell.sidebar.sync.indicatorIdle')
+                    : $t('shell.sidebar.sync.indicatorIdle')
     );
 
     $effect(() => {
@@ -146,8 +140,6 @@
         if (status.state === 'network_error') return $t('shell.sidebar.sync.statusNetworkError');
         if (status.state === 'quota_error') return $t('shell.sidebar.sync.statusQuotaError');
         if (status.state === 'auth_error') return $t('shell.sidebar.sync.statusAuthError');
-        if (status.state === 'unsafe_merge') return $t('shell.sidebar.sync.statusUnsafeMerge');
-        if (status.state === 'init_required') return $t('shell.sidebar.sync.statusInitRequired');
         return $t('shell.sidebar.sync.statusUpToDate');
     }
 

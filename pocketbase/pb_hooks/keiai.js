@@ -202,6 +202,19 @@ function getNumberField(record, fieldName, fallback) {
   return fallback;
 }
 
+// Canonical sync records use the client supplied updatedAt as their LWW
+// version, but serverUpdatedAt is always assigned by the server. Keep the
+// timestamp monotonic within a running PocketBase process so a sync cursor can
+// safely use it even when several writes land in the same millisecond.
+var lastServerTimestamp = 0;
+
+function getServerTimestamp() {
+  var now = Date.now();
+  if (now <= lastServerTimestamp) now = lastServerTimestamp + 1;
+  lastServerTimestamp = now;
+  return now;
+}
+
 var syncRecordFields = {
   records: [
     "userId",
@@ -211,7 +224,6 @@ var syncRecordFields = {
     "encryptedData",
     "encryptedDataIV",
     "isDeleted",
-    "tombstoneAt",
     "assetEntries",
     "serverUpdatedAt",
   ],
@@ -223,7 +235,6 @@ var syncRecordFields = {
     "encryptedData",
     "encryptedDataIV",
     "isDeleted",
-    "tombstoneAt",
     "assetEntries",
     "serverUpdatedAt",
   ],
@@ -246,137 +257,6 @@ var syncRecordFields = {
     "serverUpdatedAt",
   ],
 };
-
-// Canonical sync records use the client supplied updatedAt as their LWW
-// version, but serverUpdatedAt is the server change order that Pull cursors
-// follow. It is a commit-ordered revision: SQLite triggers assign it inside the
-// same write transaction as the change, and SQLite admits one writer at a
-// time, so once revision N is visible every lower revision is committed. A
-// rolled-back write takes its revision with it. Hooks never assign it.
-var SYNC_REVISION_TABLE = "sync_revision";
-
-function syncRevisionTriggerNames() {
-  var names = [];
-  for (var collectionName in syncRecordFields) {
-    names.push(collectionName + "_sync_revision_insert");
-    names.push(collectionName + "_sync_revision_update");
-  }
-  return names;
-}
-
-/** Idempotently install the revision counter and its triggers. */
-function ensureSyncRevisionTriggers(app) {
-  app
-    .db()
-    .newQuery(
-      "CREATE TABLE IF NOT EXISTS " +
-        SYNC_REVISION_TABLE +
-        " (id INTEGER PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)",
-    )
-    .execute();
-  app
-    .db()
-    .newQuery(
-      "INSERT OR IGNORE INTO " +
-        SYNC_REVISION_TABLE +
-        " (id, value) VALUES (0, 0)",
-    )
-    .execute();
-  for (var collectionName in syncRecordFields) {
-    // tombstoneAt is server-local retention metadata, not replicated state.
-    var canonical = syncRecordFields[collectionName].filter(function (field) {
-      return field !== "serverUpdatedAt" && field !== "tombstoneAt";
-    });
-    var changed = canonical
-      .map(function (field) {
-        return "OLD." + field + " IS NOT NEW." + field;
-      })
-      .join(" OR ");
-    var stamp =
-      "UPDATE " +
-      SYNC_REVISION_TABLE +
-      " SET value = value + 1 WHERE id = 0; UPDATE " +
-      collectionName +
-      " SET serverUpdatedAt = (SELECT value FROM " +
-      SYNC_REVISION_TABLE +
-      " WHERE id = 0) WHERE id = NEW.id;";
-    app
-      .db()
-      .newQuery(
-        "CREATE TRIGGER IF NOT EXISTS " +
-          collectionName +
-          "_sync_revision_insert AFTER INSERT ON " +
-          collectionName +
-          " BEGIN " +
-          stamp +
-          " END",
-      )
-      .execute();
-    // Rejected writes restore every canonical field, so they keep their position.
-    app
-      .db()
-      .newQuery(
-        "CREATE TRIGGER IF NOT EXISTS " +
-          collectionName +
-          "_sync_revision_update AFTER UPDATE OF " +
-          canonical.join(", ") +
-          " ON " +
-          collectionName +
-          " WHEN " +
-          changed +
-          " BEGIN " +
-          stamp +
-          " END",
-      )
-      .execute();
-  }
-}
-
-/**
- * Refuse to write or serve sync data while the ordering triggers are missing,
- * for example after a collection rebuild: unordered changes could be skipped.
- */
-function assertSyncRevisionTriggers(app) {
-  var names = syncRevisionTriggerNames();
-  var row = new DynamicModel({ n: 0 });
-  app
-    .db()
-    .select("COUNT(*) AS n")
-    .from("sqlite_master")
-    .where($dbx.hashExp({ type: "trigger" }))
-    .andWhere($dbx.in("name", ...names))
-    .one(row);
-  if (Number(row.n) !== names.length) {
-    throw new ApiError(503, "Sync ordering is unavailable.");
-  }
-}
-
-/** Highest committed server change; every change at or below it is visible. */
-function getSyncRevision(app) {
-  assertSyncRevisionTriggers(app);
-  var row = new DynamicModel({ value: 0 });
-  app
-    .db()
-    .newQuery("SELECT value FROM " + SYNC_REVISION_TABLE + " WHERE id = 0")
-    .one(row);
-  return Number(row.value) || 0;
-}
-
-/** Allocate a revision inside the caller's transaction. */
-function nextSyncRevision(txApp) {
-  txApp
-    .db()
-    .newQuery(
-      "UPDATE " + SYNC_REVISION_TABLE + " SET value = value + 1 WHERE id = 0",
-    )
-    .execute();
-  var row = new DynamicModel({ value: 0 });
-  txApp
-    .db()
-    .newQuery("SELECT value FROM " + SYNC_REVISION_TABLE + " WHERE id = 0")
-    .one(row);
-  return Number(row.value) || 0;
-}
 
 function copySyncRecordFields(target, source, collectionName) {
   var fields = syncRecordFields[collectionName];
@@ -416,448 +296,12 @@ function applySyncRecordUpdate(record, collectionName) {
     return false;
   }
 
-  if (tombstoneScopes[collectionName]) {
-    // Retention counts from when this server first held the current tombstone
-    // version, so a newer version that takes a fresh revision is kept as long.
-    record.set("tombstoneAt", incomingDeleted ? Date.now() : 0);
-  }
-  // The update trigger assigns the new revision when the change commits.
-  record.set("serverUpdatedAt", original.get("serverUpdatedAt"));
+  record.set("serverUpdatedAt", getServerTimestamp());
   return true;
 }
 
 function stampSyncRecordCreate(record) {
-  if (tombstoneScopes[record.collection().name]) {
-    record.set("tombstoneAt", record.getBool("isDeleted") ? Date.now() : 0);
-  }
-  // The insert trigger assigns the revision when the change commits.
-  record.set("serverUpdatedAt", 0);
-}
-
-// ─── Tombstone GC merge safety ─────────────────────────────────────
-//
-// A garbage-collected tombstone is a forgotten deletion. `sync_scopes.gcHigh`
-// bounds the serverUpdatedAt of every deletion this server forgot, and a peer
-// covers it either through its Pull cursor or a shared History–Clean
-// checkpoint anchored at or above it. See docs/sync-gc.md.
-
-var TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-var CHECKPOINT_RETENTION_MS = 2 * TOMBSTONE_RETENTION_MS;
-var MAX_SYNC_CHECKPOINT_IDS = 1000;
-var GC_SCOPE_PAGE = 100;
-
-var tombstoneScopes = {
-  records: { scopeType: "user", ownerField: "userId" },
-  multi_room_records: { scopeType: "room", ownerField: "roomId" },
-};
-
-/** Highest position whose forgotten deletions the peer provably knows. */
-function syncCoverage(cursor, anchors) {
-  var high = cursor;
-  for (var i = 0; i < anchors.length; i++) {
-    if (anchors[i] > high) high = anchors[i];
-  }
-  return high;
-}
-
-function readSyncNumber(value) {
-  return typeof value === "number" && isFinite(value) && value >= 0
-    ? value
-    : null;
-}
-
-function readSyncRequest(body) {
-  var scopeType = body.scopeType;
-  var scopeId = body.scopeId;
-  var pullCursor = readSyncNumber(body.pullCursor);
-  var ids = body.checkpoints;
-  if (
-    (scopeType !== "user" && scopeType !== "room") ||
-    typeof scopeId !== "string" ||
-    !scopeId ||
-    pullCursor === null ||
-    !isSyncIdList(ids)
-  ) {
-    return null;
-  }
-  return {
-    scopeType: scopeType,
-    scopeId: scopeId,
-    pullCursor: pullCursor,
-    checkpoints: ids,
-  };
-}
-
-function isSyncIdList(ids) {
-  if (!Array.isArray(ids) || ids.length > MAX_SYNC_CHECKPOINT_IDS) return false;
-  for (var i = 0; i < ids.length; i++) {
-    if (typeof ids[i] !== "string" || !ids[i] || ids[i].length > 64) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function canAccessSyncScope(app, auth, scopeType, scopeId) {
-  if (scopeType === "user") return scopeId === auth.id;
-  var room = findMultiRoomIndex(app, scopeId);
-  if (!room || room.getBool("isDeleted")) return false;
-  var member = findMultiRoomMember(app, scopeId, auth.id);
-  return !!member && member.getString("status") === "accepted";
-}
-
-function getSyncGcHigh(app, scopeType, scopeId) {
-  var row = new DynamicModel({ gcHigh: 0 });
-  try {
-    app
-      .db()
-      .newQuery(
-        "SELECT gcHigh FROM sync_scopes WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
-      )
-      .bind({ scopeType: scopeType, scopeId: scopeId })
-      .one(row);
-  } catch (err) {
-    if (!isNoRowsError(err)) throw err;
-    return 0;
-  }
-  return Number(row.gcHigh) || 0;
-}
-
-function raiseSyncGcHigh(app, scopeType, scopeId, gcHigh) {
-  var record;
-  try {
-    record = app.findFirstRecordByFilter(
-      "sync_scopes",
-      "scopeType = {:scopeType} && scopeId = {:scopeId}",
-      { scopeType: scopeType, scopeId: scopeId },
-    );
-  } catch (err) {
-    if (!isNoRowsError(err)) throw err;
-    record = new Record(app.findCollectionByNameOrId("sync_scopes"));
-    record.set("scopeType", scopeType);
-    record.set("scopeId", scopeId);
-  }
-  if (gcHigh <= getNumberField(record, "gcHigh", 0)) return;
-  record.set("gcHigh", gcHigh);
-  app.save(record);
-}
-
-function findSyncCheckpoints(app, scopeType, scopeId, ids) {
-  if (ids.length === 0) return [];
-  var rows = arrayOf(
-    new DynamicModel({ checkpointId: "", anchor: 0, heldAt: 0 }),
-  );
-  app
-    .db()
-    .select("checkpointId", "anchor", "heldAt")
-    .from("sync_checkpoints")
-    .where($dbx.hashExp({ scopeType: scopeType, scopeId: scopeId }))
-    .andWhere($dbx.in("checkpointId", ...ids))
-    .all(rows);
-  return rows;
-}
-
-function anchorsOf(rows) {
-  var anchors = [];
-  for (var i = 0; i < rows.length; i++)
-    anchors.push(Number(rows[i].anchor) || 0);
-  return anchors;
-}
-
-function hasSyncCheckpoints(app, scopeType, scopeId) {
-  var row = new DynamicModel({ n: 0 });
-  app
-    .db()
-    .newQuery(
-      "SELECT COUNT(*) AS n FROM sync_checkpoints WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
-    )
-    .bind({ scopeType: scopeType, scopeId: scopeId })
-    .one(row);
-  return Number(row.n) > 0;
-}
-
-function addSyncCheckpoint(
-  app,
-  scopeType,
-  scopeId,
-  checkpointId,
-  anchor,
-  heldAt,
-) {
-  var record = new Record(app.findCollectionByNameOrId("sync_checkpoints"));
-  record.set("scopeType", scopeType);
-  record.set("scopeId", scopeId);
-  record.set("checkpointId", checkpointId);
-  record.set("anchor", anchor);
-  record.set("heldAt", heldAt);
-  record.set("createdAt", Date.now());
-  app.save(record);
-}
-
-/**
- * Report this server's GC state and prove which client checkpoints it holds.
- * The client refuses the session unless both directions are covered.
- */
-function syncHandshake(app, auth, body) {
-  var request = readSyncRequest(body || {});
-  if (!request)
-    return { status: 400, body: { error: "Invalid sync request." } };
-  if (!canAccessSyncScope(app, auth, request.scopeType, request.scopeId)) {
-    return { status: 403, body: { error: "Sync scope is not accessible." } };
-  }
-
-  var gcHigh = getSyncGcHigh(app, request.scopeType, request.scopeId);
-  var held = findSyncCheckpoints(
-    app,
-    request.scopeType,
-    request.scopeId,
-    request.checkpoints,
-  );
-  var known = [];
-  for (var i = 0; i < held.length; i++)
-    known.push(String(held[i].checkpointId));
-  return {
-    status: 200,
-    body: {
-      gcHigh: gcHigh,
-      coverage: syncCoverage(request.pullCursor, anchorsOf(held)),
-      known: known,
-      initialized:
-        gcHigh > 0 ||
-        hasSyncCheckpoints(app, request.scopeType, request.scopeId),
-    },
-  };
-}
-
-/**
- * Confirm a session boundary atomically with this server's GC.
- *
- * The client may advance its Pull cursor only after this succeeds: a GC that
- * forgot an uncovered deletion during the Pull fails the commit. On success
- * the server inherits the client's checkpoints, records a newly issued one
- * anchored at the session's Pull bound, and returns the checkpoints it held
- * within the Pull range for the client to inherit.
- */
-function syncCommit(auth, body) {
-  body = body || {};
-  var request = readSyncRequest(body);
-  var serverUpper = readSyncNumber(body.serverUpper);
-  var inherit = body.inherit;
-  var issued = body.checkpoint;
-  if (
-    !request ||
-    serverUpper === null ||
-    serverUpper < request.pullCursor ||
-    !isSyncIdList(inherit) ||
-    (issued !== undefined && !isSyncIdList([issued]))
-  ) {
-    return { status: 400, body: { error: "Invalid sync request." } };
-  }
-
-  var result = null;
-  $app.runInTransaction(function (txApp) {
-    if (!canAccessSyncScope(txApp, auth, request.scopeType, request.scopeId)) {
-      result = {
-        status: 403,
-        body: { error: "Sync scope is not accessible." },
-      };
-      return;
-    }
-    var scopeType = request.scopeType;
-    var scopeId = request.scopeId;
-    var held = findSyncCheckpoints(
-      txApp,
-      scopeType,
-      scopeId,
-      request.checkpoints,
-    );
-    var gcHigh = getSyncGcHigh(txApp, scopeType, scopeId);
-    if (gcHigh > syncCoverage(request.pullCursor, anchorsOf(held))) {
-      result = {
-        status: 409,
-        body: { code: "sync_unsafe", error: "Merge is not proven safe." },
-      };
-      return;
-    }
-
-    // A fresh revision orders after every committed Push of the session and
-    // after every Pull bound a client could have read before this commit.
-    var heldAt = nextSyncRevision(txApp);
-    if (serverUpper >= heldAt) {
-      result = { status: 400, body: { error: "Invalid sync request." } };
-      return;
-    }
-
-    var inherited = [];
-    var heldIds = {};
-    var existing = findSyncCheckpoints(
-      txApp,
-      scopeType,
-      scopeId,
-      inherit.concat(issued ? [issued] : []),
-    );
-    for (var i = 0; i < existing.length; i++) {
-      heldIds[existing[i].checkpointId] = true;
-    }
-    if (issued) {
-      if (heldIds[issued]) {
-        result = { status: 409, body: { error: "Checkpoint already exists." } };
-        return;
-      }
-      addSyncCheckpoint(txApp, scopeType, scopeId, issued, serverUpper, heldAt);
-      heldIds[issued] = true;
-    }
-    for (var j = 0; j < inherit.length; j++) {
-      if (heldIds[inherit[j]]) continue;
-      addSyncCheckpoint(txApp, scopeType, scopeId, inherit[j], 0, heldAt);
-      heldIds[inherit[j]] = true;
-    }
-
-    var rows = arrayOf(new DynamicModel({ checkpointId: "" }));
-    txApp
-      .db()
-      .newQuery(
-        "SELECT checkpointId FROM sync_checkpoints WHERE scopeType = {:scopeType} AND scopeId = {:scopeId} AND heldAt > {:after} AND heldAt <= {:through}",
-      )
-      .bind({
-        scopeType: scopeType,
-        scopeId: scopeId,
-        after: request.pullCursor,
-        through: serverUpper,
-      })
-      .all(rows);
-    for (var k = 0; k < rows.length; k++)
-      inherited.push(String(rows[k].checkpointId));
-    result = { status: 200, body: { checkpoints: inherited } };
-  });
-  return result;
-}
-
-/**
- * Sync records are written only through /api/batch. A batch loads the original
- * record and runs these request hooks inside its transaction, so delete-wins
- * arbitration and the create guard see committed state that GC cannot change
- * before the write. A plain collection request has no such transaction.
- */
-function assertSyncWriteTransactional(e) {
-  if (!e.app.isTransactional()) {
-    throw new BadRequestError(
-      "Sync records must be written through /api/batch.",
-    );
-  }
-}
-
-/**
- * Refuse a live create the pushing client cannot prove safe. A create is the
- * only write that can resurrect a deletion this server has forgotten.
- */
-function assertSyncCreateCovered(e) {
-  var record = e.record;
-  if (!record || record.getBool("isDeleted")) return;
-  var scope = tombstoneScopes[record.collection().name];
-  if (!scope) return;
-  var gcHigh = getSyncGcHigh(
-    e.app,
-    scope.scopeType,
-    record.getString(scope.ownerField),
-  );
-  if (gcHigh === 0) return;
-  var headers = e.requestInfo().headers || {};
-  var coverage = Number(headers["x_kei_sync_coverage"]);
-  if (!(coverage >= gcHigh)) {
-    // PocketBase rewrites the message casing; clients match the code case-insensitively.
-    throw new ApiError(409, "Merge is not proven safe (sync_unsafe).");
-  }
-}
-
-/**
- * Delete tombstones first held before the retention window. Each scope raises
- * its watermark and deletes in one transaction, and only tombstones at or
- * below the raised watermark are removed.
- */
-function collectSyncTombstones(now) {
-  var receivedThrough = now - TOMBSTONE_RETENTION_MS;
-  var collected = 0;
-  for (var collectionName in tombstoneScopes) {
-    var scope = tombstoneScopes[collectionName];
-    var expired =
-      "isDeleted = TRUE AND tombstoneAt > 0 AND tombstoneAt <= {:receivedThrough}";
-    // Keyset over scope ids: each scope is visited once per run, even if it
-    // still holds expired tombstones afterwards.
-    var afterScopeId = "";
-    while (true) {
-      var scopes = arrayOf(new DynamicModel({ scopeId: "" }));
-      $app
-        .db()
-        .newQuery(
-          "SELECT DISTINCT " +
-            scope.ownerField +
-            " AS scopeId FROM " +
-            collectionName +
-            " WHERE " +
-            expired +
-            " AND " +
-            scope.ownerField +
-            " > {:afterScopeId} ORDER BY scopeId LIMIT {:limit}",
-        )
-        .bind({
-          receivedThrough: receivedThrough,
-          afterScopeId: afterScopeId,
-          limit: GC_SCOPE_PAGE,
-        })
-        .all(scopes);
-
-      for (var i = 0; i < scopes.length; i++) {
-        var scopeId = String(scopes[i].scopeId);
-        $app.runInTransaction(function (txApp) {
-          var params = { scopeId: scopeId, receivedThrough: receivedThrough };
-          var high = new DynamicModel({ high: 0 });
-          txApp
-            .db()
-            .newQuery(
-              "SELECT COALESCE(MAX(serverUpdatedAt), 0) AS high FROM " +
-                collectionName +
-                " WHERE " +
-                scope.ownerField +
-                " = {:scopeId} AND " +
-                expired,
-            )
-            .bind(params)
-            .one(high);
-          var gcHigh = Number(high.high) || 0;
-          if (gcHigh === 0) return;
-          raiseSyncGcHigh(txApp, scope.scopeType, scopeId, gcHigh);
-          var deleted = txApp
-            .db()
-            .newQuery(
-              "DELETE FROM " +
-                collectionName +
-                " WHERE " +
-                scope.ownerField +
-                " = {:scopeId} AND " +
-                expired +
-                " AND serverUpdatedAt <= {:gcHigh}",
-            )
-            .bind({
-              scopeId: scopeId,
-              receivedThrough: receivedThrough,
-              gcHigh: gcHigh,
-            })
-            .execute();
-          collected += Number(deleted.rowsAffected()) || 0;
-        });
-      }
-      if (scopes.length < GC_SCOPE_PAGE) break;
-      afterScopeId = String(scopes[scopes.length - 1].scopeId);
-    }
-  }
-
-  $app
-    .db()
-    .newQuery("DELETE FROM sync_checkpoints WHERE createdAt < {:createdBefore}")
-    .bind({ createdBefore: now - CHECKPOINT_RETENTION_MS })
-    .execute();
-  return collected;
+  record.set("serverUpdatedAt", getServerTimestamp());
 }
 
 function isNoRowsError(err) {
@@ -1068,7 +512,6 @@ function createOrUpdateJoinRequest(auth, roomId) {
     txApp.save(member);
   });
 
-  member = $app.findRecordById("multi_room_members", member.id);
   return { status: 200, body: { member: serializeMultiRoomMember(member) } };
 }
 
@@ -1095,7 +538,6 @@ function leaveMultiRoom(auth, roomId) {
   if (!member) {
     return { status: 404, body: { error: "Multi membership not found." } };
   }
-  member = $app.findRecordById("multi_room_members", member.id);
   return { status: 200, body: { member: serializeMultiRoomMember(member) } };
 }
 
@@ -1258,9 +700,9 @@ function deleteMultiRoom(auth, roomId) {
     index.set("isDeleted", true);
     index.set("updatedAt", now);
     txApp.save(index);
+    room = index;
   });
 
-  room = $app.findRecordById("multi_room_index", roomId);
   return { status: 200, body: { room: serializeMultiRoomIndex(room) } };
 }
 
@@ -1924,17 +1366,9 @@ module.exports = {
   getUserPublicKey: getUserPublicKey,
   getOrCreateAssetAccount: getOrCreateAssetAccount,
   getNumberField: getNumberField,
-  ensureSyncRevisionTriggers: ensureSyncRevisionTriggers,
-  assertSyncRevisionTriggers: assertSyncRevisionTriggers,
-  getSyncRevision: getSyncRevision,
+  getServerTimestamp: getServerTimestamp,
   applySyncRecordUpdate: applySyncRecordUpdate,
   stampSyncRecordCreate: stampSyncRecordCreate,
-  syncCoverage: syncCoverage,
-  syncHandshake: syncHandshake,
-  syncCommit: syncCommit,
-  assertSyncWriteTransactional: assertSyncWriteTransactional,
-  assertSyncCreateCovered: assertSyncCreateCovered,
-  collectSyncTombstones: collectSyncTombstones,
   getPairingBlobs: getPairingBlobs,
   handleAssetRefTransition: handleAssetRefTransition,
   hasAssetUsage: hasAssetUsage,
