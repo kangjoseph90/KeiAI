@@ -154,6 +154,7 @@ onRecordCreate(
       var h = require(`${__hooks}/keiai.js`);
       h.assertSyncRevisionTriggers(e.app);
       h.stampSyncRecordCreate(e.record);
+      h.stampSyncRecordLineage(e.app, e.record);
     }
     e.next();
   },
@@ -166,6 +167,7 @@ onRecordUpdate(
       var h = require(`${__hooks}/keiai.js`);
       h.assertSyncRevisionTriggers(e.app);
       h.applySyncRecordUpdate(e.record, e.record.collection().name);
+      h.stampSyncRecordLineage(e.app, e.record);
     }
     e.next();
   },
@@ -175,10 +177,13 @@ onRecordUpdate(
 // A live create is the only write that can resurrect a deletion this server
 // garbage-collected; it must carry proof that the client knows every such deletion.
 // Both checks need the batch transaction, so plain collection writes are refused.
+// Every write must also belong to the scope's current lineage, or to the
+// bootstrap that is initializing the scope.
 onRecordCreateRequest(
   (e) => {
     var h = require(`${__hooks}/keiai.js`);
     h.assertSyncWriteTransactional(e);
+    h.assertSyncWriteAllowed(e);
     h.assertSyncCreateCovered(e);
     e.next();
   },
@@ -188,7 +193,9 @@ onRecordCreateRequest(
 
 onRecordUpdateRequest(
   (e) => {
-    require(`${__hooks}/keiai.js`).assertSyncWriteTransactional(e);
+    var h = require(`${__hooks}/keiai.js`);
+    h.assertSyncWriteTransactional(e);
+    h.assertSyncWriteAllowed(e);
     e.next();
   },
   "records",
@@ -235,7 +242,8 @@ routerAdd("GET", "/api/spec", (e) => {
 routerAdd("GET", "/api/now", (e) => {
   var h = require(`${__hooks}/keiai.js`);
   var ip = e.realIP();
-  if (!h.checkRate(ip + ":now", 60, 60000)) {
+  var limit = Number($os.getenv("SYNC_NOW_RATE_LIMIT")) || 60;
+  if (!h.checkRate(ip + ":now", limit, 60000)) {
     return e.json(429, { error: "Too many requests. Try again later." });
   }
   return e.json(200, { now: h.getSyncRevision($app) });
@@ -249,6 +257,24 @@ routerAdd("POST", "/api/sync/handshake", (e) => {
   if (!auth) return e.json(401, { error: "Authentication required." });
   h.rejectDisallowedUsername(e, auth.getString("username"));
   var result = h.syncHandshake($app, auth, e.requestInfo().body);
+  return e.json(result.status, result.body);
+});
+
+routerAdd("POST", "/api/sync/bootstrap", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+  var result = h.syncBootstrap(auth, e.requestInfo().body);
+  return e.json(result.status, result.body);
+});
+
+routerAdd("POST", "/api/sync/adopt", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+  var result = h.syncAdopt(auth, e.requestInfo().body);
   return e.json(result.status, result.body);
 });
 

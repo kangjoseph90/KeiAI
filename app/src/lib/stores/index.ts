@@ -28,6 +28,7 @@ export const activeUser = readonly(StoreState.activeUser);
 export const localUsers = readonly(StoreState.localUsers);
 export const pbConnected = readonly(StoreState.pbConnected);
 export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
+export const syncConflicts = readonly(StoreState.syncConflicts);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const multiSyncStatus = readonly(StoreState.multiSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);

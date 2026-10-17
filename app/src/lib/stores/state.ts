@@ -24,7 +24,7 @@ import type {
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
-import type { SyncStatus } from '$lib/services';
+import type { SyncConflict, SyncStatus } from '$lib/services';
 import type {
     ChatDraft,
     CollectedTask,
@@ -65,6 +65,7 @@ export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const multiSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<SyncStatus>({ state: 'idle' });
+export const syncConflicts = writable<SyncConflict[]>([]);
 export const serverTransitionLocked = writable(false);
 export const serverTransitionProgress = writable<ConnectionChangeProgress | null>(null);
 

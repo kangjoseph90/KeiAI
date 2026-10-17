@@ -1,6 +1,8 @@
 import Dexie, { type Table } from 'dexie';
+import type { DataScope } from '$lib/adapters/db';
 import type {
     ISyncCursorAdapter,
+    SyncCursorStream,
     SyncCursorIdentity,
     SyncCursorRecord,
     SyncCursorState,
@@ -68,6 +70,19 @@ export class WebSyncCursorAdapter implements ISyncCursorAdapter {
         await this.db.cursors
             .where('[serverUrl+userId+stream]')
             .equals([query.serverUrl, query.userId, query.stream])
+            .delete();
+    }
+
+    async deleteByScope(userId: string, stream: SyncCursorStream, scope: DataScope): Promise<void> {
+        await this.db.cursors
+            .where('userId')
+            .equals(userId)
+            .filter(
+                (cursor) =>
+                    cursor.stream === stream &&
+                    cursor.scopeType === scope.scopeType &&
+                    cursor.scopeId === scope.scopeId
+            )
             .delete();
     }
 

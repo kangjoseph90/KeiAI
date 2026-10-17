@@ -12,6 +12,7 @@
         LockKeyhole,
         RefreshCw,
         Settings,
+        ShieldAlert,
         UserCircle,
         UserPlus,
         UsersRound
@@ -40,10 +41,12 @@
         serverTransitionLocked,
         selectRoom,
         switchLocalUser,
+        syncConflicts,
         updateGlobalFolder,
         userSyncStatus,
         t
     } from '$lib/stores';
+    import SyncConflictDialog from './SyncConflictDialog.svelte';
     import { toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
@@ -81,6 +84,7 @@
     let retryingSync = $state(false);
     let selectingRoomId = $state<string | null>(null);
     let syncIconState = $state<SyncIndicatorState>('idle');
+    let conflictDialogOpen = $state(false);
     let syncIconStartedAt = 0;
 
     const syncState = $derived.by(() => {
@@ -93,6 +97,7 @@
         ];
         if (states.includes('unsafe_merge')) return 'unsafe_merge';
         if (states.includes('init_required')) return 'init_required';
+        if (states.includes('server_initializing')) return 'server_initializing';
         if (states.includes('auth_error')) return 'auth_error';
         if (states.includes('quota_error')) return 'quota_error';
         if (states.includes('network_error')) return 'network_error';
@@ -114,7 +119,9 @@
                       ? $t('shell.sidebar.sync.indicatorUnsafeMerge')
                       : syncState === 'init_required'
                         ? $t('shell.sidebar.sync.indicatorInitRequired')
-                        : $t('shell.sidebar.sync.indicatorIdle')
+                        : syncState === 'server_initializing'
+                          ? $t('shell.sidebar.sync.indicatorServerInitializing')
+                          : $t('shell.sidebar.sync.indicatorIdle')
     );
 
     $effect(() => {
@@ -148,6 +155,9 @@
         if (status.state === 'auth_error') return $t('shell.sidebar.sync.statusAuthError');
         if (status.state === 'unsafe_merge') return $t('shell.sidebar.sync.statusUnsafeMerge');
         if (status.state === 'init_required') return $t('shell.sidebar.sync.statusInitRequired');
+        if (status.state === 'server_initializing') {
+            return $t('shell.sidebar.sync.statusServerInitializing');
+        }
         return $t('shell.sidebar.sync.statusUpToDate');
     }
 
@@ -413,6 +423,16 @@
                             $multiSyncStatus
                         )}
                         <DropdownMenu.Separator />
+                        {#if $syncConflicts.length > 0}
+                            <DropdownMenu.Item
+                                class="cursor-pointer gap-2 text-destructive"
+                                disabled={$serverTransitionLocked}
+                                onclick={() => (conflictDialogOpen = true)}
+                            >
+                                <ShieldAlert class="size-4" />
+                                {$t('shell.sidebar.sync.resolveConflict')}
+                            </DropdownMenu.Item>
+                        {/if}
                         <DropdownMenu.Item
                             class="cursor-pointer gap-2"
                             disabled={$serverTransitionLocked ||
@@ -427,6 +447,7 @@
                         </DropdownMenu.Item>
                     </DropdownMenu.Content>
                 </DropdownMenu.Root>
+                <SyncConflictDialog conflict={$syncConflicts[0]} bind:open={conflictDialogOpen} />
             {/if}
             <Button
                 variant="ghost"

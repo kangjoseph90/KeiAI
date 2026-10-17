@@ -18,6 +18,8 @@ export const shellMessages = {
     'shell.sidebar.sync.statusAuthError': 'Authentication error',
     'shell.sidebar.sync.statusUnsafeMerge': 'Merge blocked',
     'shell.sidebar.sync.statusInitRequired': 'Setup required',
+    'shell.sidebar.sync.statusServerInitializing': 'Server setup in progress',
+    'shell.sidebar.sync.resolveConflict': 'Resolve sync conflict…',
     'shell.sidebar.sync.user': 'User',
     'shell.sidebar.sync.records': 'Records',
     'shell.sidebar.sync.assets': 'Assets',
@@ -33,7 +35,34 @@ export const shellMessages = {
     'shell.sidebar.sync.indicatorUnsafeMerge':
         'Sync stopped: deleted data could reappear if these copies merged. Nothing was changed.',
     'shell.sidebar.sync.indicatorInitRequired':
-        'Sync stopped: this copy must be set up from the server before it can merge.',
+        'Sync stopped: this device has data that was never synced with the server. Choose which copy to keep.',
+    'shell.sidebar.sync.indicatorServerInitializing':
+        'Sync waiting: another device is setting up this data on the server.',
+    'shell.sync.conflict.titleUnsafe': 'This device and the server cannot be merged safely',
+    'shell.sync.conflict.titleInit': 'This device has data the server has not seen',
+    'shell.sync.conflict.bodyUnsafe':
+        'The copies of {:scope} on this device and on the server have diverged in a way that could bring deleted items back if merged. Choose which copy to keep.',
+    'shell.sync.conflict.bodyInit':
+        'This device holds {:scope} that was never synced with the copy on this server. Choose which copy to keep.',
+    'shell.sync.conflict.scopeUser': 'your personal data',
+    'shell.sync.conflict.scopeRoom': 'this multi room',
+    'shell.sync.conflict.keepLocal': "Keep this device's data",
+    'shell.sync.conflict.keepLocalHint':
+        "Replaces the server's copy. Changes that exist only on the server or on other devices are lost, and those devices will be asked to choose again.",
+    'shell.sync.conflict.keepServer': "Keep the server's data",
+    'shell.sync.conflict.keepServerHint':
+        "Replaces this device's copy. Changes that exist only on this device are lost.",
+    'shell.sync.conflict.later': 'Decide later',
+    'shell.sync.conflict.working': 'Resolving…',
+    'shell.sync.conflict.confirmLocalTitle': "Replace the server's copy?",
+    'shell.sync.conflict.confirmLocalBody':
+        "The server's copy of {:scope} will be replaced with this device's. This cannot be undone.",
+    'shell.sync.conflict.confirmServerTitle': "Replace this device's copy?",
+    'shell.sync.conflict.confirmServerBody':
+        "This device's copy of {:scope} will be replaced with the server's. This cannot be undone.",
+    'shell.sync.conflict.confirmAction': 'Replace',
+    'shell.sync.conflict.resolved': 'Sync conflict resolved',
+    'shell.sync.conflict.failed': 'Could not resolve the conflict: {:error}',
     'shell.sidebar.sync.indicatorServerTransition': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionTitle': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionBody': 'Sync is paused until the server change finishes.',

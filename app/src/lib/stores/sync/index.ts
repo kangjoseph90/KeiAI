@@ -6,7 +6,14 @@ import {
     UserRecordSyncEngine
 } from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
-import { assetSyncStatus, dataSyncStatus, multiSyncStatus, userSyncStatus } from '../state';
+import type { SyncConflict, SyncConflictChoice } from '$lib/services/sync';
+import {
+    assetSyncStatus,
+    dataSyncStatus,
+    multiSyncStatus,
+    syncConflicts,
+    userSyncStatus
+} from '../state';
 import { startDataStoreSync, stopDataStoreSync } from './data';
 import { startMultiStoreSync, stopMultiStoreSync } from './multi';
 import { startUserStoreSync, stopUserStoreSync } from './user';
@@ -19,6 +26,9 @@ export function startSyncStoreBindings(): void {
     const unsubscribers = [
         DataRecordSyncEngine.subscribeStatus((status: SyncStatus) => {
             dataSyncStatus.set(status);
+        }),
+        DataRecordSyncEngine.subscribeConflicts((conflicts) => {
+            syncConflicts.set(conflicts);
         }),
         UserRecordSyncEngine.subscribeStatus((status) => {
             userSyncStatus.set(status);
@@ -48,12 +58,21 @@ export function startSyncStoreBindings(): void {
         userSyncStatus.set({ state: 'idle' });
         multiSyncStatus.set({ state: 'idle' });
         assetSyncStatus.set({ state: 'idle' });
+        syncConflicts.set([]);
         stopBindings = null;
     };
 }
 
 export function stopSyncStoreBindings(): void {
     stopBindings?.();
+}
+
+/** Replace one replica of a conflicted scope with the other; see DataRecordSyncEngine. */
+export async function resolveSyncConflict(
+    conflict: SyncConflict,
+    choice: SyncConflictChoice
+): Promise<void> {
+    await DataRecordSyncEngine.resolveConflict(conflict, choice);
 }
 
 export async function performResetSyncCursors(): Promise<void> {

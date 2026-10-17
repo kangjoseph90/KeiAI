@@ -5,6 +5,10 @@
  * that still holds the record live would silently resurrect it, so every scope session first
  * proves, in both directions, that the peer knows every deletion this side has forgotten.
  * The proof is the direct relationship cursor or a shared History–Clean checkpoint.
+ *
+ * Replicas also carry a lineage: replicas of different lineages never merge. A replica with
+ * nothing to lose takes over its peer's state instead (bootstrap of an empty server, adoption
+ * by an empty client); anything else that cannot be proven waits for the user to choose.
  * The invariants and their argument are documented in docs/sync-gc.md.
  */
 
@@ -31,16 +35,80 @@ const MAX_OFFERED_CHECKPOINTS = 500;
 
 /** Request header that carries the server-side coverage of this client on Push. */
 export const SYNC_COVERAGE_HEADER = 'X-Kei-Sync-Coverage';
-
-export type MergeSafety = 'safe' | 'unsafe' | 'needs_init';
+/** Request header naming the lineage a Push was proven against. */
+export const SYNC_LINEAGE_HEADER = 'X-Kei-Sync-Lineage';
+/** Request header carrying the token of the bootstrap that may write an initializing scope. */
+export const SYNC_BOOTSTRAP_HEADER = 'X-Kei-Sync-Bootstrap';
 
 export interface ReplicaSafety {
     /** Highest own position of a forgotten deletion. */
     gcHigh: number;
     /** Highest own position whose forgotten deletions the peer provably knows. */
     coverage: number;
-    /** Whether this replica has ever recorded safety state for the scope. */
-    initialized: boolean;
+}
+
+/**
+ * - `sync`: same lineage, both directions proven.
+ * - `adopt`: this client holds nothing; it replaces its replica with the server's.
+ * - `bootstrap`: the server holds nothing (or this client's interrupted bootstrap); fill it.
+ * - `wait`: another client is initializing the server's scope.
+ * - `conflict`: both hold data that cannot be merged safely; the user must choose.
+ * - `init`: this never-synced client holds data, and the server holds another replica.
+ */
+export type SessionPlan = 'sync' | 'adopt' | 'bootstrap' | 'wait' | 'conflict' | 'init';
+
+export interface LocalReplica {
+    lineage: string | null;
+    /** Lineage of this client's own unfinished bootstrap of this server, if any. */
+    pendingLineage: string | null;
+    hasRecords: boolean;
+    safety: ReplicaSafety;
+}
+
+export interface RemoteReplica {
+    lineage: string | null;
+    initializing: 'active' | 'stale' | null;
+    hasRecords: boolean;
+    safety: ReplicaSafety;
+}
+
+/** Both directions are proven: each side's forgotten deletions are known by the other. */
+export function mergeCovered(local: ReplicaSafety, remote: ReplicaSafety): boolean {
+    return local.gcHigh <= local.coverage && remote.gcHigh <= remote.coverage;
+}
+
+/**
+ * Lineage first, then History–Clean. Only a replica with no records is replaced without
+ * asking: it has nothing to lose. A bare watermark of zero never stands in for an empty or
+ * initialized replica.
+ */
+export function planSession(local: LocalReplica, remote: RemoteReplica): SessionPlan {
+    if (remote.initializing) {
+        if (local.pendingLineage !== null && remote.lineage === local.pendingLineage) {
+            return 'bootstrap';
+        }
+        if (remote.initializing === 'stale') {
+            if (local.lineage !== null && remote.lineage === local.lineage) return 'bootstrap';
+            if (local.hasRecords) return 'conflict';
+        }
+        return 'wait';
+    }
+    if (remote.lineage === null) {
+        if (!remote.hasRecords) return 'bootstrap';
+        return local.hasRecords ? 'conflict' : 'adopt';
+    }
+    if (local.lineage === null) return local.hasRecords ? 'init' : 'adopt';
+    if (local.lineage === remote.lineage && mergeCovered(local.safety, remote.safety)) {
+        return 'sync';
+    }
+    return local.hasRecords ? 'conflict' : 'adopt';
+}
+
+/** How a prepared session runs: under a given lineage, or as part of a bootstrap/adoption. */
+export interface SessionContext {
+    lineage: string;
+    bootstrapToken?: string;
+    adoptedGcHigh?: number;
 }
 
 export interface SyncSession {
@@ -50,6 +118,17 @@ export interface SyncSession {
     serverCoverage: number;
     /** Checkpoints this client offered when the session opened. */
     checkpoints: SyncCheckpoint[];
+    /** Lineage both replicas share for this session. */
+    lineage: string;
+    bootstrapToken?: string;
+    adoptedGcHigh?: number;
+}
+
+export interface OpenedSession {
+    plan: SessionPlan;
+    session: SyncSession;
+    /** The server's lineage as of the handshake: what a user resolves a conflict against. */
+    remoteLineage: string | null;
 }
 
 export interface SessionBounds {
@@ -79,53 +158,101 @@ export function coverage(
     );
 }
 
-export function classifyMerge(local: ReplicaSafety, remote: ReplicaSafety): MergeSafety {
-    const localCovered = local.gcHigh <= local.coverage;
-    const remoteCovered = remote.gcHigh <= remote.coverage;
-    if (localCovered && remoteCovered) return 'safe';
-    if ((!localCovered && !remote.initialized) || (!remoteCovered && !local.initialized)) {
-        return 'needs_init';
-    }
-    return 'unsafe';
-}
-
-/** Prove both merge directions before any Pull or Push of the scope starts. */
+/**
+ * Prove both merge directions and decide how the scope proceeds, before any Pull or Push.
+ * A prepared session (bootstrap or adoption) runs under its context and must prove `sync`.
+ */
 export async function openSyncSession(
     syncScope: SyncScope,
     serverUrl: string,
-    cursors: SyncCursorState
-): Promise<SyncSession> {
+    cursors: SyncCursorState,
+    local: Omit<LocalReplica, 'safety'>,
+    context?: SessionContext
+): Promise<OpenedSession> {
     const { scope } = syncScope;
     const [gcHigh, held] = await Promise.all([
         localDB.getSyncGcHigh(scope),
         localDB.getSyncCheckpoints(scope)
     ]);
     const checkpoints = offeredCheckpoints(held);
+    const lineage = context?.lineage ?? local.lineage;
     const response = await post(serverUrl, '/api/sync/handshake', {
         ...scope,
         pullCursor: cursors.serverPullCursor,
-        checkpoints: checkpoints.map(({ id }) => id)
+        checkpoints: checkpoints.map(({ id }) => id),
+        lineage,
+        bootstrapToken: context?.bootstrapToken
     });
-    const remoteGcHigh = readNumber(response.gcHigh);
     const serverCoverage = readNumber(response.coverage);
     const known = new Set(readIds(response.known));
     const localCoverage = coverage(cursors.localPushCursor, checkpoints, known);
-
-    const safety = classifyMerge(
-        { gcHigh, coverage: localCoverage, initialized: gcHigh > 0 || checkpoints.length > 0 },
+    const remoteLineage = readLineage(response.lineage);
+    const plan = planSession(
+        { ...local, lineage, safety: { gcHigh, coverage: localCoverage } },
         {
-            gcHigh: remoteGcHigh,
-            coverage: serverCoverage,
-            initialized: response.initialized === true
+            lineage: remoteLineage,
+            initializing: readInitializing(response.initializing),
+            hasRecords: response.hasRecords === true,
+            safety: { gcHigh: readNumber(response.gcHigh), coverage: serverCoverage }
         }
     );
-    if (safety === 'unsafe') {
-        throw new AppError('SYNC_UNSAFE', `Merge of ${scopeLabel(scope)} cannot be proven safe`);
+    if (context && plan !== 'sync') {
+        throw new AppError('SYNC_UNSAFE', `Prepared ${scopeLabel(scope)} did not verify`);
     }
-    if (safety === 'needs_init') {
-        throw new AppError('SYNC_NEEDS_INIT', `${scopeLabel(scope)} requires initialization`);
+    return {
+        plan,
+        remoteLineage,
+        session: {
+            localCoverage,
+            serverCoverage,
+            checkpoints,
+            lineage: lineage ?? '',
+            bootstrapToken: context?.bootstrapToken,
+            adoptedGcHigh: context?.adoptedGcHigh
+        }
+    };
+}
+
+/**
+ * Start filling the server's scope from this replica. The server replaces the scope's state
+ * in one transaction and stays initializing until this bootstrap commits.
+ */
+export async function beginBootstrap(
+    syncScope: SyncScope,
+    serverUrl: string,
+    request: {
+        mode: 'init' | 'overwrite';
+        expectedLineage: string | null;
+        lineage: string;
+        checkpoint: string;
+        forgotten: boolean;
+        /** Checkpoints this replica is clean on; the server takes them over at the anchor. */
+        clean: string[];
     }
-    return { localCoverage, serverCoverage, checkpoints };
+): Promise<string> {
+    const response = await post(serverUrl, '/api/sync/bootstrap', {
+        ...syncScope.scope,
+        ...request
+    });
+    if (typeof response.token !== 'string' || !response.token) {
+        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid bootstrap');
+    }
+    return response.token;
+}
+
+/** The server's lineage, its forgotten-deletion watermark, and checkpoints that cover it. */
+export async function adoptServerScope(
+    syncScope: SyncScope,
+    serverUrl: string
+): Promise<{ lineage: string; gcHigh: number; checkpoints: string[] }> {
+    const response = await post(serverUrl, '/api/sync/adopt', { ...syncScope.scope });
+    const lineage = readLineage(response.lineage);
+    if (!lineage) throw new AppError('NETWORK_ERROR', 'Sync server returned no lineage');
+    return {
+        lineage,
+        gcHigh: readNumber(response.gcHigh),
+        checkpoints: readIds(response.checkpoints)
+    };
 }
 
 /**
@@ -156,7 +283,10 @@ export async function commitSyncSession(
         serverUpper,
         checkpoints: session.checkpoints.map(({ id }) => id),
         inherit,
-        checkpoint: issued
+        checkpoint: issued,
+        lineage: session.lineage,
+        bootstrapToken: session.bootstrapToken,
+        adoptedGcHigh: session.adoptedGcHigh
     });
 
     await localDB.addSyncCheckpoints(scope, [
@@ -187,14 +317,21 @@ export function isSafetyError(error: unknown): boolean {
     return isErrorCode(error, 'SYNC_UNSAFE') || isErrorCode(error, 'SYNC_NEEDS_INIT');
 }
 
-/** Server rejections of unproven creates are reported as unsafe merges. */
+/**
+ * Server refusals: an unproven merge, a replaced lineage, or a scope changed under a
+ * resolution are unsafe merges; a scope another client is initializing is transient.
+ */
 export function toSyncSafetyError(error: unknown): unknown {
     const response =
         error && typeof error === 'object'
             ? ((error as { response?: unknown; data?: unknown }).response ??
               (error as { data?: unknown }).data)
             : undefined;
-    if (response !== undefined && /sync_unsafe/i.test(JSON.stringify(response))) {
+    const text = response === undefined ? '' : JSON.stringify(response);
+    if (/sync_initializing/i.test(text)) {
+        return new AppError('SYNC_INITIALIZING', 'Sync server scope is being initialized', error);
+    }
+    if (/sync_(unsafe|lineage|conflict)/i.test(text)) {
         return new AppError('SYNC_UNSAFE', 'Server refused an unproven merge', error);
     }
     return error;
@@ -242,6 +379,18 @@ function readNumber(value: unknown): number {
         throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid safety state');
     }
     return value;
+}
+
+function readLineage(value: unknown): string | null {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'string') {
+        throw new AppError('NETWORK_ERROR', 'Sync server returned an invalid lineage');
+    }
+    return value;
+}
+
+function readInitializing(value: unknown): 'active' | 'stale' | null {
+    return value === 'active' || value === 'stale' ? value : null;
 }
 
 function readIds(value: unknown): string[] {

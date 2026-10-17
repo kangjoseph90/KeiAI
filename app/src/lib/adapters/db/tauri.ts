@@ -10,6 +10,7 @@ import type {
     DatabaseWriteOperation,
     DatabaseKeyEntry,
     SyncCheckpoint,
+    SyncScopeState,
     TombstoneCollection
 } from './types';
 import { SYNC_TABLES, TABLES } from './types';
@@ -261,6 +262,12 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     scopeType TEXT    NOT NULL,
                     scopeId   TEXT    NOT NULL,
                     gcHigh    INTEGER NOT NULL,
+                    PRIMARY KEY (scopeType, scopeId)
+                );
+                CREATE TABLE IF NOT EXISTS sync_scope_state (
+                    scopeType TEXT NOT NULL,
+                    scopeId   TEXT NOT NULL,
+                    state     TEXT NOT NULL,
                     PRIMARY KEY (scopeType, scopeId)
                 );
                 CREATE TABLE IF NOT EXISTS sync_checkpoints (
@@ -839,6 +846,96 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             'DELETE FROM sync_checkpoints WHERE scopeType = $1 AND scopeId = $2 AND createdAt < $3',
             [scope.scopeType, scope.scopeId, createdBefore]
         );
+    }
+
+    async getSyncScopeState(scope: DataScope): Promise<SyncScopeState> {
+        const db = await this.getDb();
+        const rows = await db.select<Array<{ state: string }>>(
+            'SELECT state FROM sync_scope_state WHERE scopeType = $1 AND scopeId = $2',
+            [scope.scopeType, scope.scopeId]
+        );
+        return rows[0]
+            ? (JSON.parse(rows[0].state) as SyncScopeState)
+            : { lineage: null, adopting: false, bootstrapping: null };
+    }
+
+    async setSyncScopeState(scope: DataScope, state: SyncScopeState): Promise<void> {
+        const db = await this.getDb();
+        await db.execute(
+            `INSERT INTO sync_scope_state (scopeType, scopeId, state) VALUES ($1, $2, $3)
+             ON CONFLICT(scopeType, scopeId) DO UPDATE SET state = excluded.state`,
+            [scope.scopeType, scope.scopeId, JSON.stringify(state)]
+        );
+    }
+
+    async hasScopeRecords(scope: DataScope): Promise<boolean> {
+        const db = await this.getDb();
+        for (const table of SYNC_TABLES) {
+            const rows = await db.select<Array<{ id: string }>>(
+                `SELECT id FROM ${table} WHERE scopeType = $1 AND scopeId = $2 LIMIT 1`,
+                [scope.scopeType, scope.scopeId]
+            );
+            if (rows.length > 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Not atomic on the plugin's connection pool; the `adopting` mark makes any partial
+     * reset restart from the beginning instead of being used.
+     */
+    async resetSyncScope(scope: DataScope): Promise<void> {
+        await this.flush();
+        if (!(await this.getSyncScopeState(scope)).adopting) {
+            throw new Error('Only an adopting scope may be reset');
+        }
+        const db = await this.getDb();
+        const params = [scope.scopeType, scope.scopeId];
+        for (const table of SYNC_TABLES) {
+            const rows = await db.select<{ id: string }[]>(
+                `SELECT id FROM ${table} WHERE scopeType = $1 AND scopeId = $2`,
+                params
+            );
+            await db.execute(`DELETE FROM ${table} WHERE scopeType = $1 AND scopeId = $2`, params);
+            this.emitWriteEvent(
+                table,
+                'purge',
+                rows.map((row) => row.id),
+                { origin: 'sync' }
+            );
+        }
+        await db.execute('DELETE FROM sync_gc WHERE scopeType = $1 AND scopeId = $2', params);
+        await db.execute(
+            'DELETE FROM sync_checkpoints WHERE scopeType = $1 AND scopeId = $2',
+            params
+        );
+    }
+
+    async adoptSyncState(
+        scope: DataScope,
+        adopted: { forgotten: boolean; checkpoints: string[] }
+    ): Promise<void> {
+        const db = await this.getDb();
+        // Written at the next revision before allocating it, as in addSyncCheckpoints.
+        const next = '(SELECT value + 1 FROM local_updates WHERE id = 0)';
+        await db.execute(
+            `INSERT INTO sync_gc (scopeType, scopeId, gcHigh) VALUES ($1, $2, ${adopted.forgotten ? next : '0'})
+             ON CONFLICT(scopeType, scopeId) DO UPDATE SET gcHigh = excluded.gcHigh`,
+            [scope.scopeType, scope.scopeId]
+        );
+        if (adopted.checkpoints.length > 0) {
+            const values: unknown[] = [scope.scopeType, scope.scopeId, Date.now()];
+            const rows = adopted.checkpoints.map((id) => {
+                values.push(id);
+                return `($1, $2, $${values.length}, ${next}, ${next}, $3)`;
+            });
+            await db.execute(
+                `INSERT OR REPLACE INTO sync_checkpoints (scopeType, scopeId, id, anchor, heldAt, createdAt)
+                 VALUES ${rows.join(', ')}`,
+                values
+            );
+        }
+        await db.execute('UPDATE local_updates SET value = value + 1 WHERE id = 0');
     }
 
     private emitWriteEvent(

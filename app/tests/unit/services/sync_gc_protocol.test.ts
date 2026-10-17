@@ -3,17 +3,36 @@
  *
  * Replicas here are in-memory models of the orchestration in services/sync/data.ts and the
  * PocketBase hooks. Every safety decision goes through the production rules: the client's
- * `coverage`/`classifyMerge` and the server's `syncCoverage` from pb_hooks/keiai.js.
+ * `coverage`/`mergeCovered` and the server's `syncCoverage` from pb_hooks/keiai.js.
  * Oracle: a replica that ever held a deletion never holds that record live again.
  */
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { classifyMerge, coverage, type MergeSafety } from '$lib/services/sync/safety';
+import { coverage, mergeCovered, type ReplicaSafety } from '$lib/services/sync/safety';
 
 const require = createRequire(import.meta.url);
 const server = require('../../../../pocketbase/pb_hooks/keiai.js') as {
     syncCoverage(cursor: number, anchors: number[]): number;
 };
+
+type MergeSafety = 'safe' | 'unsafe' | 'needs_init';
+
+/**
+ * History–Clean only: this model has a single lineage and no adoption, so a replica that
+ * never recorded safety state is reported instead of being initialized.
+ */
+function classifyMerge(
+    local: ReplicaSafety & { initialized: boolean },
+    remote: ReplicaSafety & { initialized: boolean }
+): MergeSafety {
+    if (mergeCovered(local, remote)) return 'safe';
+    const localCovered = local.gcHigh <= local.coverage;
+    const remoteCovered = remote.gcHigh <= remote.coverage;
+    if ((!localCovered && !remote.initialized) || (!remoteCovered && !local.initialized)) {
+        return 'needs_init';
+    }
+    return 'unsafe';
+}
 
 const RETENTION = 30;
 const CHECKPOINT_INTERVAL = 1;

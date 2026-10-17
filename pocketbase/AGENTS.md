@@ -23,7 +23,7 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 | `asset_catalog`      | Content-addressed encrypted asset bytes stored locally or in R2                    |
 | `asset_usage`        | Per-owner asset reference counts                                                   |
 | `asset_accounts`     | Per-user asset usage and quota                                                     |
-| `sync_scopes`        | Per-scope tombstone GC watermark (server-only)                                     |
+| `sync_scopes`        | Per-scope GC watermark, lineage and initialization lease (server-only)             |
 | `sync_checkpoints`   | History–Clean checkpoints held per scope (server-only)                             |
 
 `records` and `multi_room_records` expose only routing, sync, deletion, and asset-reference metadata. Their domain payload remains encrypted in `encryptedData`.
@@ -36,6 +36,7 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 - Soft-deleted records cannot be resurrected. The owner-only room deletion endpoint tombstones the room and removes its records.
 - Record tombstones are garbage-collected after retention. GC raises `sync_scopes.gcHigh` and deletes in one transaction, and a live create must prove coverage of that watermark. See [`../docs/sync-gc.md`](../docs/sync-gc.md).
 - `updatedAt` is the client replica's logical LWW version. `serverUpdatedAt` is server-owned pull metadata and changes only when the canonical record actually changes; rejected stale or no-op writes preserve it. It is a commit-ordered revision assigned by SQLite triggers from `sync_revision`, never by hooks; `/api/now` returns the highest committed revision. See [`../docs/sync-gc.md`](../docs/sync-gc.md).
+- Every sync scope replica has a lineage. The server stamps records with it and accepts sync writes only with a matching `X-Kei-Sync-Lineage`, or, while a bootstrap holds the scope's initialization lease, only with its `X-Kei-Sync-Bootstrap` token. Bootstrap and overwrite replace the scope wholesale under a new lineage. See [`../docs/sync-gc.md`](../docs/sync-gc.md).
 - Assets are globally deduplicated by the SHA-256 hash of their ciphertext. Record `assetEntries` drive reference counts; room assets count against the room owner.
 - Asset bytes use PocketBase file storage unless R2 is configured. Unreferenced assets are garbage-collected after the grace period.
 - Keep AI providers, prompts, and other application behavior out of this project.
@@ -49,7 +50,7 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 | Pairing    | `POST /api/pairing`, `GET /api/pairing/{lookupId}`                                                                      |
 | Multi-room | `GET /api/multi-rooms/search`, `GET /api/users/{userId}/public-key`, join, leave, and owner deletion endpoints          |
 | Assets     | Personal and room upload endpoints, authenticated download, and the superuser R2 migration endpoint                     |
-| Sync       | `POST /api/sync/handshake`, `POST /api/sync/commit`                                                                     |
+| Sync       | `POST /api/sync/handshake`, `POST /api/sync/commit`, `POST /api/sync/bootstrap`, `POST /api/sync/adopt`                 |
 
 PocketBase's collection and realtime APIs provide record synchronization. Custom endpoints handle operations that require server-controlled validation or lifecycle changes.
 

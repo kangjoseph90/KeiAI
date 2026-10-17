@@ -21,7 +21,7 @@ import {
     type DataScope,
     type DatabaseWriteEvent
 } from '$lib/adapters/db';
-import { syncCursorDB } from '$lib/adapters/sync';
+import { syncCursorDB, type SyncCursorState } from '$lib/adapters/sync';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { clock } from '$lib/utils/clock';
@@ -53,9 +53,14 @@ import {
     assertIngestCovered,
     collectGarbage,
     commitSyncSession,
+    adoptServerScope,
+    beginBootstrap,
     isSafetyError,
     openSyncSession,
+    SYNC_BOOTSTRAP_HEADER,
     SYNC_COVERAGE_HEADER,
+    SYNC_LINEAGE_HEADER,
+    type SessionContext,
     toSyncSafetyError,
     type SyncSession
 } from './safety';
@@ -72,7 +77,29 @@ interface ChangeRef {
     id: string;
 }
 
-type SessionCoverage = Pick<SyncSession, 'localCoverage' | 'serverCoverage'>;
+type SessionCoverage = Pick<SyncSession, 'localCoverage' | 'serverCoverage' | 'lineage'>;
+
+/** What a Push proves to the server: coverage of its forgotten deletions, and its lineage. */
+interface PushProof {
+    coverage: number;
+    lineage: string;
+    bootstrapToken?: string;
+}
+
+/**
+ * A scope on a server whose state cannot be merged with this device's: `unsafe` when both
+ * hold data that cannot be proven safe to merge, `init` when this device's data was never
+ * synced and the server holds another replica. Resolved only by the user's choice.
+ */
+export interface SyncConflict {
+    serverUrl: string;
+    scope: DataScope;
+    kind: 'unsafe' | 'init';
+    /** The server's lineage the user resolves against; an overwrite requires it unchanged. */
+    serverLineage: string | null;
+}
+
+export type SyncConflictChoice = 'local' | 'server';
 
 interface DecodedRemoteRecord {
     table: TableName;
@@ -91,6 +118,8 @@ interface RealtimeMergeResult {
 }
 
 const logger = createLogger('sync:data');
+/** Clean checkpoints handed to a bootstrapped server, newest first. */
+const MAX_BOOTSTRAP_CLEAN = 100;
 const USER_RECORDS_COLLECTION: RemoteCollection = 'records';
 const ROOM_RECORDS_COLLECTION: RemoteCollection = 'multi_room_records';
 
@@ -100,6 +129,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
     private readonly sessions = new Map<string, SyncSession>();
     /** Last session failure of an unverified server scope; regular sync triggers retry it. */
     private readonly blocked = new Map<string, unknown>();
+    private readonly conflicts = new Map<string, SyncConflict>();
+    private readonly conflictListeners = new Set<(conflicts: SyncConflict[]) => void>();
+    /** Overwrites of a server's scope the user chose, applied by the next full sync. */
+    private readonly overwrites = new Map<string, SyncConflict>();
+    private readonly resolving = new Set<string>();
 
     constructor() {
         super();
@@ -114,6 +148,57 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         super.stop();
         this.sessions.clear();
         this.blocked.clear();
+        this.overwrites.clear();
+        this.conflicts.clear();
+        this.emitConflicts();
+    }
+
+    subscribeConflicts(listener: (conflicts: SyncConflict[]) => void): () => void {
+        this.conflictListeners.add(listener);
+        listener([...this.conflicts.values()]);
+        return () => {
+            this.conflictListeners.delete(listener);
+        };
+    }
+
+    /**
+     * Resolve a conflict by replacing one replica with the other.
+     *
+     * `server` replaces this device's scope with the server's: the choice is recorded durably
+     * first, so an interrupted adoption restarts instead of leaving a partial replica.
+     * `local` replaces the server's scope with this device's under a new lineage, provided the
+     * server still holds the lineage the user saw. Either runs inside the next full sync.
+     */
+    async resolveConflict(conflict: SyncConflict, choice: SyncConflictChoice): Promise<void> {
+        const key = this.scopeKey(conflict.scope, conflict.serverUrl);
+        if (normalizeUrl(pb.baseUrl) !== conflict.serverUrl) {
+            throw new AppError('INVALID_INPUT', 'The sync server changed; sync again first');
+        }
+        if (this.resolving.has(key)) {
+            throw new AppError('INVALID_INPUT', 'This conflict is already being resolved');
+        }
+        this.resolving.add(key);
+        try {
+            if (choice === 'server') {
+                const state = await localDB.getSyncScopeState(conflict.scope);
+                await localDB.setSyncScopeState(conflict.scope, {
+                    ...state,
+                    adopting: true,
+                    bootstrapping: null
+                });
+            } else {
+                this.overwrites.set(key, conflict);
+            }
+            this.blocked.delete(key);
+            await this.trigger();
+            const failure = this.blocked.get(key);
+            if (failure !== undefined || this.conflicts.has(key)) {
+                throw failure ?? new AppError('SYNC_UNSAFE', 'The conflict was not resolved');
+            }
+        } finally {
+            this.overwrites.delete(key);
+            this.resolving.delete(key);
+        }
     }
 
     async subscribeRealtime(): Promise<void> {
@@ -207,28 +292,229 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         }
     }
 
+    /**
+     * Decide how the scope proceeds with this server, then run it: a verified session, an
+     * adoption of the server's replica, a bootstrap of the server, or a refusal.
+     */
     private async syncScope(
         syncScope: SyncScope,
         serverUrl: string,
         localUpper: number,
         serverUpper: number
     ): Promise<void> {
+        const { scope } = syncScope;
+        const key = this.sessionKey(syncScope, serverUrl);
+        try {
+            const state = await localDB.getSyncScopeState(scope);
+            if (state.adopting) {
+                await this.adoptScope(syncScope, serverUrl);
+                return;
+            }
+            const { userId } = getActiveSession();
+            const cursors = await syncCursorDB.get(getSyncCursorIdentity('records', userId, scope));
+            const pendingLineage =
+                state.bootstrapping?.serverUrl === serverUrl ? state.bootstrapping.lineage : null;
+            // Refuse before any data moves when GC may have forgotten a deletion the peer lacks.
+            const opened = await openSyncSession(syncScope, serverUrl, cursors, {
+                lineage: state.lineage,
+                pendingLineage,
+                hasRecords: await localDB.hasScopeRecords(scope)
+            });
+            const overwrite = this.overwrites.get(key);
+            if (overwrite && (opened.plan === 'conflict' || opened.plan === 'init')) {
+                await this.bootstrapServer(
+                    syncScope,
+                    serverUrl,
+                    'overwrite',
+                    overwrite.serverLineage,
+                    crypto.randomUUID()
+                );
+                return;
+            }
+
+            switch (opened.plan) {
+                case 'sync':
+                    this.sessions.set(key, opened.session);
+                    this.blocked.delete(key);
+                    await this.runSession(
+                        syncScope,
+                        serverUrl,
+                        localUpper,
+                        serverUpper,
+                        cursors,
+                        opened.session
+                    );
+                    this.setConflict(key, null);
+                    return;
+                case 'adopt':
+                    await this.adoptScope(syncScope, serverUrl);
+                    return;
+                case 'bootstrap':
+                    if (opened.remoteLineage === null) {
+                        await this.bootstrapServer(
+                            syncScope,
+                            serverUrl,
+                            'init',
+                            null,
+                            state.lineage ?? crypto.randomUUID()
+                        );
+                    } else {
+                        // Resume this replica's own interrupted bootstrap of the lineage.
+                        await this.bootstrapServer(
+                            syncScope,
+                            serverUrl,
+                            'overwrite',
+                            opened.remoteLineage,
+                            opened.remoteLineage
+                        );
+                    }
+                    return;
+                case 'wait':
+                    throw new AppError('SYNC_INITIALIZING', 'Another device is initializing');
+                case 'conflict':
+                case 'init':
+                    this.setConflict(key, {
+                        serverUrl,
+                        scope,
+                        kind: opened.plan === 'init' ? 'init' : 'unsafe',
+                        serverLineage: opened.remoteLineage
+                    });
+                    throw new AppError(
+                        opened.plan === 'init' ? 'SYNC_NEEDS_INIT' : 'SYNC_UNSAFE',
+                        `Merge of ${scope.scopeType} scope cannot be proven safe`
+                    );
+            }
+        } catch (err) {
+            if (!this.sessions.has(key)) this.blocked.set(key, err);
+            else this.recordRefusal(key, err);
+            throw err;
+        }
+    }
+
+    /**
+     * Replace this device's replica of the scope with the server's.
+     *
+     * The `adopting` mark is written first and cleared last, so an interrupted adoption is
+     * redone from the start rather than used. The scope's records, watermark, checkpoints and
+     * every server's cursors go; the server's forgotten deletions are taken over at one fresh
+     * local revision, with checkpoints the server is clean on anchored there; then a verified
+     * session pulls the server's state and commits only if no GC outran the adoption.
+     */
+    private async adoptScope(syncScope: SyncScope, serverUrl: string): Promise<void> {
+        const { scope } = syncScope;
+        const key = this.sessionKey(syncScope, serverUrl);
+        const { userId } = getActiveSession();
+        this.sessions.delete(key);
+        await localDB.setSyncScopeState(scope, {
+            lineage: null,
+            adopting: true,
+            bootstrapping: null
+        });
+        await syncCursorDB.deleteByScope(userId, 'records', scope);
+        await AssetService.deleteScopeAssets(scope);
+        await localDB.resetSyncScope(scope);
+        const adopted = await adoptServerScope(syncScope, serverUrl);
+        await localDB.adoptSyncState(scope, {
+            forgotten: adopted.gcHigh > 0,
+            checkpoints: adopted.checkpoints
+        });
+        await this.runPrepared(syncScope, serverUrl, {
+            lineage: adopted.lineage,
+            adoptedGcHigh: adopted.gcHigh
+        });
+        await localDB.setSyncScopeState(scope, {
+            lineage: adopted.lineage,
+            adopting: false,
+            bootstrapping: null
+        });
+        this.setConflict(key, null);
+    }
+
+    /**
+     * Replace the server's replica of the scope with this device's.
+     *
+     * The server replaces its scope state in one transaction and stays initializing until this
+     * bootstrap commits; the pending bootstrap is recorded locally so an interruption resumes
+     * it. A bootstrap checkpoint covers this replica's whole prefix: both sides are clean on it,
+     * which proves this replica's forgotten deletions. A verified session then pushes everything.
+     */
+    private async bootstrapServer(
+        syncScope: SyncScope,
+        serverUrl: string,
+        mode: 'init' | 'overwrite',
+        expectedLineage: string | null,
+        lineage: string
+    ): Promise<void> {
+        const { scope } = syncScope;
+        const key = this.sessionKey(syncScope, serverUrl);
+        const { userId } = getActiveSession();
+        this.sessions.delete(key);
+        const state = await localDB.getSyncScopeState(scope);
+        await localDB.setSyncScopeState(scope, { ...state, bootstrapping: { serverUrl, lineage } });
+        assertSyncServer(serverUrl);
+        await syncCursorDB.delete(getSyncCursorIdentity('records', userId, scope));
+        const gcHigh = await localDB.getSyncGcHigh(scope);
+        const prefix = await localDB.getLocalUpdatedAt();
+        const checkpoint = crypto.randomUUID();
+        const clean = (await localDB.getSyncCheckpoints(scope))
+            .filter(({ anchor }) => anchor > 0 && anchor >= gcHigh)
+            .sort((a, b) => b.heldAt - a.heldAt)
+            .slice(0, MAX_BOOTSTRAP_CLEAN)
+            .map(({ id }) => id);
+        const bootstrapToken = await beginBootstrap(syncScope, serverUrl, {
+            mode,
+            expectedLineage,
+            lineage,
+            checkpoint,
+            forgotten: gcHigh > 0,
+            clean
+        });
+        await localDB.addSyncCheckpoints(scope, [{ id: checkpoint, anchor: prefix }]);
+        await this.runPrepared(syncScope, serverUrl, { lineage, bootstrapToken });
+        await localDB.setSyncScopeState(scope, { lineage, adopting: false, bootstrapping: null });
+        this.setConflict(key, null);
+    }
+
+    /** A session for a prepared scope; it must verify like any other before data moves. */
+    private async runPrepared(
+        syncScope: SyncScope,
+        serverUrl: string,
+        context: SessionContext
+    ): Promise<void> {
+        const key = this.sessionKey(syncScope, serverUrl);
+        const { userId } = getActiveSession();
+        const cursors = await syncCursorDB.get(
+            getSyncCursorIdentity('records', userId, syncScope.scope)
+        );
+        const localUpper = await localDB.getLocalUpdatedAt();
+        const serverUpper = await getServerNow();
+        assertSyncServer(serverUrl);
+        const { session } = await openSyncSession(
+            syncScope,
+            serverUrl,
+            cursors,
+            { lineage: context.lineage, pendingLineage: null, hasRecords: true },
+            context
+        );
+        await this.runSession(syncScope, serverUrl, localUpper, serverUpper, cursors, session);
+        // Once committed, the bootstrap token is spent; the session continues as a normal one.
+        this.sessions.set(key, { ...session, bootstrapToken: undefined });
+        this.blocked.delete(key);
+    }
+
+    private async runSession(
+        syncScope: SyncScope,
+        serverUrl: string,
+        localUpper: number,
+        serverUpper: number,
+        cursors: SyncCursorState,
+        session: SyncSession
+    ): Promise<void> {
         const { userId } = getActiveSession();
         const cursorIdentity = getSyncCursorIdentity('records', userId, syncScope.scope);
-        const cursors = await syncCursorDB.get(cursorIdentity);
         const pullCursor = cursors.serverPullCursor;
         const pushCursor = cursors.localPushCursor;
         const key = this.sessionKey(syncScope, serverUrl);
-        // Refuse before any data moves when GC may have forgotten a deletion the peer lacks.
-        let session: SyncSession;
-        try {
-            session = await openSyncSession(syncScope, serverUrl, cursors);
-        } catch (err) {
-            this.blocked.set(key, err);
-            throw err;
-        }
-        this.sessions.set(key, session);
-        this.blocked.delete(key);
         let syncError: unknown = null;
         let pushError: unknown = null;
         const offlineWrites = new Map<string, LocalChange>();
@@ -271,7 +557,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     syncScope,
                     serverUrl,
                     unsynced,
-                    session.serverCoverage,
+                    {
+                        coverage: session.serverCoverage,
+                        lineage: session.lineage,
+                        bootstrapToken: session.bootstrapToken
+                    },
                     false
                 );
             }
@@ -373,6 +663,10 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             });
 
             if (result.items.length > 0) {
+                // A row of another lineage means the server's scope was replaced mid-session.
+                if (result.items.some((item) => !ofLineage(item, session.lineage))) {
+                    throw new AppError('SYNC_UNSAFE', 'The server replaced this scope');
+                }
                 const remotes = await Promise.all(
                     result.items.map((serverRecord) =>
                         this.pbToLocalRecord(
@@ -482,7 +776,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         syncScope: SyncScope,
         serverUrl: string,
         changes: LocalChange[],
-        coverage: number,
+        proof: PushProof,
         continueOnError = true
     ): Promise<void> {
         const owned = changes.filter(({ record }) => belongsToScope(record, syncScope.scope));
@@ -494,7 +788,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             for (const change of chunk) {
                 const payload = await this.localToPbRecord(change.table, change.record, syncScope);
                 batch.collection(syncScope.collection).upsert(payload, {
-                    headers: { [SYNC_COVERAGE_HEADER]: String(coverage) }
+                    headers: {
+                        [SYNC_COVERAGE_HEADER]: String(proof.coverage),
+                        [SYNC_LINEAGE_HEADER]: proof.lineage,
+                        ...(proof.bootstrapToken
+                            ? { [SYNC_BOOTSTRAP_HEADER]: proof.bootstrapToken }
+                            : {})
+                    }
                 });
             }
 
@@ -592,7 +892,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     syncScope,
                     serverUrl,
                     await this.readChanges(refs),
-                    coverage.serverCoverage,
+                    { coverage: coverage.serverCoverage, lineage: coverage.lineage },
                     continueOnError
                 );
             } catch (err) {
@@ -627,7 +927,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             if (!this.blocked.has(key)) void this.trigger();
             return null;
         }
-        return { localCoverage: session.localCoverage, serverCoverage: session.serverCoverage };
+        return {
+            localCoverage: session.localCoverage,
+            serverCoverage: session.serverCoverage,
+            lineage: session.lineage
+        };
     }
 
     /** A proven-unsafe or uninitialized scope stops merging until a full sync verifies it. */
@@ -639,7 +943,22 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
     }
 
     private sessionKey({ scope }: SyncScope, serverUrl: string): string {
+        return this.scopeKey(scope, serverUrl);
+    }
+
+    private scopeKey(scope: DataScope, serverUrl: string): string {
         return `${serverUrl}\u0000${scope.scopeType}\u0000${scope.scopeId}`;
+    }
+
+    private setConflict(key: string, conflict: SyncConflict | null): void {
+        if (conflict) this.conflicts.set(key, conflict);
+        else if (!this.conflicts.delete(key)) return;
+        this.emitConflicts();
+    }
+
+    private emitConflicts(): void {
+        const conflicts = [...this.conflicts.values()];
+        for (const listener of this.conflictListeners) listener(conflicts);
     }
 
     protected override getBufferedWrites(
@@ -687,6 +1006,9 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             if (!coverage) return;
             verifiedScope = syncScope;
 
+            if (!ofLineage(e.record, coverage.lineage)) {
+                throw new AppError('SYNC_UNSAFE', 'The server replaced this scope');
+            }
             const remote = await this.pbToLocalRecord(e.record, syncScope);
             clock.observe(remote.record.updatedAt ?? 0);
 
@@ -904,6 +1226,12 @@ function chooseWinner(local: DataRecord, remote: DataRecord): 'remote' | 'local'
     const localAt = local.updatedAt ?? 0;
     if (remoteAt === localAt) return 'equal';
     return remoteAt > localAt ? 'remote' : 'local';
+}
+
+/** The server stamps every record with its scope's lineage; one from another lineage is refused. */
+function ofLineage(record: unknown, lineage: string): boolean {
+    const stamped = (record as { lineage?: unknown } | undefined)?.lineage;
+    return stamped === undefined || stamped === lineage;
 }
 
 function readServerRevision(record: unknown): number {

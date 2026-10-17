@@ -1,4 +1,4 @@
-import type { DataScopeType } from '$lib/adapters/db';
+import type { DataScope, DataScopeType } from '$lib/adapters/db';
 
 export type SyncCursorStream = 'records' | 'multi_meta';
 
@@ -31,5 +31,7 @@ export interface ISyncCursorAdapter {
     advance(identity: SyncCursorIdentity, update: SyncCursorUpdate): Promise<void>;
     delete(identity: SyncCursorIdentity): Promise<void>;
     deleteByStream(query: SyncCursorStreamQuery): Promise<void>;
+    /** Delete the scope's cursors for every server. */
+    deleteByScope(userId: string, stream: SyncCursorStream, scope: DataScope): Promise<void>;
     deleteByUser(userId: string): Promise<void>;
 }

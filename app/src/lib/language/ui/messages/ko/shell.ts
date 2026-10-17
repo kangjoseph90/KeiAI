@@ -18,6 +18,8 @@ export const shellMessages = {
     'shell.sidebar.sync.statusAuthError': '인증 오류',
     'shell.sidebar.sync.statusUnsafeMerge': '병합 차단됨',
     'shell.sidebar.sync.statusInitRequired': '초기화 필요',
+    'shell.sidebar.sync.statusServerInitializing': '서버 준비 중',
+    'shell.sidebar.sync.resolveConflict': '동기화 충돌 해결…',
     'shell.sidebar.sync.user': '사용자',
     'shell.sidebar.sync.records': '레코드',
     'shell.sidebar.sync.assets': '에셋',
@@ -36,7 +38,34 @@ export const shellMessages = {
     'shell.sidebar.sync.indicatorUnsafeMerge':
         '동기화 중단: 병합하면 삭제된 데이터가 다시 나타날 수 있습니다. 변경된 내용은 없습니다.',
     'shell.sidebar.sync.indicatorInitRequired':
-        '동기화 중단: 병합하려면 먼저 서버로부터 이 사본을 초기화해야 합니다.',
+        '동기화 중단: 이 기기에 서버와 동기화된 적 없는 데이터가 있습니다. 어느 쪽을 유지할지 선택하세요.',
+    'shell.sidebar.sync.indicatorServerInitializing':
+        '동기화 대기: 다른 기기가 서버에 이 데이터를 준비하고 있습니다.',
+    'shell.sync.conflict.titleUnsafe': '이 기기와 서버의 데이터를 안전하게 병합할 수 없습니다',
+    'shell.sync.conflict.titleInit': '서버에 없는 데이터가 이 기기에 있습니다',
+    'shell.sync.conflict.bodyUnsafe':
+        '이 기기와 서버의 {:scope} 사본이 갈라져서, 병합하면 삭제한 항목이 되살아날 수 있습니다. 유지할 사본을 선택하세요.',
+    'shell.sync.conflict.bodyInit':
+        '이 기기에 서버의 사본과 동기화된 적 없는 {:scope}가 있습니다. 유지할 사본을 선택하세요.',
+    'shell.sync.conflict.scopeUser': '개인 데이터',
+    'shell.sync.conflict.scopeRoom': '이 멀티 룸 데이터',
+    'shell.sync.conflict.keepLocal': '이 기기의 데이터 유지',
+    'shell.sync.conflict.keepLocalHint':
+        '서버의 사본을 바꿉니다. 서버나 다른 기기에만 있는 변경은 사라지고, 그 기기들은 다시 선택해야 합니다.',
+    'shell.sync.conflict.keepServer': '서버의 데이터 유지',
+    'shell.sync.conflict.keepServerHint':
+        '이 기기의 사본을 바꿉니다. 이 기기에만 있는 변경은 사라집니다.',
+    'shell.sync.conflict.later': '나중에 결정',
+    'shell.sync.conflict.working': '해결 중…',
+    'shell.sync.conflict.confirmLocalTitle': '서버의 사본을 바꿀까요?',
+    'shell.sync.conflict.confirmLocalBody':
+        '서버의 {:scope} 사본이 이 기기의 사본으로 바뀝니다. 되돌릴 수 없습니다.',
+    'shell.sync.conflict.confirmServerTitle': '이 기기의 사본을 바꿀까요?',
+    'shell.sync.conflict.confirmServerBody':
+        '이 기기의 {:scope} 사본이 서버의 사본으로 바뀝니다. 되돌릴 수 없습니다.',
+    'shell.sync.conflict.confirmAction': '바꾸기',
+    'shell.sync.conflict.resolved': '동기화 충돌을 해결했습니다',
+    'shell.sync.conflict.failed': '충돌을 해결하지 못했습니다: {:error}',
     'shell.sidebar.sync.indicatorServerTransition': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionTitle': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionBody':

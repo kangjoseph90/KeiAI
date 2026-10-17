@@ -26,6 +26,7 @@ import type {
     RoomRecord,
     DataScopeType,
     SyncCheckpoint,
+    SyncScopeState,
     TombstoneCollection
 } from './types';
 import { SYNC_TABLES } from './types';
@@ -79,9 +80,14 @@ interface SyncGcRow extends DataScope {
 
 type SyncCheckpointRow = DataScope & SyncCheckpoint;
 
+type SyncScopeStateRow = DataScope & SyncScopeState;
+
+const EMPTY_SCOPE_STATE: SyncScopeState = { lineage: null, adopting: false, bootstrapping: null };
+
 class DexieStore extends Dexie {
     syncGc!: Table<SyncGcRow, [string, string]>;
     syncCheckpoints!: Table<SyncCheckpointRow, [string, string, string]>;
+    syncScopeState!: Table<SyncScopeStateRow, [string, string]>;
     rooms!: Table<RoomRecord, string>;
     characters!: Table<CharacterRecord, string>;
     chats!: Table<ChatRecord, string>;
@@ -100,6 +106,7 @@ class DexieStore extends Dexie {
             localUpdates: 'id',
             syncGc: '[scopeType+scopeId]',
             syncCheckpoints: '[scopeType+scopeId+id], [scopeType+scopeId]',
+            syncScopeState: '[scopeType+scopeId]',
             rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
             characters:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
@@ -579,6 +586,92 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .equals([scope.scopeType, scope.scopeId])
             .filter((checkpoint) => checkpoint.createdAt < createdBefore)
             .delete();
+    }
+
+    async getSyncScopeState(scope: DataScope): Promise<SyncScopeState> {
+        const row = await this.db.syncScopeState.get([scope.scopeType, scope.scopeId]);
+        if (!row) return { ...EMPTY_SCOPE_STATE };
+        const { lineage, adopting, bootstrapping } = row;
+        return { lineage, adopting, bootstrapping };
+    }
+
+    async setSyncScopeState(scope: DataScope, state: SyncScopeState): Promise<void> {
+        await this.db.syncScopeState.put({
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId,
+            ...state
+        });
+    }
+
+    async hasScopeRecords(scope: DataScope): Promise<boolean> {
+        for (const tableName of SYNC_TABLES) {
+            const count = await this.getTable<DataRecord>(tableName)
+                .where('[scopeType+scopeId]')
+                .equals([scope.scopeType, scope.scopeId])
+                .limit(1)
+                .count();
+            if (count > 0) return true;
+        }
+        return false;
+    }
+
+    async resetSyncScope(scope: DataScope): Promise<void> {
+        await this.flush();
+        const key: [string, string] = [scope.scopeType, scope.scopeId];
+        const tables = SYNC_TABLES.map((tableName) => this.getTable<DataRecord>(tableName));
+        const removed = await this.db.transaction(
+            'rw',
+            [...tables, this.db.syncGc, this.db.syncCheckpoints, this.db.syncScopeState],
+            async () => {
+                if (!(await this.db.syncScopeState.get(key))?.adopting) {
+                    throw new Error('Only an adopting scope may be reset');
+                }
+                const ids = await Promise.all(
+                    tables.map(async (table) => {
+                        const collection = table.where('[scopeType+scopeId]').equals(key);
+                        const primaryKeys = (await collection.primaryKeys()) as string[];
+                        await collection.delete();
+                        return primaryKeys;
+                    })
+                );
+                await this.db.syncGc.delete(key);
+                await this.db.syncCheckpoints.where('[scopeType+scopeId]').equals(key).delete();
+                return ids;
+            }
+        );
+        SYNC_TABLES.forEach((tableName, i) =>
+            this.emitWriteEvent(tableName, 'purge', removed[i], { origin: 'sync' })
+        );
+    }
+
+    async adoptSyncState(
+        scope: DataScope,
+        adopted: { forgotten: boolean; checkpoints: string[] }
+    ): Promise<void> {
+        const revisions = this.db.table<{ id: number; value: number }, number>('localUpdates');
+        await this.db.transaction(
+            'rw',
+            [this.db.syncGc, this.db.syncCheckpoints, revisions],
+            async () => {
+                const revision = ((await revisions.get(0))?.value ?? 0) + 1;
+                const createdAt = Date.now();
+                await this.db.syncGc.put({
+                    scopeType: scope.scopeType,
+                    scopeId: scope.scopeId,
+                    gcHigh: adopted.forgotten ? revision : 0
+                });
+                await this.db.syncCheckpoints.bulkPut(
+                    adopted.checkpoints.map((id) => ({
+                        ...scope,
+                        id,
+                        anchor: revision,
+                        heldAt: revision,
+                        createdAt
+                    }))
+                );
+                await revisions.put({ id: 0, value: revision });
+            }
+        );
     }
 
     private emitWriteEvent(

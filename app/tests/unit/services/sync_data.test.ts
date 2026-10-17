@@ -59,9 +59,17 @@ vi.mock('$lib/adapters/db', () => ({
         collectTombstones: vi.fn(),
         getSyncCheckpoints: vi.fn(),
         addSyncCheckpoints: vi.fn(),
-        pruneSyncCheckpoints: vi.fn()
+        pruneSyncCheckpoints: vi.fn(),
+        getSyncScopeState: vi.fn(),
+        setSyncScopeState: vi.fn(),
+        hasScopeRecords: vi.fn(),
+        resetSyncScope: vi.fn(),
+        adoptSyncState: vi.fn()
     }
 }));
+
+/** Both replicas descend from this lineage unless a test says otherwise. */
+const LINEAGE = 'lineage-1';
 
 /** A server that has never garbage-collected: every merge is trivially safe. */
 function serveSync(path: string, options?: { body?: Record<string, unknown> }): unknown {
@@ -71,7 +79,9 @@ function serveSync(path: string, options?: { body?: Record<string, unknown> }): 
             gcHigh: 0,
             coverage: options?.body?.pullCursor ?? 0,
             known: [],
-            initialized: true
+            lineage: LINEAGE,
+            initializing: null,
+            hasRecords: true
         };
     }
     if (path === '/api/sync/commit') return { checkpoints: [] };
@@ -79,7 +89,9 @@ function serveSync(path: string, options?: { body?: Record<string, unknown> }): 
 }
 
 /** Push options carry the server-side coverage proof. */
-const coverageHeader = { headers: { 'X-Kei-Sync-Coverage': expect.any(String) } };
+const coverageHeader = {
+    headers: { 'X-Kei-Sync-Coverage': expect.any(String), 'X-Kei-Sync-Lineage': LINEAGE }
+};
 
 vi.mock('$lib/adapters/sync', () => ({
     syncCursorDB: {
@@ -154,6 +166,12 @@ describe('DataRecordSyncEngine', () => {
         vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(0);
         vi.mocked(localDB.collectTombstones).mockResolvedValue(0);
         vi.mocked(localDB.getSyncCheckpoints).mockResolvedValue([]);
+        vi.mocked(localDB.getSyncScopeState).mockResolvedValue({
+            lineage: LINEAGE,
+            adopting: false,
+            bootstrapping: null
+        });
+        vi.mocked(localDB.hasScopeRecords).mockResolvedValue(true);
         DataRecordSyncEngine.stop();
     });
 
@@ -717,7 +735,9 @@ describe('DataRecordSyncEngine', () => {
                     gcHigh: 1500,
                     coverage: 1000,
                     known: [],
-                    initialized: true
+                    lineage: LINEAGE,
+                    initializing: null,
+                    hasRecords: true
                 }
             });
             vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
@@ -730,16 +750,36 @@ describe('DataRecordSyncEngine', () => {
             expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
         });
 
-        it('reports initialization when an uninitialized server meets collected deletions', async () => {
-            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(1500);
-            serve({
-                '/api/sync/handshake': { gcHigh: 0, coverage: 1000, known: [], initialized: false }
+        it('reports initialization when a never-synced device holds data and the server another replica', async () => {
+            vi.mocked(localDB.getSyncScopeState).mockResolvedValue({
+                lineage: null,
+                adopting: false,
+                bootstrapping: null
             });
+            serve({
+                '/api/sync/handshake': {
+                    gcHigh: 0,
+                    coverage: 1000,
+                    known: [],
+                    lineage: 'other-lineage',
+                    initializing: null,
+                    hasRecords: true
+                }
+            });
+            const conflicts: unknown[][] = [];
+            const unsubscribe = DataRecordSyncEngine.subscribeConflicts((list) =>
+                conflicts.push(list)
+            );
 
             await DataRecordSyncEngine.trigger();
+            unsubscribe();
 
             expect(mockCollection.getList).not.toHaveBeenCalled();
+            expect(mockBatch.send).not.toHaveBeenCalled();
             expect(DataRecordSyncEngine.getState().state).toBe('init_required');
+            expect(conflicts.at(-1)).toEqual([
+                expect.objectContaining({ kind: 'init', serverLineage: 'other-lineage' })
+            ]);
         });
 
         it('proves local deletions through a checkpoint the server holds', async () => {
@@ -752,7 +792,9 @@ describe('DataRecordSyncEngine', () => {
                     gcHigh: 0,
                     coverage: 1000,
                     known: ['k'],
-                    initialized: true
+                    lineage: LINEAGE,
+                    initializing: null,
+                    hasRecords: true
                 }
             });
 
@@ -809,7 +851,14 @@ describe('DataRecordSyncEngine', () => {
 
         it('pushes with the server coverage proven by the handshake', async () => {
             serve({
-                '/api/sync/handshake': { gcHigh: 0, coverage: 1700, known: [], initialized: true }
+                '/api/sync/handshake': {
+                    gcHigh: 0,
+                    coverage: 1700,
+                    known: [],
+                    lineage: LINEAGE,
+                    initializing: null,
+                    hasRecords: true
+                }
             });
             vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([makeRecord('local', 2000)]);
 
@@ -817,7 +866,7 @@ describe('DataRecordSyncEngine', () => {
 
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'local' }),
-                { headers: { 'X-Kei-Sync-Coverage': '1700' } }
+                { headers: { 'X-Kei-Sync-Coverage': '1700', 'X-Kei-Sync-Lineage': LINEAGE } }
             );
         });
 
@@ -918,13 +967,18 @@ describe('DataRecordSyncEngine', () => {
         const handshakes = () =>
             vi.mocked(pb.send).mock.calls.filter(([path]) => path === '/api/sync/handshake').length;
         const refuseHandshake = () =>
-            vi
-                .mocked(pb.send)
-                .mockImplementation(async (path, options) =>
-                    path === '/api/sync/handshake'
-                        ? { gcHigh: 1500, coverage: 1000, known: [], initialized: true }
-                        : serveSync(path, options as { body?: Record<string, unknown> })
-                );
+            vi.mocked(pb.send).mockImplementation(async (path, options) =>
+                path === '/api/sync/handshake'
+                    ? {
+                          gcHigh: 1500,
+                          coverage: 1000,
+                          known: [],
+                          lineage: LINEAGE,
+                          initializing: null,
+                          hasRecords: true
+                      }
+                    : serveSync(path, options as { body?: Record<string, unknown> })
+            );
         const localWrite = (engine: DataRecordSyncEngineImpl, id: string) =>
             engine.handleLocalWrite({
                 tableName: 'characters',
@@ -1010,6 +1064,19 @@ describe('DataRecordSyncEngine', () => {
             expect(handshakes()).toBe(0);
         });
 
+        it('refuses a realtime event from a replaced lineage and re-verifies', async () => {
+            await verifySession(engine);
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeRecord('known', 1000));
+
+            deliver({
+                action: 'update',
+                record: { ...serverRecord('known'), lineage: 'replaced-lineage' }
+            });
+
+            await vi.waitFor(() => expect(handshakes()).toBe(1));
+            expect(localDB.putRecord).not.toHaveBeenCalled();
+        });
+
         it('refuses an unknown live realtime record once local GC outruns coverage, and re-verifies', async () => {
             await verifySession(engine);
             // The session proved local coverage through its Push bound (2500).
@@ -1048,7 +1115,7 @@ describe('DataRecordSyncEngine', () => {
                 expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
                     expect.objectContaining({ id: 'x', isDeleted: true }),
                     // The session proved server coverage through its confirmed Pull bound.
-                    { headers: { 'X-Kei-Sync-Coverage': '3000' } }
+                    { headers: { 'X-Kei-Sync-Coverage': '3000', 'X-Kei-Sync-Lineage': LINEAGE } }
                 )
             );
 
@@ -1160,7 +1227,14 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(pb.send).mockImplementation(async (path, options) => {
                 const body = (options as { body?: Record<string, unknown> }).body;
                 if (path === '/api/sync/handshake' && body?.scopeType === 'user') {
-                    return { gcHigh: 1500, coverage: 1000, known: [], initialized: true };
+                    return {
+                        gcHigh: 1500,
+                        coverage: 1000,
+                        known: [],
+                        lineage: LINEAGE,
+                        initializing: null,
+                        hasRecords: true
+                    };
                 }
                 return serveSync(path, options as { body?: Record<string, unknown> });
             });
@@ -1257,6 +1331,13 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(localDB.pruneSyncCheckpoints).mockImplementation(
                 db.pruneSyncCheckpoints.bind(db)
             );
+            vi.mocked(localDB.getSyncScopeState).mockImplementation(db.getSyncScopeState.bind(db));
+            vi.mocked(localDB.setSyncScopeState).mockImplementation(db.setSyncScopeState.bind(db));
+            vi.mocked(localDB.hasScopeRecords).mockImplementation(db.hasScopeRecords.bind(db));
+            await db.setSyncScopeState(
+                { scopeType: 'user', scopeId: mockUserId },
+                { lineage: LINEAGE, adopting: false, bootstrapping: null }
+            );
             vi.mocked(mockBatch.send).mockResolvedValue([]);
             vi.mocked(mockCollection.getList).mockResolvedValue({
                 items: [],
@@ -1298,10 +1379,19 @@ describe('DataRecordSyncEngine', () => {
             await db.addSyncCheckpoints({ scopeType: 'user', scopeId: mockUserId }, [
                 { id: 'held', anchor: 0 }
             ]);
+            // A device with data: an unproven merge is refused, not replaced by adoption.
+            await db.putRecord('characters', makeRecord('existing'));
             let safe = false;
             vi.mocked(pb.send).mockImplementation(async (path, options) =>
                 path === '/api/sync/handshake' && !safe
-                    ? { gcHigh: 10, coverage: 0, known: [], initialized: true }
+                    ? {
+                          gcHigh: 10,
+                          coverage: 0,
+                          known: [],
+                          lineage: LINEAGE,
+                          initializing: null,
+                          hasRecords: true
+                      }
                     : serveSync(path, options as { body?: Record<string, unknown> })
             );
             await DataRecordSyncEngine.trigger();

@@ -162,6 +162,18 @@ export interface SyncCheckpoint {
     createdAt: number;
 }
 
+/**
+ * A scope's replica state on this client. `lineage` names the history its records descend
+ * from; replicas of different lineages never merge. `adopting` marks a replacement by a
+ * server's state in progress, and `bootstrapping` a server being filled from this replica:
+ * neither partial state is a valid replica, and both restart after an interruption.
+ */
+export interface SyncScopeState {
+    lineage: string | null;
+    adopting: boolean;
+    bootstrapping: { serverUrl: string; lineage: string } | null;
+}
+
 export interface TombstoneCollection {
     /** Only tombstones first received at or before this wall time. */
     receivedThrough: number;
@@ -284,4 +296,21 @@ export interface IDatabaseAdapter {
         checkpoints: Array<Pick<SyncCheckpoint, 'id' | 'anchor'>>
     ): Promise<void>;
     pruneSyncCheckpoints(scope: DataScope, createdBefore: number): Promise<void>;
+    getSyncScopeState(scope: DataScope): Promise<SyncScopeState>;
+    setSyncScopeState(scope: DataScope, state: SyncScopeState): Promise<void>;
+    /** Whether any sync table holds a record or tombstone of the scope. */
+    hasScopeRecords(scope: DataScope): Promise<boolean>;
+    /**
+     * Drop the scope's records, tombstones, GC watermark and checkpoints. Only for a scope
+     * marked `adopting`: its knowledge is being replaced by a server's, not forgotten.
+     */
+    resetSyncScope(scope: DataScope): Promise<void>;
+    /**
+     * Take over a server's forgotten deletions at one fresh local revision: the watermark
+     * moves there when `forgotten`, and the server's checkpoints are anchored there.
+     */
+    adoptSyncState(
+        scope: DataScope,
+        adopted: { forgotten: boolean; checkpoints: string[] }
+    ): Promise<void>;
 }

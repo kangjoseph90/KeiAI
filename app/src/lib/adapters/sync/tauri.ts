@@ -1,6 +1,8 @@
 import Database from '@tauri-apps/plugin-sql';
+import type { DataScope } from '$lib/adapters/db';
 import type {
     ISyncCursorAdapter,
+    SyncCursorStream,
     SyncCursorIdentity,
     SyncCursorState,
     SyncCursorStreamQuery,
@@ -105,6 +107,15 @@ export class TauriSyncCursorAdapter implements ISyncCursorAdapter {
         await db.execute(
             `DELETE FROM sync_cursors WHERE serverUrl = $1 AND userId = $2 AND stream = $3`,
             [query.serverUrl, query.userId, query.stream]
+        );
+    }
+
+    async deleteByScope(userId: string, stream: SyncCursorStream, scope: DataScope): Promise<void> {
+        const db = await this.getDb();
+        await db.execute(
+            `DELETE FROM sync_cursors
+             WHERE userId = $1 AND stream = $2 AND scopeType = $3 AND scopeId = $4`,
+            [userId, stream, scope.scopeType, scope.scopeId]
         );
     }
 

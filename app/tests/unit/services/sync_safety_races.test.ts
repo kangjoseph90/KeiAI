@@ -30,6 +30,7 @@ interface ServerRow {
 
 interface ServerHooks {
     assertSyncWriteTransactional(e: unknown): void;
+    assertSyncWriteAllowed(e: unknown): void;
     assertSyncCreateCovered(e: unknown): void;
     applySyncRecordUpdate(record: unknown, collectionName: string): boolean;
     stampSyncRecordCreate(record: unknown): void;
@@ -145,8 +146,9 @@ vi.mock('$lib/adapters/pb', () => {
                 bind() {
                     return this;
                 },
-                one(row: { gcHigh: number }) {
+                one(row: { gcHigh: number; lineage: string }) {
                     row.gcHigh = h.gcHigh;
+                    row.lineage = LINEAGE;
                 }
             })
         })
@@ -188,7 +190,9 @@ vi.mock('$lib/adapters/pb', () => {
                         gcHigh: h.gcHigh,
                         coverage: coverage(body.pullCursor, known),
                         known,
-                        initialized: h.gcHigh > 0 || h.checkpoints.size > 0
+                        lineage: LINEAGE,
+                        initializing: null,
+                        hasRecords: true
                     };
                 }
                 if (path === '/api/sync/commit') {
@@ -226,17 +230,16 @@ vi.mock('$lib/adapters/pb', () => {
                             const old = h.rows.get(body.id);
                             const data = structuredClone(body);
                             const record = facade(data, old);
+                            const requestInfo = () => ({
+                                headers: {
+                                    x_kei_sync_coverage: headers['X-Kei-Sync-Coverage'],
+                                    x_kei_sync_lineage: headers['X-Kei-Sync-Lineage']
+                                }
+                            });
                             h.server.assertSyncWriteTransactional({ app });
+                            h.server.assertSyncWriteAllowed({ app, record, requestInfo });
                             if (!old) {
-                                h.server.assertSyncCreateCovered({
-                                    app,
-                                    record,
-                                    requestInfo: () => ({
-                                        headers: {
-                                            x_kei_sync_coverage: headers['X-Kei-Sync-Coverage']
-                                        }
-                                    })
-                                });
+                                h.server.assertSyncCreateCovered({ app, record, requestInfo });
                                 h.server.stampSyncRecordCreate(record);
                             }
                             const accepted = old
@@ -255,6 +258,7 @@ vi.mock('$lib/adapters/pb', () => {
 });
 
 const require = createRequire(import.meta.url);
+const LINEAGE = 'lineage-1';
 const scope: DataScope = { scopeType: 'user', scopeId: 'user' };
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -300,6 +304,7 @@ beforeEach(async () => {
     Dexie.dependencies.IDBKeyRange = IDBKeyRange;
     await Dexie.delete('KeiLocalDB');
     h.db = new WebDatabaseAdapter();
+    await h.db.setSyncScopeState(scope, { lineage: LINEAGE, adopting: false, bootstrapping: null });
     h.cursors = { serverPullCursor: 0, localPushCursor: 0 };
     h.rows.clear();
     h.revision = 0;
@@ -361,7 +366,7 @@ it('Push responses merge a local deletion committed before their write', async (
         { scope, key: {}, collection: 'records', ownerField: 'userId' },
         'https://server.example',
         [{ table: 'characters', record: outgoing }],
-        0,
+        { coverage: 0, lineage: LINEAGE },
         false
     );
 

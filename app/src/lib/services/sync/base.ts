@@ -9,8 +9,10 @@ export type SyncState =
     | 'auth_error'
     /** GC may have forgotten a deletion the peer still holds live; nothing was merged. */
     | 'unsafe_merge'
-    /** A replica without safety state meets one that has forgotten deletions. */
-    | 'init_required';
+    /** This device holds data never synced with the server's replica; the user must choose. */
+    | 'init_required'
+    /** Another device is filling the server's copy of a scope; retried later. */
+    | 'server_initializing';
 
 export interface SyncProgress {
     completed: number;

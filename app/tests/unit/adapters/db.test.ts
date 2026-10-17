@@ -1082,6 +1082,66 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             ]);
         });
 
+        it('keeps the scope replica state and reports whether the scope holds anything', async () => {
+            expect(await localDB.getSyncScopeState(userScope)).toEqual({
+                lineage: null,
+                adopting: false,
+                bootstrapping: null
+            });
+            const state = {
+                lineage: 'L',
+                adopting: false,
+                bootstrapping: { serverUrl: 'https://server.example', lineage: 'M' }
+            };
+            await localDB.setSyncScopeState(userScope, state);
+            expect(await localDB.getSyncScopeState(userScope)).toEqual(state);
+            expect(await localDB.getSyncScopeState(roomScope)).toMatchObject({ lineage: null });
+
+            expect(await localDB.hasScopeRecords(userScope)).toBe(false);
+            await localDB.putRecord('settings', tombstone('only-a-tombstone'));
+            expect(await localDB.hasScopeRecords(userScope)).toBe(true);
+            expect(await localDB.hasScopeRecords(roomScope)).toBe(false);
+        });
+
+        it('resets only an adopting scope, and takes over a server state at one fresh revision', async () => {
+            await localDB.putRecord('settings', tombstone('t'));
+            await localDB.putRecord('characters', createTestRecord({ id: 'live' }));
+            await localDB.putRecord('settings', createTestRecord({ id: 'room', ...roomScope }));
+            const position = await localDB.getLocalUpdatedAt();
+            await localDB.collectTombstones(userScope, {
+                receivedThrough: 1_000_000,
+                throughLocalUpdatedAt: position
+            });
+            await localDB.addSyncCheckpoints(userScope, [{ id: 'old', anchor: position }]);
+
+            await expect(localDB.resetSyncScope(userScope)).rejects.toThrow(/adopting/);
+            expect(await localDB.hasScopeRecords(userScope)).toBe(true);
+
+            await localDB.setSyncScopeState(userScope, {
+                lineage: null,
+                adopting: true,
+                bootstrapping: null
+            });
+            await localDB.resetSyncScope(userScope);
+            expect(await localDB.hasScopeRecords(userScope)).toBe(false);
+            expect(await localDB.getSyncGcHigh(userScope)).toBe(0);
+            expect(await localDB.getSyncCheckpoints(userScope)).toEqual([]);
+            expect(await localDB.getRecord('settings', 'room')).toBeDefined();
+
+            const before = await localDB.getLocalUpdatedAt();
+            await localDB.adoptSyncState(userScope, { forgotten: true, checkpoints: ['k1', 'k2'] });
+            const gcHigh = await localDB.getSyncGcHigh(userScope);
+            expect(gcHigh).toBeGreaterThan(before);
+            expect(await localDB.getLocalUpdatedAt()).toBe(gcHigh);
+            expect(await localDB.getSyncCheckpoints(userScope)).toEqual([
+                expect.objectContaining({ id: 'k1', anchor: gcHigh, heldAt: gcHigh }),
+                expect.objectContaining({ id: 'k2', anchor: gcHigh, heldAt: gcHigh })
+            ]);
+
+            await localDB.adoptSyncState(roomScope, { forgotten: false, checkpoints: [] });
+            expect(await localDB.getSyncGcHigh(roomScope)).toBe(0);
+        });
+
         it('keeps the watermark and checkpoints after restart', async () => {
             await localDB.putRecord('settings', tombstone('old'));
             const position = await localDB.getLocalUpdatedAt();

@@ -114,6 +114,8 @@ migrate(
       collection.fields.add(new Field({ name: "isDeleted", type: "bool" }));
       // Server time this server first held the record as a tombstone; 0 while live.
       collection.fields.add(new Field({ name: "tombstoneAt", type: "number" }));
+      // The scope lineage the record belongs to, stamped by the server.
+      collection.fields.add(new Field({ name: "lineage", type: "text" }));
       collection.fields.add(
         new Field({
           name: "assetEntries",
@@ -504,6 +506,11 @@ migrate(
     );
     // Highest serverUpdatedAt of a tombstone this server garbage-collected.
     syncScopes.fields.add(new Field({ name: "gcHigh", type: "number" }));
+    // History the scope's records descend from; replicas of different lineages never merge.
+    syncScopes.fields.add(new Field({ name: "lineage", type: "text" }));
+    // Set while a bootstrap or overwrite replaces the scope; only its writes are accepted.
+    syncScopes.fields.add(new Field({ name: "initToken", type: "text" }));
+    syncScopes.fields.add(new Field({ name: "initAt", type: "number" }));
     app.save(syncScopes);
     app
       .db()

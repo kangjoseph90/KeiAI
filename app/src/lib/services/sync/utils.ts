@@ -145,6 +145,7 @@ export function isAuthError(error: unknown): boolean {
 export function toErrorState(error: unknown): SyncState {
     if (isErrorCode(error, 'SYNC_UNSAFE')) return 'unsafe_merge';
     if (isErrorCode(error, 'SYNC_NEEDS_INIT')) return 'init_required';
+    if (isErrorCode(error, 'SYNC_INITIALIZING')) return 'server_initializing';
     if (isQuotaError(error)) return 'quota_error';
     if (isAuthError(error)) return 'auth_error';
     return 'network_error';

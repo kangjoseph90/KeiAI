@@ -212,6 +212,7 @@ var syncRecordFields = {
     "encryptedDataIV",
     "isDeleted",
     "tombstoneAt",
+    "lineage",
     "assetEntries",
     "serverUpdatedAt",
   ],
@@ -224,6 +225,7 @@ var syncRecordFields = {
     "encryptedDataIV",
     "isDeleted",
     "tombstoneAt",
+    "lineage",
     "assetEntries",
     "serverUpdatedAt",
   ],
@@ -283,9 +285,14 @@ function ensureSyncRevisionTriggers(app) {
     )
     .execute();
   for (var collectionName in syncRecordFields) {
-    // tombstoneAt is server-local retention metadata, not replicated state.
+    // tombstoneAt is server-local retention metadata and lineage is constant
+    // within a scope incarnation; neither is replicated record state.
     var canonical = syncRecordFields[collectionName].filter(function (field) {
-      return field !== "serverUpdatedAt" && field !== "tombstoneAt";
+      return (
+        field !== "serverUpdatedAt" &&
+        field !== "tombstoneAt" &&
+        field !== "lineage"
+      );
     });
     var changed = canonical
       .map(function (field) {
@@ -444,6 +451,8 @@ function stampSyncRecordCreate(record) {
 var TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 var CHECKPOINT_RETENTION_MS = 2 * TOMBSTONE_RETENTION_MS;
 var MAX_SYNC_CHECKPOINT_IDS = 1000;
+var SYNC_BOOTSTRAP_LEASE_MS = 60 * 60 * 1000;
+var MAX_ADOPTED_CHECKPOINTS = 100;
 var GC_SCOPE_PAGE = 100;
 
 var tombstoneScopes = {
@@ -506,37 +515,99 @@ function canAccessSyncScope(app, auth, scopeType, scopeId) {
   return !!member && member.getString("status") === "accepted";
 }
 
-function getSyncGcHigh(app, scopeType, scopeId) {
-  var row = new DynamicModel({ gcHigh: 0 });
+/**
+ * A scope's replica state on this server. `lineage` names the history the
+ * scope's records descend from; replicas of different lineages never merge.
+ * `initToken` marks a bootstrap or overwrite in progress: until its commit,
+ * the scope is not a valid replica and only that bootstrap may write.
+ */
+function getSyncScopeState(app, scopeType, scopeId) {
+  var row = new DynamicModel({
+    gcHigh: 0,
+    lineage: "",
+    initToken: "",
+    initAt: 0,
+  });
   try {
     app
       .db()
       .newQuery(
-        "SELECT gcHigh FROM sync_scopes WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
+        "SELECT gcHigh, lineage, initToken, initAt FROM sync_scopes WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
       )
       .bind({ scopeType: scopeType, scopeId: scopeId })
       .one(row);
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
-    return 0;
   }
-  return Number(row.gcHigh) || 0;
+  return {
+    gcHigh: Number(row.gcHigh) || 0,
+    lineage: row.lineage ? String(row.lineage) : null,
+    initToken: row.initToken ? String(row.initToken) : null,
+    initAt: Number(row.initAt) || 0,
+  };
 }
 
-function raiseSyncGcHigh(app, scopeType, scopeId, gcHigh) {
-  var record;
+function getSyncGcHigh(app, scopeType, scopeId) {
+  return getSyncScopeState(app, scopeType, scopeId).gcHigh;
+}
+
+function findSyncScopeRecord(app, scopeType, scopeId) {
   try {
-    record = app.findFirstRecordByFilter(
+    return app.findFirstRecordByFilter(
       "sync_scopes",
       "scopeType = {:scopeType} && scopeId = {:scopeId}",
       { scopeType: scopeType, scopeId: scopeId },
     );
   } catch (err) {
     if (!isNoRowsError(err)) throw err;
-    record = new Record(app.findCollectionByNameOrId("sync_scopes"));
+    var record = new Record(app.findCollectionByNameOrId("sync_scopes"));
     record.set("scopeType", scopeType);
     record.set("scopeId", scopeId);
+    return record;
   }
+}
+
+/** Replace a scope's replica state; used only when its incarnation changes. */
+function writeSyncScopeState(app, scopeType, scopeId, state) {
+  var record = findSyncScopeRecord(app, scopeType, scopeId);
+  record.set("gcHigh", state.gcHigh);
+  record.set("lineage", state.lineage || "");
+  record.set("initToken", state.initToken || "");
+  record.set("initAt", state.initAt || 0);
+  app.save(record);
+}
+
+/** 'active' while a bootstrap holds its lease, 'stale' once it lapsed. */
+function syncInitializing(state, now) {
+  if (!state.initToken) return null;
+  return now - state.initAt > SYNC_BOOTSTRAP_LEASE_MS ? "stale" : "active";
+}
+
+function syncScopeHasRecords(app, scopeType, scopeId) {
+  var collectionName = scopeType === "user" ? "records" : "multi_room_records";
+  var row = new DynamicModel({ n: 0 });
+  app
+    .db()
+    .newQuery(
+      "SELECT COUNT(*) AS n FROM (SELECT 1 FROM " +
+        collectionName +
+        " WHERE " +
+        tombstoneScopes[collectionName].ownerField +
+        " = {:scopeId} LIMIT 1)",
+    )
+    .bind({ scopeId: scopeId })
+    .one(row);
+  return Number(row.n) > 0;
+}
+
+function readSyncLineage(value) {
+  return typeof value === "string" && value && value.length <= 64
+    ? value
+    : null;
+}
+
+function raiseSyncGcHigh(app, scopeType, scopeId, gcHigh) {
+  var record = findSyncScopeRecord(app, scopeType, scopeId);
   if (gcHigh <= getNumberField(record, "gcHigh", 0)) return;
   record.set("gcHigh", gcHigh);
   app.save(record);
@@ -562,18 +633,6 @@ function anchorsOf(rows) {
   for (var i = 0; i < rows.length; i++)
     anchors.push(Number(rows[i].anchor) || 0);
   return anchors;
-}
-
-function hasSyncCheckpoints(app, scopeType, scopeId) {
-  var row = new DynamicModel({ n: 0 });
-  app
-    .db()
-    .newQuery(
-      "SELECT COUNT(*) AS n FROM sync_checkpoints WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
-    )
-    .bind({ scopeType: scopeType, scopeId: scopeId })
-    .one(row);
-  return Number(row.n) > 0;
 }
 
 function addSyncCheckpoint(
@@ -606,7 +665,7 @@ function syncHandshake(app, auth, body) {
     return { status: 403, body: { error: "Sync scope is not accessible." } };
   }
 
-  var gcHigh = getSyncGcHigh(app, request.scopeType, request.scopeId);
+  var state = getSyncScopeState(app, request.scopeType, request.scopeId);
   var held = findSyncCheckpoints(
     app,
     request.scopeType,
@@ -616,15 +675,18 @@ function syncHandshake(app, auth, body) {
   var known = [];
   for (var i = 0; i < held.length; i++)
     known.push(String(held[i].checkpointId));
+  // The bootstrap that holds the token sees its own scope as ready.
+  var ownsBootstrap =
+    !!state.initToken && body.bootstrapToken === state.initToken;
   return {
     status: 200,
     body: {
-      gcHigh: gcHigh,
+      gcHigh: state.gcHigh,
       coverage: syncCoverage(request.pullCursor, anchorsOf(held)),
       known: known,
-      initialized:
-        gcHigh > 0 ||
-        hasSyncCheckpoints(app, request.scopeType, request.scopeId),
+      lineage: state.lineage,
+      initializing: ownsBootstrap ? null : syncInitializing(state, Date.now()),
+      hasRecords: syncScopeHasRecords(app, request.scopeType, request.scopeId),
     },
   };
 }
@@ -644,12 +706,19 @@ function syncCommit(auth, body) {
   var serverUpper = readSyncNumber(body.serverUpper);
   var inherit = body.inherit;
   var issued = body.checkpoint;
+  var lineage = readSyncLineage(body.lineage);
+  var adoptedGcHigh =
+    body.adoptedGcHigh === undefined
+      ? null
+      : readSyncNumber(body.adoptedGcHigh);
   if (
     !request ||
     serverUpper === null ||
     serverUpper < request.pullCursor ||
     !isSyncIdList(inherit) ||
-    (issued !== undefined && !isSyncIdList([issued]))
+    (issued !== undefined && !isSyncIdList([issued])) ||
+    !lineage ||
+    (body.adoptedGcHigh !== undefined && adoptedGcHigh === null)
   ) {
     return { status: 400, body: { error: "Invalid sync request." } };
   }
@@ -665,19 +734,40 @@ function syncCommit(auth, body) {
     }
     var scopeType = request.scopeType;
     var scopeId = request.scopeId;
+    var state = getSyncScopeState(txApp, scopeType, scopeId);
+    var bootstrapping = !!state.initToken;
+    if (bootstrapping && body.bootstrapToken !== state.initToken) {
+      result = syncRefusal("sync_initializing", "Scope is being initialized.");
+      return;
+    }
+    if (state.lineage !== lineage) {
+      result = syncRefusal("sync_lineage", "Scope lineage changed.");
+      return;
+    }
     var held = findSyncCheckpoints(
       txApp,
       scopeType,
       scopeId,
       request.checkpoints,
     );
-    var gcHigh = getSyncGcHigh(txApp, scopeType, scopeId);
+    var gcHigh = state.gcHigh;
     if (gcHigh > syncCoverage(request.pullCursor, anchorsOf(held))) {
-      result = {
-        status: 409,
-        body: { code: "sync_unsafe", error: "Merge is not proven safe." },
-      };
+      result = syncRefusal("sync_unsafe", "Merge is not proven safe.");
       return;
+    }
+    // An adopting client inherited this server's forgotten deletions as of
+    // its adoption; a later GC would leave it claiming knowledge it lacks.
+    if (adoptedGcHigh !== null && gcHigh > adoptedGcHigh) {
+      result = syncRefusal("sync_unsafe", "Collected during adoption.");
+      return;
+    }
+    if (bootstrapping) {
+      writeSyncScopeState(txApp, scopeType, scopeId, {
+        gcHigh: gcHigh,
+        lineage: lineage,
+        initToken: null,
+        initAt: 0,
+      });
     }
 
     // A fresh revision orders after every committed Push of the session and
@@ -731,6 +821,259 @@ function syncCommit(auth, body) {
     result = { status: 200, body: { checkpoints: inherited } };
   });
   return result;
+}
+
+function syncRefusal(code, message) {
+  return { status: 409, body: { code: code, error: message } };
+}
+
+function readSyncScopeRequest(body) {
+  var scopeType = body.scopeType;
+  var scopeId = body.scopeId;
+  if (
+    (scopeType !== "user" && scopeType !== "room") ||
+    typeof scopeId !== "string" ||
+    !scopeId
+  ) {
+    return null;
+  }
+  return { scopeType: scopeType, scopeId: scopeId };
+}
+
+function deleteSyncScopeRecords(txApp, scopeType, scopeId) {
+  var collectionName = scopeType === "user" ? "records" : "multi_room_records";
+  var records =
+    scopeType === "user"
+      ? findRecordsByUser(txApp, collectionName, scopeId)
+      : findMultiRoomRecordsByRoom(txApp, collectionName, scopeId);
+  // Record deletes keep asset reference counts in step.
+  for (var i = 0; i < records.length; i++) txApp.delete(records[i]);
+}
+
+/**
+ * Start replacing this server's scope with a client's state.
+ *
+ * `init` fills a scope that has no lineage and no records. `overwrite`
+ * replaces whatever the scope holds, provided its lineage is still the one
+ * the client resolved against. Either way the scope's records, checkpoints,
+ * and GC state are replaced in one transaction, and the scope stays
+ * initializing until the bootstrap's commit: only requests carrying the
+ * returned token may write it meanwhile.
+ *
+ * The client's forgotten deletions become this server's at one fresh
+ * revision, and the bootstrap checkpoint, whose deletion set is the client's
+ * whole prefix, is anchored there: this server is clean on it, and the client
+ * proves its own forgotten deletions with it. Checkpoints the client is clean
+ * on are anchored there as well, so the client's other peers can prove them.
+ */
+function syncBootstrap(auth, body) {
+  body = body || {};
+  var scope = readSyncScopeRequest(body);
+  var mode = body.mode;
+  var lineage = readSyncLineage(body.lineage);
+  var expectedLineage =
+    body.expectedLineage === null
+      ? null
+      : readSyncLineage(body.expectedLineage);
+  var checkpoint = body.checkpoint;
+  if (
+    !scope ||
+    (mode !== "init" && mode !== "overwrite") ||
+    !lineage ||
+    (body.expectedLineage !== null && !expectedLineage) ||
+    !isSyncIdList([checkpoint]) ||
+    !isSyncIdList(body.clean) ||
+    typeof body.forgotten !== "boolean"
+  ) {
+    return { status: 400, body: { error: "Invalid sync request." } };
+  }
+
+  var result = null;
+  $app.runInTransaction(function (txApp) {
+    if (!canAccessSyncScope(txApp, auth, scope.scopeType, scope.scopeId)) {
+      result = {
+        status: 403,
+        body: { error: "Sync scope is not accessible." },
+      };
+      return;
+    }
+    var state = getSyncScopeState(txApp, scope.scopeType, scope.scopeId);
+    var allowed =
+      mode === "init"
+        ? !state.lineage &&
+          !state.initToken &&
+          !syncScopeHasRecords(txApp, scope.scopeType, scope.scopeId)
+        : state.lineage === expectedLineage;
+    if (!allowed) {
+      result = syncRefusal("sync_conflict", "Scope changed; resolve again.");
+      return;
+    }
+
+    deleteSyncScopeRecords(txApp, scope.scopeType, scope.scopeId);
+    txApp
+      .db()
+      .newQuery(
+        "DELETE FROM sync_checkpoints WHERE scopeType = {:scopeType} AND scopeId = {:scopeId}",
+      )
+      .bind(scope)
+      .execute();
+    var revision = nextSyncRevision(txApp);
+    var token = $security.randomString(32);
+    writeSyncScopeState(txApp, scope.scopeType, scope.scopeId, {
+      gcHigh: body.forgotten ? revision : 0,
+      lineage: lineage,
+      initToken: token,
+      initAt: Date.now(),
+    });
+    addSyncCheckpoint(
+      txApp,
+      scope.scopeType,
+      scope.scopeId,
+      checkpoint,
+      revision,
+      revision,
+    );
+    // The client is clean on these, so its forgotten deletions, now this
+    // server's, lie in their deletion sets: this server is clean on them too.
+    var seen = {};
+    seen[checkpoint] = true;
+    for (var i = 0; i < body.clean.length; i++) {
+      if (seen[body.clean[i]]) continue;
+      seen[body.clean[i]] = true;
+      addSyncCheckpoint(
+        txApp,
+        scope.scopeType,
+        scope.scopeId,
+        body.clean[i],
+        revision,
+        revision,
+      );
+    }
+    result = { status: 200, body: { token: token } };
+  });
+  return result;
+}
+
+/**
+ * Hand this server's scope to a client that replaces its own replica.
+ *
+ * The client inherits every deletion this server forgot. A fresh checkpoint
+ * anchored at the current revision covers them all, so the client can prove
+ * them; the newest checkpoints this server is clean on are handed over too.
+ */
+function syncAdopt(auth, body) {
+  var scope = readSyncScopeRequest(body || {});
+  if (!scope) return { status: 400, body: { error: "Invalid sync request." } };
+
+  var result = null;
+  $app.runInTransaction(function (txApp) {
+    if (!canAccessSyncScope(txApp, auth, scope.scopeType, scope.scopeId)) {
+      result = {
+        status: 403,
+        body: { error: "Sync scope is not accessible." },
+      };
+      return;
+    }
+    var state = getSyncScopeState(txApp, scope.scopeType, scope.scopeId);
+    if (state.initToken) {
+      result = syncRefusal("sync_initializing", "Scope is being initialized.");
+      return;
+    }
+    var lineage = state.lineage;
+    if (!lineage) {
+      // Records that predate lineages get one as their replicas' common source.
+      if (!syncScopeHasRecords(txApp, scope.scopeType, scope.scopeId)) {
+        result = syncRefusal("sync_conflict", "Scope has nothing to adopt.");
+        return;
+      }
+      lineage = $security.randomString(32);
+      writeSyncScopeState(txApp, scope.scopeType, scope.scopeId, {
+        gcHigh: state.gcHigh,
+        lineage: lineage,
+        initToken: null,
+        initAt: 0,
+      });
+    }
+
+    var revision = nextSyncRevision(txApp);
+    var minted = $security.randomString(32);
+    addSyncCheckpoint(
+      txApp,
+      scope.scopeType,
+      scope.scopeId,
+      minted,
+      revision,
+      revision,
+    );
+    var clean = arrayOf(new DynamicModel({ checkpointId: "" }));
+    txApp
+      .db()
+      .newQuery(
+        "SELECT checkpointId FROM sync_checkpoints WHERE scopeType = {:scopeType} AND scopeId = {:scopeId} AND anchor >= {:gcHigh} AND anchor > 0 AND checkpointId != {:minted} ORDER BY heldAt DESC LIMIT {:limit}",
+      )
+      .bind({
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        gcHigh: state.gcHigh,
+        minted: minted,
+        limit: MAX_ADOPTED_CHECKPOINTS,
+      })
+      .all(clean);
+    var checkpoints = [minted];
+    for (var i = 0; i < clean.length; i++) {
+      checkpoints.push(String(clean[i].checkpointId));
+    }
+    result = {
+      status: 200,
+      body: {
+        lineage: lineage,
+        gcHigh: state.gcHigh,
+        checkpoints: checkpoints,
+      },
+    };
+  });
+  return result;
+}
+
+/**
+ * A sync record write must belong to the scope's current replica: the
+ * lineage it was proven against, or the bootstrap that is initializing it.
+ * Writes from a replaced lineage or into an uninitialized scope are refused.
+ */
+function assertSyncWriteAllowed(e) {
+  var record = e.record;
+  var scope = record && tombstoneScopes[record.collection().name];
+  if (!scope) return;
+  var state = getSyncScopeState(
+    e.app,
+    scope.scopeType,
+    record.getString(scope.ownerField),
+  );
+  var headers = e.requestInfo().headers || {};
+  if (state.initToken) {
+    if (headers["x_kei_sync_bootstrap"] !== state.initToken) {
+      throw new ApiError(
+        409,
+        "Scope is being initialized (sync_initializing).",
+      );
+    }
+    return;
+  }
+  if (!state.lineage || headers["x_kei_sync_lineage"] !== state.lineage) {
+    throw new ApiError(409, "Scope lineage changed (sync_lineage).");
+  }
+}
+
+/** Every record carries its scope's lineage, so readers detect a replacement. */
+function stampSyncRecordLineage(app, record) {
+  var scope = tombstoneScopes[record.collection().name];
+  if (!scope) return;
+  var state = getSyncScopeState(
+    app,
+    scope.scopeType,
+    record.getString(scope.ownerField),
+  );
+  record.set("lineage", state.lineage || "");
 }
 
 /**
@@ -1932,6 +2275,10 @@ module.exports = {
   syncCoverage: syncCoverage,
   syncHandshake: syncHandshake,
   syncCommit: syncCommit,
+  syncBootstrap: syncBootstrap,
+  syncAdopt: syncAdopt,
+  assertSyncWriteAllowed: assertSyncWriteAllowed,
+  stampSyncRecordLineage: stampSyncRecordLineage,
   assertSyncWriteTransactional: assertSyncWriteTransactional,
   assertSyncCreateCovered: assertSyncCreateCovered,
   collectSyncTombstones: collectSyncTombstones,

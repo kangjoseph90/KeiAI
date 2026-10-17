@@ -5,7 +5,8 @@ import {
     dataSyncStatus,
     userSyncStatus,
     multiSyncStatus,
-    assetSyncStatus
+    assetSyncStatus,
+    syncConflicts
 } from '$lib/stores/state';
 
 const dataStatusListeners = new Set<(status: { state: string }) => void>();
@@ -14,6 +15,8 @@ const multiStatusListeners = new Set<(status: { state: string }) => void>();
 const assetStatusListeners = new Set<
     (status: { state: string; progress?: SyncProgress }) => void
 >();
+
+const conflictListeners = new Set<(conflicts: unknown[]) => void>();
 
 interface SyncProgress {
     completed: number;
@@ -26,6 +29,11 @@ vi.mock('$lib/services/sync', () => ({
             dataStatusListeners.add(listener);
             listener({ state: 'idle' });
             return () => dataStatusListeners.delete(listener);
+        }),
+        subscribeConflicts: vi.fn((listener: (conflicts: unknown[]) => void) => {
+            conflictListeners.add(listener);
+            listener([]);
+            return () => conflictListeners.delete(listener);
         })
     },
     UserRecordSyncEngine: {
@@ -60,6 +68,7 @@ describe('sync status stores', () => {
         userStatusListeners.clear();
         multiStatusListeners.clear();
         assetStatusListeners.clear();
+        conflictListeners.clear();
         dataSyncStatus.set({ state: 'idle' });
         userSyncStatus.set({ state: 'idle' });
         multiSyncStatus.set({ state: 'idle' });
@@ -81,6 +90,10 @@ describe('sync status stores', () => {
         for (const listener of assetStatusListeners) {
             listener({ state: 'syncing', progress: { completed: 1, total: 3 } });
         }
+        const conflict = { serverUrl: 'https://server.example', kind: 'unsafe' };
+        for (const listener of conflictListeners) {
+            listener([conflict]);
+        }
 
         expect(get(dataSyncStatus)).toEqual({ state: 'syncing' });
         expect(get(userSyncStatus)).toEqual({ state: 'network_error' });
@@ -89,6 +102,7 @@ describe('sync status stores', () => {
             state: 'syncing',
             progress: { completed: 1, total: 3 }
         });
+        expect(get(syncConflicts)).toEqual([conflict]);
     });
 
     it('should reset stores when tracking stops', () => {
@@ -97,6 +111,9 @@ describe('sync status stores', () => {
         for (const listener of assetStatusListeners) {
             listener({ state: 'quota_error' });
         }
+        for (const listener of conflictListeners) {
+            listener([{ serverUrl: 'https://server.example', kind: 'init' }]);
+        }
 
         stopSyncStoreBindings();
 
@@ -104,5 +121,6 @@ describe('sync status stores', () => {
         expect(get(userSyncStatus)).toEqual({ state: 'idle' });
         expect(get(multiSyncStatus)).toEqual({ state: 'idle' });
         expect(get(assetSyncStatus)).toEqual({ state: 'idle' });
+        expect(get(syncConflicts)).toEqual([]);
     });
 });

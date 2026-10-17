@@ -22,7 +22,8 @@ export type ErrorCode =
     | 'QUOTA_EXCEEDED'
     | 'DELETE_LAST_ITEM'
     | 'SYNC_UNSAFE'
-    | 'SYNC_NEEDS_INIT';
+    | 'SYNC_NEEDS_INIT'
+    | 'SYNC_INITIALIZING';
 
 export class AppError extends Error {
     constructor(
