@@ -20,7 +20,9 @@ export type ErrorCode =
     | 'NOT_IMPLEMENTED'
     | 'ASSET_ERROR'
     | 'QUOTA_EXCEEDED'
-    | 'DELETE_LAST_ITEM';
+    | 'DELETE_LAST_ITEM'
+    | 'SYNC_UNSAFE'
+    | 'SYNC_NEEDS_INIT';
 
 export class AppError extends Error {
     constructor(

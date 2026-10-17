@@ -8,9 +8,11 @@ import type {
     DatabaseWriteEventListener,
     DatabaseWriteOptions,
     DatabaseWriteOperation,
-    DatabaseKeyEntry
+    DatabaseKeyEntry,
+    SyncCheckpoint,
+    TombstoneCollection
 } from './types';
-import { TABLES } from './types';
+import { SYNC_TABLES, TABLES } from './types';
 import { AppError } from '$lib/types/errors';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
@@ -39,6 +41,7 @@ interface DatabaseSqlRow {
     createdAt: number | null;
     updatedAt: number | null;
     localUpdatedAt: number;
+    tombstoneAt: number | null;
     isDeleted: number; // 0 | 1
     assetEntries: string | null;
     data: string; // JSON.stringify(...)
@@ -74,6 +77,7 @@ function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
         createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
         localUpdatedAt: 0,
+        tombstoneAt: null,
         isDeleted: clone.isDeleted ? 1 : 0,
         assetEntries: clone.assetEntries ? canonicalJson(clone.assetEntries) : null,
         data: canonicalJson(clone.data ?? {})
@@ -95,6 +99,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         createdAt: row.createdAt ?? 0,
         updatedAt: row.updatedAt ?? 0,
         localUpdatedAt: row.localUpdatedAt,
+        tombstoneAt: row.tombstoneAt ?? undefined,
         isDeleted: row.isDeleted === 1,
         assetEntries: row.assetEntries ? (JSON.parse(row.assetEntries) as AssetEntries) : undefined,
         data
@@ -107,6 +112,40 @@ function scrubSoftDeletedRecord(record: DataRecord, updatedAt: number): void {
     record.assetEntries = undefined;
     record.data = {};
     Reflect.deleteProperty(record, 'activeSwipeId');
+}
+
+const RECORD_COLUMNS =
+    'id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data, tombstoneAt';
+
+/** Insert values whose tombstone records when this replica first held its current version. */
+function recordValues(tableName: TableName, records: DataRecord[], now: number) {
+    const values: unknown[] = [];
+    const nowParam = records.length * 13 + 1;
+    const placeholders = records
+        .map((record, idx) => {
+            const b = recordToBindings(record);
+            values.push(
+                b.id,
+                b.scopeType,
+                b.scopeId,
+                b.roomId,
+                b.chatId,
+                b.sortOrder,
+                b.activeSwipeId,
+                b.createdAt,
+                b.updatedAt,
+                b.localUpdatedAt,
+                b.isDeleted,
+                b.assetEntries,
+                b.data
+            );
+            const p = Array.from({ length: 13 }, (_, i) => `$${idx * 13 + i + 1}`);
+            const tombstoneAt = `CASE WHEN ${p[10]} = 1 THEN COALESCE((SELECT tombstoneAt FROM ${tableName} WHERE id = ${p[0]} AND isDeleted = 1 AND updatedAt IS ${p[8]}), $${nowParam}) END`;
+            return `(${p.join(', ')}, ${tombstoneAt})`;
+        })
+        .join(', ');
+    values.push(now);
+    return { placeholders, values };
 }
 
 function parseCompoundIndex(indexName: string): [string, string] | null {
@@ -203,7 +242,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         localUpdatedAt INTEGER NOT NULL,
                         isDeleted INTEGER,
                         assetEntries TEXT,
-                        data TEXT
+                        data TEXT,
+                        tombstoneAt INTEGER
 					);
 				`;
 
@@ -212,9 +252,27 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 `;
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_localUpdatedAt" ON "${table}" (scopeType, scopeId, localUpdatedAt);
 `;
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scope_tombstoneAt" ON "${table}" (scopeType, scopeId, tombstoneAt);
+`;
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_scopeId" ON "${table}" (scopeId);
 `;
         }
+        sql += `CREATE TABLE IF NOT EXISTS sync_gc (
+                    scopeType TEXT    NOT NULL,
+                    scopeId   TEXT    NOT NULL,
+                    gcHigh    INTEGER NOT NULL,
+                    PRIMARY KEY (scopeType, scopeId)
+                );
+                CREATE TABLE IF NOT EXISTS sync_checkpoints (
+                    scopeType TEXT    NOT NULL,
+                    scopeId   TEXT    NOT NULL,
+                    id        TEXT    NOT NULL,
+                    anchor    INTEGER NOT NULL,
+                    heldAt    INTEGER NOT NULL,
+                    createdAt INTEGER NOT NULL,
+                    PRIMARY KEY (scopeType, scopeId, id)
+                );
+`;
 
         // FK indices for 1:N parent→child queries
         sql += `CREATE INDEX IF NOT EXISTS "idx_chats_roomId" ON chats (roomId);
@@ -251,28 +309,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         record: T,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        const db = await this.getDb();
-        const b = recordToBindings(record);
-        await db.execute(
-            `INSERT OR REPLACE INTO ${tableName}
-				(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-            [
-                b.id,
-                b.scopeType,
-                b.scopeId,
-                b.roomId,
-                b.chatId,
-                b.sortOrder,
-                b.activeSwipeId,
-                b.createdAt,
-                b.updatedAt,
-                b.localUpdatedAt,
-                b.isDeleted,
-                b.assetEntries,
-                b.data
-            ]
-        );
+        await this.writeRecords(tableName, [record]);
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
@@ -282,46 +319,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         records = [...new Map(records.map((record) => [record.id, record])).values()];
-        const db = await this.getDb();
-        const chunkSize = 50;
-
-        for (let i = 0; i < records.length; i += chunkSize) {
-            const chunk = records.slice(i, i + chunkSize);
-            const placeholders = chunk
-                .map((_, idx) => {
-                    const start = idx * 13 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
-                })
-                .join(', ');
-
-            const values: unknown[] = [];
-            for (const record of chunk) {
-                const b = recordToBindings(record);
-                values.push(
-                    b.id,
-                    b.scopeType,
-                    b.scopeId,
-                    b.roomId,
-                    b.chatId,
-                    b.sortOrder,
-                    b.activeSwipeId,
-                    b.createdAt,
-                    b.updatedAt,
-                    b.localUpdatedAt,
-                    b.isDeleted,
-                    b.assetEntries,
-                    b.data
-                );
-            }
-
-            await db.execute(
-                `INSERT OR REPLACE INTO ${tableName}
-					(id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
-					VALUES ${placeholders}`,
-                values
-            );
-        }
-
+        await this.writeRecords(tableName, records);
         this.emitWriteEvent(
             tableName,
             'putMany',
@@ -330,13 +328,29 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
+    private async writeRecords(tableName: TableName, records: DataRecord[]): Promise<void> {
+        const db = await this.getDb();
+        const chunkSize = 50;
+        const now = Date.now();
+        for (let i = 0; i < records.length; i += chunkSize) {
+            const { placeholders, values } = recordValues(
+                tableName,
+                records.slice(i, i + chunkSize),
+                now
+            );
+            await db.execute(
+                `INSERT OR REPLACE INTO ${tableName} (${RECORD_COLUMNS}) VALUES ${placeholders}`,
+                values
+            );
+        }
+    }
+
     async deleteRecord(
         tableName: TableName,
         id: string,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        const db = await this.getDb();
-        await db.execute(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
+        await this.deleteRows(tableName, 'id = $1', [id]);
         this.emitWriteEvent(tableName, 'delete', [id], options);
     }
 
@@ -347,18 +361,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         await this.flush();
-        const db = await this.getDb();
-        const rows = await db.select<{ id: string }[]>(
-            `SELECT id FROM ${tableName} WHERE ${indexName} = $1`,
-            [indexValue]
-        );
-        await db.execute(`DELETE FROM ${tableName} WHERE ${indexName} = $1`, [indexValue]);
-        this.emitWriteEvent(
-            tableName,
-            'deleteByIndex',
-            rows.map((row) => row.id),
-            options
-        );
+        const ids = await this.deleteRows(tableName, `${indexName} = $1`, [indexValue]);
+        this.emitWriteEvent(tableName, 'deleteByIndex', ids, options);
     }
 
     async deleteByScope(
@@ -367,22 +371,44 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<number> {
         await this.flush();
-        const db = await this.getDb();
-
-        const rows = await db.select<{ id: string }[]>(
-            `SELECT id FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2`,
-            [scope.scopeType, scope.scopeId]
-        );
-        if (rows.length === 0) return 0;
-
-        const ids = rows.map((row) => row.id);
-        const result = await db.execute(
-            `DELETE FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2`,
-            [scope.scopeType, scope.scopeId]
-        );
-
+        const ids = await this.deleteRows(tableName, 'scopeType = $1 AND scopeId = $2', [
+            scope.scopeType,
+            scope.scopeId
+        ]);
         this.emitWriteEvent(tableName, 'purge', ids, options);
-        return result.rowsAffected;
+        return ids.length;
+    }
+
+    /**
+     * A hard-deleted sync tombstone is forgotten. Its scope watermark rises first, and the
+     * delete skips any tombstone written above it meanwhile, so no interleaving loses one.
+     */
+    private async deleteRows(
+        tableName: TableName,
+        where: string,
+        params: unknown[]
+    ): Promise<string[]> {
+        const db = await this.getDb();
+        let condition = where;
+        if (SYNC_TABLES.includes(tableName)) {
+            await db.execute(
+                `INSERT INTO sync_gc (scopeType, scopeId, gcHigh)
+                 SELECT scopeType, scopeId, MAX(localUpdatedAt) FROM ${tableName}
+                 WHERE (${where}) AND isDeleted = 1
+                 GROUP BY scopeType, scopeId
+                 ON CONFLICT(scopeType, scopeId) DO UPDATE SET gcHigh = MAX(gcHigh, excluded.gcHigh)`,
+                params
+            );
+            condition = `(${where}) AND (isDeleted = 0 OR localUpdatedAt <= COALESCE(
+                (SELECT gcHigh FROM sync_gc g
+                 WHERE g.scopeType = ${tableName}.scopeType AND g.scopeId = ${tableName}.scopeId), 0))`;
+        }
+        const rows = await db.select<{ id: string }[]>(
+            `SELECT id FROM ${tableName} WHERE ${condition}`,
+            params
+        );
+        await db.execute(`DELETE FROM ${tableName} WHERE ${condition}`, params);
+        return rows.map((row) => row.id);
     }
 
     async softDeleteRecord(
@@ -420,41 +446,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         }
 
         if (recordsToUpdate.length > 0) {
-            const chunkSize = 50;
-            for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
-                const chunk = recordsToUpdate.slice(i, i + chunkSize);
-                const placeholders = chunk
-                    .map((_, idx) => {
-                        const start = idx * 13 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
-                    })
-                    .join(', ');
-                const values: unknown[] = [];
-                for (const record of chunk) {
-                    const b = recordToBindings(record);
-                    values.push(
-                        b.id,
-                        b.scopeType,
-                        b.scopeId,
-                        b.roomId,
-                        b.chatId,
-                        b.sortOrder,
-                        b.activeSwipeId,
-                        b.createdAt,
-                        b.updatedAt,
-                        b.localUpdatedAt,
-                        b.isDeleted,
-                        b.assetEntries,
-                        b.data
-                    );
-                }
-                await db.execute(
-                    `INSERT OR REPLACE INTO ${tableName}
-	                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
-	                VALUES ${placeholders}`,
-                    values
-                );
-            }
+            await this.writeRecords(tableName, recordsToUpdate);
             this.emitWriteEvent(
                 tableName,
                 'softDeleteByIndex',
@@ -489,8 +481,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         if (rows.length === 0) return;
 
         await db.execute(
-            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3, activeSwipeId = NULL, assetEntries = NULL, data = '{}' WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
-            [indexValue[0], indexValue[1], now]
+            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3, tombstoneAt = $4, activeSwipeId = NULL, assetEntries = NULL, data = '{}' WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
+            [indexValue[0], indexValue[1], now, Date.now()]
         );
         this.emitWriteEvent(
             tableName,
@@ -761,6 +753,91 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             [indexValue]
         );
         return rows[0]?.['COUNT(*)'] ?? 0;
+    }
+
+    async getSyncGcHigh(scope: DataScope): Promise<number> {
+        const db = await this.getDb();
+        const rows = await db.select<Array<{ gcHigh: number }>>(
+            'SELECT gcHigh FROM sync_gc WHERE scopeType = $1 AND scopeId = $2',
+            [scope.scopeType, scope.scopeId]
+        );
+        return rows[0]?.gcHigh ?? 0;
+    }
+
+    async collectTombstones(scope: DataScope, options: TombstoneCollection): Promise<number> {
+        await this.flush();
+        const db = await this.getDb();
+        const expired =
+            'scopeType = $1 AND scopeId = $2 AND isDeleted = 1 AND tombstoneAt <= $3 AND localUpdatedAt <= $4';
+        const params = [
+            scope.scopeType,
+            scope.scopeId,
+            options.receivedThrough,
+            options.throughLocalUpdatedAt
+        ];
+        let high = 0;
+        for (const table of SYNC_TABLES) {
+            const rows = await db.select<Array<{ high: number | null }>>(
+                `SELECT MAX(localUpdatedAt) AS high FROM ${table} WHERE ${expired}`,
+                params
+            );
+            high = Math.max(high, rows[0]?.high ?? 0);
+        }
+        if (high > 0) {
+            // Raise the watermark first; only tombstones at or below it are then removed.
+            await db.execute(
+                `INSERT INTO sync_gc (scopeType, scopeId, gcHigh) VALUES ($1, $2, $3)
+                 ON CONFLICT(scopeType, scopeId) DO UPDATE SET gcHigh = MAX(gcHigh, excluded.gcHigh)`,
+                [scope.scopeType, scope.scopeId, high]
+            );
+            for (const table of SYNC_TABLES) {
+                await db.execute(`DELETE FROM ${table} WHERE ${expired} AND localUpdatedAt <= $5`, [
+                    ...params,
+                    high
+                ]);
+            }
+        }
+        return await this.getSyncGcHigh(scope);
+    }
+
+    async getSyncCheckpoints(scope: DataScope): Promise<SyncCheckpoint[]> {
+        const db = await this.getDb();
+        return await db.select<SyncCheckpoint[]>(
+            `SELECT id, anchor, heldAt, createdAt FROM sync_checkpoints
+             WHERE scopeType = $1 AND scopeId = $2`,
+            [scope.scopeType, scope.scopeId]
+        );
+    }
+
+    async addSyncCheckpoints(
+        scope: DataScope,
+        checkpoints: Array<Pick<SyncCheckpoint, 'id' | 'anchor'>>
+    ): Promise<void> {
+        const known = new Set((await this.getSyncCheckpoints(scope)).map(({ id }) => id));
+        const added = checkpoints.filter(({ id }) => !known.has(id));
+        if (added.length === 0) return;
+        const db = await this.getDb();
+        // A fresh revision orders the inheritance after every Push bound read before it.
+        await db.execute('UPDATE local_updates SET value = value + 1 WHERE id = 0');
+        const values: unknown[] = [scope.scopeType, scope.scopeId, Date.now()];
+        const rows = added.map(({ id, anchor }) => {
+            values.push(id, anchor);
+            const n = values.length;
+            return `($1, $2, $${n - 1}, $${n}, (SELECT value FROM local_updates WHERE id = 0), $3)`;
+        });
+        await db.execute(
+            `INSERT OR IGNORE INTO sync_checkpoints (scopeType, scopeId, id, anchor, heldAt, createdAt)
+             VALUES ${rows.join(', ')}`,
+            values
+        );
+    }
+
+    async pruneSyncCheckpoints(scope: DataScope, createdBefore: number): Promise<void> {
+        const db = await this.getDb();
+        await db.execute(
+            'DELETE FROM sync_checkpoints WHERE scopeType = $1 AND scopeId = $2 AND createdAt < $3',
+            [scope.scopeType, scope.scopeId, createdBefore]
+        );
     }
 
     private emitWriteEvent(

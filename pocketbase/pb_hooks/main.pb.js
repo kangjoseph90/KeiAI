@@ -17,6 +17,14 @@ if (!DUMMY_SALT_SECRET) {
 var PAIRING_TTL_SECONDS = 300;
 var PAIRING_BLOB_MAX_CHARS = 65536;
 
+// Sync Pull cursors follow a commit-ordered revision assigned by SQLite
+// triggers. Install them before serving; without them the server must not run.
+
+$app.onServe().bindFunc((e) => {
+  require(`${__hooks}/keiai.js`).ensureSyncRevisionTriggers($app);
+  e.next();
+});
+
 // Restore catalog rows for durable R2 objects after migrations have completed.
 
 $app.onServe().bindFunc((e) => {
@@ -131,7 +139,8 @@ onRealtimeSubscribeRequest((e) => {
 
 // Canonical sync arbitration. Record hooks run for both HTTP requests and
 // programmatic $app.save calls (including the custom endpoint transactions).
-// Never trust a client supplied serverUpdatedAt value.
+// Never trust a client supplied serverUpdatedAt value; the revision triggers
+// assign it, and writes are refused while they are missing.
 var syncCollections = [
   "records",
   "multi_room_records",
@@ -143,6 +152,7 @@ onRecordCreate(
   (e) => {
     if (e.record) {
       var h = require(`${__hooks}/keiai.js`);
+      h.assertSyncRevisionTriggers(e.app);
       h.stampSyncRecordCreate(e.record);
     }
     e.next();
@@ -153,14 +163,24 @@ onRecordCreate(
 onRecordUpdate(
   (e) => {
     if (e.record) {
-      require(`${__hooks}/keiai.js`).applySyncRecordUpdate(
-        e.record,
-        e.record.collection().name,
-      );
+      var h = require(`${__hooks}/keiai.js`);
+      h.assertSyncRevisionTriggers(e.app);
+      h.applySyncRecordUpdate(e.record, e.record.collection().name);
     }
     e.next();
   },
   ...syncCollections,
+);
+
+// A live create is the only write that can resurrect a deletion this server
+// garbage-collected; it must carry proof that the client knows every such deletion.
+onRecordCreateRequest(
+  (e) => {
+    require(`${__hooks}/keiai.js`).assertSyncCreateCovered(e);
+    e.next();
+  },
+  "records",
+  "multi_room_records",
 );
 
 // A room-index tombstone must go through the owner deletion endpoint so the
@@ -198,15 +218,35 @@ routerAdd("GET", "/api/spec", (e) => {
   });
 });
 
-// Server clock upper bound for bounded remote pulls.
+// Pull upper bound: the highest committed sync revision. Every change at or
+// below it is already visible, so a cursor advanced to it never skips one.
 routerAdd("GET", "/api/now", (e) => {
   var h = require(`${__hooks}/keiai.js`);
   var ip = e.realIP();
   if (!h.checkRate(ip + ":now", 60, 60000)) {
     return e.json(429, { error: "Too many requests. Try again later." });
   }
-  var timestamp = h.getServerTimestamp();
-  return e.json(200, { now: timestamp });
+  return e.json(200, { now: h.getSyncRevision($app) });
+});
+
+// Tombstone GC merge safety: session handshake and commit.
+
+routerAdd("POST", "/api/sync/handshake", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+  var result = h.syncHandshake($app, auth, e.requestInfo().body);
+  return e.json(result.status, result.body);
+});
+
+routerAdd("POST", "/api/sync/commit", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+  var result = h.syncCommit(auth, e.requestInfo().body);
+  return e.json(result.status, result.body);
 });
 
 // Username salt lookup
@@ -768,5 +808,15 @@ cronAdd("asset-gc", "0 * * * *", () => {
     }
 
     if (orphans.length < pageSize) break;
+  }
+});
+
+// Tombstone garbage collection
+
+cronAdd("tombstone-gc", "30 * * * *", () => {
+  try {
+    require(`${__hooks}/keiai.js`).collectSyncTombstones(Date.now());
+  } catch (err) {
+    $app.logger().error("Tombstone GC failed.", "error", err);
   }
 });
