@@ -103,6 +103,8 @@ export interface SyncConflict {
     kind: 'unsafe' | 'init';
     /** The server's lineage the user resolves against; an overwrite requires it unchanged. */
     serverLineage: string | null;
+    /** Another device's unfinished initialization holds the server: it cannot be adopted. */
+    serverInitializing: boolean;
 }
 
 export type SyncConflictChoice = 'local' | 'server';
@@ -404,7 +406,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         serverUrl,
                         scope,
                         kind: opened.plan === 'init' ? 'init' : 'unsafe',
-                        serverLineage: opened.remoteLineage
+                        serverLineage: opened.remoteLineage,
+                        serverInitializing: opened.remoteInitializing
                     });
                     throw new AppError(
                         opened.plan === 'init' ? 'SYNC_NEEDS_INIT' : 'SYNC_UNSAFE',

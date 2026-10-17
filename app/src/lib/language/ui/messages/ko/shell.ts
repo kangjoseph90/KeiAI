@@ -66,6 +66,16 @@ export const shellMessages = {
     'shell.sync.conflict.confirmAction': '바꾸기',
     'shell.sync.conflict.resolved': '동기화 충돌을 해결했습니다',
     'shell.sync.conflict.failed': '충돌을 해결하지 못했습니다: {:error}',
+    'shell.sync.conflict.keepServerUnavailable':
+        '다른 기기가 서버를 준비하다 멈춰 있어 지금은 서버의 사본을 받을 수 없습니다.',
+    'shell.sync.conflict.errorStale':
+        '이 충돌은 이미 처리되었거나 그사이 바뀌었습니다. 동기화 상태를 확인하세요.',
+    'shell.sync.conflict.errorChanged':
+        '그사이 서버의 데이터가 바뀌어 안전하게 진행하지 못했습니다. 다시 선택하세요.',
+    'shell.sync.conflict.errorInitializing':
+        '다른 기기가 서버를 준비하고 있습니다. 잠시 후 다시 시도하세요.',
+    'shell.sync.conflict.errorNetwork':
+        '서버에 연결하지 못했습니다. 연결을 확인하고 다시 시도하세요.',
     'shell.sidebar.sync.indicatorServerTransition': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionTitle': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionBody':

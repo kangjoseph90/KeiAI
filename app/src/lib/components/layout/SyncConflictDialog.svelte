@@ -3,7 +3,7 @@
     import { Button } from '$lib/components/ui/button';
     import { resolveSyncConflict, t } from '$lib/stores';
     import { appConfirm, toast } from '$lib/ui';
-    import { getErrorMessage } from '$lib/types/errors';
+    import { isErrorCode } from '$lib/types/errors';
     import type { SyncConflict, SyncConflictChoice } from '$lib/services/sync';
 
     interface Props {
@@ -24,6 +24,18 @@
     $effect(() => {
         if (!open) errorMsg = '';
     });
+
+    /** Why a resolution failed, in the user's terms; engine messages are not user-facing. */
+    function failureReason(error: unknown): string {
+        if (isErrorCode(error, 'INVALID_INPUT')) return $t('shell.sync.conflict.errorStale');
+        if (isErrorCode(error, 'SYNC_INITIALIZING')) {
+            return $t('shell.sync.conflict.errorInitializing');
+        }
+        if (isErrorCode(error, 'SYNC_UNSAFE') || isErrorCode(error, 'SYNC_NEEDS_INIT')) {
+            return $t('shell.sync.conflict.errorChanged');
+        }
+        return $t('shell.sync.conflict.errorNetwork');
+    }
 
     async function choose(choice: SyncConflictChoice): Promise<void> {
         const target = conflict;
@@ -51,7 +63,7 @@
             toast.success({ title: $t('shell.sync.conflict.resolved') });
             open = false;
         } catch (error) {
-            errorMsg = $t('shell.sync.conflict.failed', { error: getErrorMessage(error) });
+            errorMsg = $t('shell.sync.conflict.failed', { error: failureReason(error) });
         } finally {
             working = false;
         }
@@ -94,12 +106,16 @@
                 <Button
                     variant="outline"
                     class="h-auto flex-col items-start gap-0.5 whitespace-normal py-2 text-left"
-                    disabled={working}
+                    disabled={working || conflict.serverInitializing}
                     onclick={() => void choose('server')}
                 >
                     <span class="font-medium">{$t('shell.sync.conflict.keepServer')}</span>
                     <span class="text-xs font-normal text-muted-foreground">
-                        {$t('shell.sync.conflict.keepServerHint')}
+                        {$t(
+                            conflict.serverInitializing
+                                ? 'shell.sync.conflict.keepServerUnavailable'
+                                : 'shell.sync.conflict.keepServerHint'
+                        )}
                     </span>
                 </Button>
             </div>

@@ -132,6 +132,8 @@ export interface OpenedSession {
     session: SyncSession;
     /** The server's lineage as of the handshake: what a user resolves a conflict against. */
     remoteLineage: string | null;
+    /** Another client holds the server scope's initialization lease. */
+    remoteInitializing: boolean;
 }
 
 export interface SessionBounds {
@@ -206,6 +208,7 @@ export async function openSyncSession(
     return {
         plan,
         remoteLineage,
+        remoteInitializing: initializing === 'active' || initializing === 'stale',
         session: {
             localCoverage,
             serverCoverage,

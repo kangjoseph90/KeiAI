@@ -653,6 +653,8 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             b.pb = await signIn(SERVERS[1]!, user);
             expect(await sync(b)).toBe('unsafe_merge');
             expect(serverRow(1, 'x')).toMatchObject({ isDeleted: 1 });
+            // The lease cannot be adopted: the dialog offers only keeping this device.
+            expect(conflicts(b)[0]).toMatchObject({ serverInitializing: true });
 
             restart(a);
             expect(await sync(a)).toBe('idle');

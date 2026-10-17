@@ -63,6 +63,16 @@ export const shellMessages = {
     'shell.sync.conflict.confirmAction': 'Replace',
     'shell.sync.conflict.resolved': 'Sync conflict resolved',
     'shell.sync.conflict.failed': 'Could not resolve the conflict: {:error}',
+    'shell.sync.conflict.keepServerUnavailable':
+        "Another device's unfinished setup holds the server, so its copy cannot be taken now.",
+    'shell.sync.conflict.errorStale':
+        'This conflict was already handled or has changed. Check the sync status.',
+    'shell.sync.conflict.errorChanged':
+        "The server's data changed meanwhile, so it could not proceed safely. Choose again.",
+    'shell.sync.conflict.errorInitializing':
+        'Another device is preparing the server. Try again later.',
+    'shell.sync.conflict.errorNetwork':
+        'Could not reach the server. Check the connection and try again.',
     'shell.sidebar.sync.indicatorServerTransition': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionTitle': 'Server change in progress',
     'shell.sidebar.sync.serverTransitionBody': 'Sync is paused until the server change finishes.',
