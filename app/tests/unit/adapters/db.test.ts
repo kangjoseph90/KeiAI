@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * DB Adapter Tests: web.ts (Dexie)
  *
