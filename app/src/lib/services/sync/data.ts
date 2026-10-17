@@ -53,6 +53,7 @@ import {
     assertIngestCovered,
     collectGarbage,
     commitSyncSession,
+    isSafetyError,
     openSyncSession,
     SYNC_COVERAGE_HEADER,
     toSyncSafetyError,
@@ -65,6 +66,13 @@ interface LocalChange {
     table: TableName;
     record: DataRecord;
 }
+
+interface ChangeRef {
+    table: TableName;
+    id: string;
+}
+
+type SessionCoverage = Pick<SyncSession, 'localCoverage' | 'serverCoverage'>;
 
 interface DecodedRemoteRecord {
     table: TableName;
@@ -238,6 +246,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             syncError = err;
             logger.error(`Failed to pull ${syncScope.collection}`, err);
         }
+        // A failed safety proof stops the whole scope: nothing is pushed or committed.
+        if (isSafetyError(syncError)) {
+            this.recordRefusal(key, syncError);
+            throw syncError;
+        }
 
         const hasPullCorrections = offlineWrites.size > 0;
         let pushedCount = 0;
@@ -313,6 +326,9 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                 serverPullCursor: nextPullCursor,
                 localPushCursor: nextPushCursor
             });
+            // Advanced cursors are proven coverage; raise the cached session before GC uses them.
+            session.serverCoverage = Math.max(session.serverCoverage, nextPullCursor ?? 0);
+            session.localCoverage = Math.max(session.localCoverage, nextPushCursor ?? 0);
         }
         if (pushed) {
             await collectGarbage(syncScope.scope, Math.max(pushCursor, localUpper));
@@ -357,9 +373,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             });
 
             if (result.items.length > 0) {
-                const grouped = new Map<TableName, DataRecord[]>();
-                let ingestsUnknown = false;
-
                 const remotes = await Promise.all(
                     result.items.map((serverRecord) =>
                         this.pbToLocalRecord(
@@ -368,85 +381,64 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         )
                     )
                 );
+                for (const remote of remotes) clock.observe(remote.record.updatedAt ?? 0);
+                const tables = [...new Set(remotes.map(({ table }) => table))];
 
-                const pairedRecords = await Promise.all(
-                    remotes.map(async (remote) => ({
-                        remote,
-                        local: await localDB.getRecord<DataRecord>(remote.table, remote.record.id)
-                    }))
+                // Read, decide and write in one transaction: a local change committed during the
+                // Pull is merged instead of overwritten by a decision made before it.
+                const { applied, corrections } = await localDB.transaction(
+                    tables,
+                    'rw',
+                    async () => {
+                        const applied: AssetReconciliation[] = [];
+                        const corrections: LocalChange[] = [];
+                        const writes = new Map<TableName, DataRecord[]>();
+                        let ingestsUnknown = false;
+                        for (const remote of remotes) {
+                            const local = await localDB.getRecord<DataRecord>(
+                                remote.table,
+                                remote.record.id
+                            );
+                            const winner = local ? chooseWinner(local, remote.record) : 'remote';
+                            if (winner === 'local') {
+                                corrections.push({ table: remote.table, record: local! });
+                            }
+                            if (winner !== 'remote') continue;
+                            ingestsUnknown ||= !local && !remote.record.isDeleted;
+                            writes.set(remote.table, [
+                                ...(writes.get(remote.table) ?? []),
+                                remote.record
+                            ]);
+                            applied.push({
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            });
+                        }
+                        if (ingestsUnknown) {
+                            assertIngestCovered(
+                                syncScope.scope,
+                                await localDB.getSyncGcHigh(syncScope.scope),
+                                session.localCoverage
+                            );
+                        }
+                        for (const [table, records] of writes) {
+                            await localDB.putRecords(table, records, { origin: 'sync' });
+                        }
+                        return { applied, corrections };
+                    }
                 );
 
-                const assetReconciliations: Array<{
-                    table: TableName;
-                    before: DataRecord | undefined;
-                    after: DataRecord;
-                }> = [];
-
-                for (const { remote, local } of pairedRecords) {
-                    const remoteAt = remote.record.updatedAt ?? 0;
-                    const localAt = local?.updatedAt ?? 0;
-                    clock.observe(remoteAt);
-
-                    if (!local) {
-                        ingestsUnknown ||= !remote.record.isDeleted;
-                        const records = grouped.get(remote.table) ?? [];
-                        records.push(remote.record);
-                        grouped.set(remote.table, records);
-                        assetReconciliations.push({
-                            table: remote.table,
-                            before: undefined,
-                            after: remote.record
-                        });
-                    } else if (remote.record.isDeleted && !local.isDeleted) {
-                        // Delete-wins: remote deleted beats local live
-                        const records = grouped.get(remote.table) ?? [];
-                        records.push(remote.record);
-                        grouped.set(remote.table, records);
-                        assetReconciliations.push({
-                            table: remote.table,
-                            before: local,
-                            after: remote.record
-                        });
-                        cascadeTargets.push({ table: remote.table, id: remote.record.id });
-                    } else if (local.isDeleted && !remote.record.isDeleted) {
-                        // Delete-wins: local deleted beats remote live — repair push
-                        offlineWrites.set(this.changeKey(remote.table, local.id), {
-                            table: remote.table,
-                            record: local
-                        });
-                    } else if (remoteAt > localAt) {
-                        // Same delete status — LWW remote wins
-                        const records = grouped.get(remote.table) ?? [];
-                        records.push(remote.record);
-                        grouped.set(remote.table, records);
-                        assetReconciliations.push({
-                            table: remote.table,
-                            before: local,
-                            after: remote.record
-                        });
-                    } else if (remoteAt < localAt) {
-                        // Same delete status — LWW local wins
-                        offlineWrites.set(this.changeKey(remote.table, local.id), {
-                            table: remote.table,
-                            record: local
-                        });
+                for (const change of corrections) {
+                    offlineWrites.set(this.changeKey(change.table, change.record.id), change);
+                }
+                for (const { table, before, after } of applied) {
+                    if (before && after.isDeleted && !before.isDeleted) {
+                        cascadeTargets.push({ table, id: after.id });
                     }
                 }
-
-                await localDB.transaction([...grouped.keys()], 'rw', async () => {
-                    if (ingestsUnknown) {
-                        assertIngestCovered(
-                            syncScope.scope,
-                            await localDB.getSyncGcHigh(syncScope.scope),
-                            session.localCoverage
-                        );
-                    }
-                    for (const [table, records] of grouped) {
-                        await localDB.putRecords(table, records, { origin: 'sync' });
-                    }
-                });
                 await Promise.all(
-                    assetReconciliations.map(({ table, before, after }) =>
+                    applied.map(({ table, before, after }) =>
                         this.reconcileAssetRegistry(table, before, after)
                     )
                 );
@@ -509,41 +501,45 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             try {
                 assertSyncServer(serverUrl);
                 const results = await batch.send({ requestKey: null });
-                const reconciliations: AssetReconciliation[] = [];
-                const cascadeTargets: Array<{ table: TableName; id: string }> = [];
-                for (let j = 0; j < results.length; j++) {
-                    const result = results[j];
+                const remotes: DecodedRemoteRecord[] = [];
+                for (const result of results) {
                     if (result.status < 200 || result.status >= 300 || !result.body) continue;
-
-                    const remote = await this.pbToLocalRecord(
-                        result.body as Record<string, unknown>,
-                        syncScope
+                    remotes.push(
+                        await this.pbToLocalRecord(
+                            result.body as Record<string, unknown>,
+                            syncScope
+                        )
                     );
-                    const local = await localDB.getRecord<DataRecord>(
-                        remote.table,
-                        remote.record.id
-                    );
-                    if (!local) continue;
-
-                    const remoteAt = remote.record.updatedAt ?? 0;
-                    const localAt = local.updatedAt ?? 0;
-                    const serverIsCanonical =
-                        (remote.record.isDeleted && !local.isDeleted) ||
-                        (remote.record.isDeleted === local.isDeleted && remoteAt > localAt);
-                    if (serverIsCanonical) {
-                        await localDB.putRecord(remote.table, remote.record, {
-                            origin: 'sync'
-                        });
-                        reconciliations.push({
-                            table: remote.table,
-                            before: local,
-                            after: remote.record
-                        });
-                        if (remote.record.isDeleted && !local.isDeleted) {
-                            cascadeTargets.push({ table: remote.table, id: remote.record.id });
-                        }
-                    }
                 }
+                const tables = [...new Set(remotes.map(({ table }) => table))];
+                // As in Pull: decide against the local state committed when writing.
+                const reconciliations =
+                    remotes.length === 0
+                        ? []
+                        : await localDB.transaction(tables, 'rw', async () => {
+                              const applied: AssetReconciliation[] = [];
+                              for (const remote of remotes) {
+                                  const local = await localDB.getRecord<DataRecord>(
+                                      remote.table,
+                                      remote.record.id
+                                  );
+                                  if (!local || chooseWinner(local, remote.record) !== 'remote') {
+                                      continue;
+                                  }
+                                  await localDB.putRecord(remote.table, remote.record, {
+                                      origin: 'sync'
+                                  });
+                                  applied.push({
+                                      table: remote.table,
+                                      before: local,
+                                      after: remote.record
+                                  });
+                              }
+                              return applied;
+                          });
+                const cascadeTargets = reconciliations
+                    .filter(({ before, after }) => after.isDeleted && !before?.isDeleted)
+                    .map(({ table, after }) => ({ table, id: after.id }));
                 for (const { table, before, after } of reconciliations) {
                     await this.reconcileAssetRegistry(table, before, after);
                 }
@@ -564,26 +560,38 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         }
     }
 
+    /**
+     * Push outside a full session. Coverage is taken first and the records are read after it:
+     * a snapshot read earlier could predate a deletion the coverage already accounts for.
+     */
     private async pushChangesForActiveScopes(
-        changes: LocalChange[],
+        refs: ChangeRef[],
         continueOnError = true
     ): Promise<void> {
         const serverUrl = normalizeUrl(pb.baseUrl);
         const scopes = getActiveSyncScopes(USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION);
         let firstError: unknown = null;
         for (const syncScope of scopes) {
-            const coverage = await this.verifiedCoverage(syncScope, serverUrl);
+            const key = this.sessionKey(syncScope, serverUrl);
+            const coverage = this.verifiedCoverage(syncScope, serverUrl);
             // Held changes keep localUpdatedAt above the Push cursor; the next verified
             // full session sends them. A blocked scope keeps reporting why it is held.
             if (!coverage) {
-                firstError ??= this.blocked.get(this.sessionKey(syncScope, serverUrl)) ?? null;
+                firstError ??= this.blocked.get(key) ?? null;
+                continue;
+            }
+            // A watermark above the proof means this replica forgot a deletion the server may
+            // not know: send nothing and re-verify.
+            if ((await localDB.getSyncGcHigh(syncScope.scope)) > coverage.localCoverage) {
+                this.sessions.delete(key);
+                void this.trigger();
                 continue;
             }
             try {
                 await this.pushChanges(
                     syncScope,
                     serverUrl,
-                    changes,
+                    await this.readChanges(refs),
                     coverage.serverCoverage,
                     continueOnError
                 );
@@ -594,19 +602,24 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         if (firstError && !continueOnError) throw firstError;
     }
 
+    private async readChanges(refs: ChangeRef[]): Promise<LocalChange[]> {
+        const records = await Promise.all(
+            refs.map(({ table, id }) => localDB.getRecord<DataRecord>(table, id))
+        );
+        return records.flatMap((record, i) => (record ? [{ table: refs[i].table, record }] : []));
+    }
+
     /**
      * The one gate for Realtime Pull, buffered Push, and Realtime correction Push.
      *
      * Only a scope verified by a full session on this server may merge or send outside that
      * session. Otherwise nothing moves and a full sync, which starts with the handshake, is
-     * requested; it recovers every held event and change from the cursors. The returned
-     * coverage is still enforced at the write itself: by the local ingest guard in the same
+     * requested; it recovers every held event and change from the cursors. It is synchronous,
+     * so callers capture coverage before reading or receiving the data it authorizes. The
+     * coverage is still enforced at the write: by the local watermark check in the same
      * transaction, and by the server's create guard.
      */
-    private async verifiedCoverage(
-        syncScope: SyncScope,
-        serverUrl: string
-    ): Promise<Pick<SyncSession, 'localCoverage' | 'serverCoverage'> | null> {
+    private verifiedCoverage(syncScope: SyncScope, serverUrl: string): SessionCoverage | null {
         const key = this.sessionKey(syncScope, serverUrl);
         const session = this.sessions.get(key);
         if (!session) {
@@ -614,19 +627,12 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             if (!this.blocked.has(key)) void this.trigger();
             return null;
         }
-        const { userId } = getActiveSession();
-        const cursors = await syncCursorDB.get(
-            getSyncCursorIdentity('records', userId, syncScope.scope)
-        );
-        return {
-            localCoverage: Math.max(cursors.localPushCursor, session.localCoverage),
-            serverCoverage: Math.max(cursors.serverPullCursor, session.serverCoverage)
-        };
+        return { localCoverage: session.localCoverage, serverCoverage: session.serverCoverage };
     }
 
     /** A proven-unsafe or uninitialized scope stops merging until a full sync verifies it. */
     private recordRefusal(key: string, error: unknown): void {
-        if (isErrorCode(error, 'SYNC_UNSAFE') || isErrorCode(error, 'SYNC_NEEDS_INIT')) {
+        if (isSafetyError(error)) {
             this.sessions.delete(key);
             this.blocked.set(key, error);
         }
@@ -654,25 +660,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
     ): Promise<void> {
         if (!isReadyToSync()) return;
 
-        const byTable = new Map<TableName, Set<string>>();
+        const refs = new Map<string, ChangeRef>();
         for (const write of writes) {
-            const ids = byTable.get(write.bucket) ?? new Set<string>();
-            ids.add(write.id);
-            byTable.set(write.bucket, ids);
+            refs.set(this.changeKey(write.bucket, write.id), { table: write.bucket, id: write.id });
         }
+        if (refs.size === 0) return;
 
-        const changes: LocalChange[] = [];
-        for (const [tableName, ids] of byTable) {
-            const records = await Promise.all(
-                [...ids].map((id) => localDB.getRecord<DataRecord>(tableName, id))
-            );
-            for (const record of records) {
-                if (record) changes.push({ table: tableName, record });
-            }
-        }
-        if (changes.length === 0) return;
-
-        await this.pushChangesForActiveScopes(changes, false);
+        await this.pushChangesForActiveScopes([...refs.values()], false);
     }
 
     private async handleRealtimeEvent(
@@ -687,81 +681,55 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             if (normalizeUrl(pb.baseUrl) !== serverUrl) return;
             const syncScope = getRealtimeScope(USER_RECORDS_COLLECTION, collection, e.record);
             if (!syncScope) return;
+            // Captured on arrival, before any await: the event must not be older than its proof.
             // Unverified: leave the event to the cursor Pull of a verified full session.
-            const coverage = await this.verifiedCoverage(syncScope, serverUrl);
+            const coverage = this.verifiedCoverage(syncScope, serverUrl);
             if (!coverage) return;
             verifiedScope = syncScope;
-            const { localCoverage } = coverage;
 
             const remote = await this.pbToLocalRecord(e.record, syncScope);
-            const remoteAt = remote.record.updatedAt ?? 0;
-            clock.observe(remoteAt);
+            clock.observe(remote.record.updatedAt ?? 0);
 
             const mergeResult = await localDB.transaction(
                 [remote.table],
                 'rw',
                 async (): Promise<RealtimeMergeResult> => {
+                    // Nothing merges once this replica forgot a deletion beyond the proof.
+                    assertIngestCovered(
+                        syncScope.scope,
+                        await localDB.getSyncGcHigh(syncScope.scope),
+                        coverage.localCoverage
+                    );
                     const local = await localDB.getRecord<DataRecord>(
                         remote.table,
                         remote.record.id
                     );
-                    const localAt = local?.updatedAt ?? 0;
-
-                    if (!local) {
-                        if (!remote.record.isDeleted) {
-                            // An unproven unknown record waits for the next verified Pull.
-                            assertIngestCovered(
-                                syncScope.scope,
-                                await localDB.getSyncGcHigh(syncScope.scope),
-                                localCoverage
-                            );
-                            await localDB.putRecord(remote.table, remote.record, {
-                                origin: 'sync'
-                            });
-                            return {
-                                assetReconciliation: {
-                                    table: remote.table,
-                                    before: undefined,
-                                    after: remote.record
-                                },
-                                cascadeTarget: null
-                            };
-                        }
-                    } else if (remote.record.isDeleted && !local.isDeleted) {
-                        // Delete-wins: remote deleted beats local live
-                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
-                        return {
-                            assetReconciliation: {
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            },
-                            cascadeTarget: { table: remote.table, id: remote.record.id }
-                        };
-                    } else if (local.isDeleted && !remote.record.isDeleted) {
-                        // Delete-wins: local deleted beats remote live — repair push
+                    // Unknown tombstones are left to the cursor Pull.
+                    if (!local && remote.record.isDeleted) {
+                        return { assetReconciliation: null, cascadeTarget: null };
+                    }
+                    const winner = local ? chooseWinner(local, remote.record) : 'remote';
+                    if (winner === 'local') {
+                        // Local wins: repair the server through the gated Push.
                         void this.pushChangesForActiveScopes([
-                            { table: remote.table, record: local }
-                        ]);
-                    } else if (remoteAt > localAt) {
-                        // Same delete status — LWW remote wins
-                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
-                        return {
-                            assetReconciliation: {
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            },
-                            cascadeTarget: null
-                        };
-                    } else if (remoteAt < localAt) {
-                        // Same delete status — LWW local wins
-                        void this.pushChangesForActiveScopes([
-                            { table: remote.table, record: local }
+                            { table: remote.table, id: remote.record.id }
                         ]);
                     }
-
-                    return { assetReconciliation: null, cascadeTarget: null };
+                    if (winner !== 'remote') {
+                        return { assetReconciliation: null, cascadeTarget: null };
+                    }
+                    await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
+                    return {
+                        assetReconciliation: {
+                            table: remote.table,
+                            before: local,
+                            after: remote.record
+                        },
+                        cascadeTarget:
+                            local && remote.record.isDeleted && !local.isDeleted
+                                ? { table: remote.table, id: remote.record.id }
+                                : null
+                    };
                 }
             );
 
@@ -928,6 +896,15 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 }
 
 export const DataRecordSyncEngine = new DataRecordSyncEngineImpl();
+
+/** Delete-wins, then the larger LWW version. Equal versions leave both sides as they are. */
+function chooseWinner(local: DataRecord, remote: DataRecord): 'remote' | 'local' | 'equal' {
+    if (!!remote.isDeleted !== !!local.isDeleted) return remote.isDeleted ? 'remote' : 'local';
+    const remoteAt = remote.updatedAt ?? 0;
+    const localAt = local.updatedAt ?? 0;
+    if (remoteAt === localAt) return 'equal';
+    return remoteAt > localAt ? 'remote' : 'local';
+}
 
 function readServerRevision(record: unknown): number {
     const revision = (record as { serverUpdatedAt?: unknown } | undefined)?.serverUpdatedAt;

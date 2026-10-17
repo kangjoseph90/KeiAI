@@ -11,7 +11,7 @@
 import { pb } from '$lib/adapters/pb';
 import { localDB, type DataScope, type SyncCheckpoint } from '$lib/adapters/db';
 import type { SyncCursorState } from '$lib/adapters/sync';
-import { AppError } from '$lib/types/errors';
+import { AppError, isErrorCode } from '$lib/types/errors';
 import { assertSyncServer, type SyncScope } from './utils';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -180,6 +180,11 @@ export function assertIngestCovered(scope: DataScope, gcHigh: number, localCover
     if (gcHigh > localCoverage) {
         throw new AppError('SYNC_UNSAFE', `Merge of ${scopeLabel(scope)} is no longer covered`);
     }
+}
+
+/** Failures that stop a scope until a full session verifies it again. */
+export function isSafetyError(error: unknown): boolean {
+    return isErrorCode(error, 'SYNC_UNSAFE') || isErrorCode(error, 'SYNC_NEEDS_INIT');
 }
 
 /** Server rejections of unproven creates are reported as unsafe merges. */

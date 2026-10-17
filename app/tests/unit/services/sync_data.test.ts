@@ -1012,7 +1012,8 @@ describe('DataRecordSyncEngine', () => {
 
         it('refuses an unknown live realtime record once local GC outruns coverage, and re-verifies', async () => {
             await verifySession(engine);
-            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(1200);
+            // The session proved local coverage through its Push bound (2500).
+            vi.mocked(localDB.getSyncGcHigh).mockResolvedValue(2600);
             vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
 
             deliver({ action: 'create', record: serverRecord('resurrected') });
@@ -1046,7 +1047,8 @@ describe('DataRecordSyncEngine', () => {
             await vi.waitFor(() =>
                 expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
                     expect.objectContaining({ id: 'x', isDeleted: true }),
-                    { headers: { 'X-Kei-Sync-Coverage': '1000' } }
+                    // The session proved server coverage through its confirmed Pull bound.
+                    { headers: { 'X-Kei-Sync-Coverage': '3000' } }
                 )
             );
 
@@ -1305,6 +1307,11 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
             expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge');
 
+            const states: string[] = [];
+            const unsubscribe = DataRecordSyncEngine.subscribeStatus(({ state }) =>
+                states.push(state)
+            );
+            states.length = 0;
             await db.putRecord('characters', makeRecord('written-while-unsafe'));
             DataRecordSyncEngine.handleLocalWrite({
                 tableName: 'characters',
@@ -1312,17 +1319,11 @@ describe('DataRecordSyncEngine', () => {
                 ids: ['written-while-unsafe'],
                 origin: 'local'
             });
-            await vi.waitFor(
-                () =>
-                    expect(localDB.getRecord).toHaveBeenCalledWith(
-                        'characters',
-                        'written-while-unsafe'
-                    ),
-                { timeout: 5_000 }
-            );
-            await vi.waitFor(() =>
-                expect(DataRecordSyncEngine.getState().state).toBe('unsafe_merge')
-            );
+            // The flush runs, holds the change, and keeps reporting why.
+            await vi.waitFor(() => expect(states).toEqual(['syncing', 'unsafe_merge']), {
+                timeout: 5_000
+            });
+            unsubscribe();
             expect(mockBatchCollection.upsert).not.toHaveBeenCalled();
             expect(cursors.localPushCursor).toBe(0);
 
