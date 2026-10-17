@@ -734,9 +734,22 @@ function syncCommit(auth, body) {
 }
 
 /**
+ * Sync records are written only through /api/batch. A batch loads the original
+ * record and runs these request hooks inside its transaction, so delete-wins
+ * arbitration and the create guard see committed state that GC cannot change
+ * before the write. A plain collection request has no such transaction.
+ */
+function assertSyncWriteTransactional(e) {
+  if (!e.app.isTransactional()) {
+    throw new BadRequestError(
+      "Sync records must be written through /api/batch.",
+    );
+  }
+}
+
+/**
  * Refuse a live create the pushing client cannot prove safe. A create is the
- * only write that can resurrect a deletion this server has forgotten; it runs
- * in the same transaction as the insert, so it cannot interleave with GC.
+ * only write that can resurrect a deletion this server has forgotten.
  */
 function assertSyncCreateCovered(e) {
   var record = e.record;
@@ -1919,6 +1932,7 @@ module.exports = {
   syncCoverage: syncCoverage,
   syncHandshake: syncHandshake,
   syncCommit: syncCommit,
+  assertSyncWriteTransactional: assertSyncWriteTransactional,
   assertSyncCreateCovered: assertSyncCreateCovered,
   collectSyncTombstones: collectSyncTombstones,
   getPairingBlobs: getPairingBlobs,

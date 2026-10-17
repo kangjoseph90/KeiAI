@@ -817,19 +817,20 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const added = checkpoints.filter(({ id }) => !known.has(id));
         if (added.length === 0) return;
         const db = await this.getDb();
-        // A fresh revision orders the inheritance after every Push bound read before it.
-        await db.execute('UPDATE local_updates SET value = value + 1 WHERE id = 0');
+        // heldAt is the next revision, and it is allocated only after the insert: a Push bound
+        // read in between is still below heldAt, so the checkpoint stays in a later Push range.
         const values: unknown[] = [scope.scopeType, scope.scopeId, Date.now()];
         const rows = added.map(({ id, anchor }) => {
             values.push(id, anchor);
             const n = values.length;
-            return `($1, $2, $${n - 1}, $${n}, (SELECT value FROM local_updates WHERE id = 0), $3)`;
+            return `($1, $2, $${n - 1}, $${n}, (SELECT value + 1 FROM local_updates WHERE id = 0), $3)`;
         });
         await db.execute(
             `INSERT OR IGNORE INTO sync_checkpoints (scopeType, scopeId, id, anchor, heldAt, createdAt)
              VALUES ${rows.join(', ')}`,
             values
         );
+        await db.execute('UPDATE local_updates SET value = value + 1 WHERE id = 0');
     }
 
     async pruneSyncCheckpoints(scope: DataScope, createdBefore: number): Promise<void> {

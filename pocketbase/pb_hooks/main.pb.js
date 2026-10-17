@@ -174,9 +174,21 @@ onRecordUpdate(
 
 // A live create is the only write that can resurrect a deletion this server
 // garbage-collected; it must carry proof that the client knows every such deletion.
+// Both checks need the batch transaction, so plain collection writes are refused.
 onRecordCreateRequest(
   (e) => {
-    require(`${__hooks}/keiai.js`).assertSyncCreateCovered(e);
+    var h = require(`${__hooks}/keiai.js`);
+    h.assertSyncWriteTransactional(e);
+    h.assertSyncCreateCovered(e);
+    e.next();
+  },
+  "records",
+  "multi_room_records",
+);
+
+onRecordUpdateRequest(
+  (e) => {
+    require(`${__hooks}/keiai.js`).assertSyncWriteTransactional(e);
     e.next();
   },
   "records",
