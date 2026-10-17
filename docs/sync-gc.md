@@ -89,7 +89,7 @@ Data is never discarded automatically. `init` and `conflict` stop the scope unti
 
 ### Bootstrap and overwrite (server ← client)
 
-`POST /api/sync/bootstrap` (`mode: init` requires an uninitialized, empty, unleased scope; `overwrite` requires the expected lineage) wipes the scope's records and checkpoints, sets the new lineage and takes a 1h **initialization lease** (`initToken`). Only writes carrying `X-Kei-Sync-Bootstrap` with that token are accepted while it holds; other devices get `server_initializing`. The client pushes its whole replica in a normal session that carries the token, and the commit releases the lease. An interrupted bootstrap is resumed by the same device (`bootstrapping` in the local scope state), or by any device of the same lineage once the lease is stale. A partial initialization is never a valid replica.
+`POST /api/sync/bootstrap` (`mode: init` requires an uninitialized, empty, unleased scope; `overwrite` requires the expected lineage) wipes the scope's records and checkpoints, sets the new lineage and takes a 1h **initialization lease** (`initToken`). Only writes carrying `X-Kei-Sync-Bootstrap` with that token are accepted while it holds; other devices get `server_initializing`. The client pushes its whole replica in a normal session that carries the token, and only a commit after a complete Push releases the lease: client and server both refuse to finish otherwise, so a partial initialization is never published. An interrupted bootstrap is resumed only by the device that started it (`bootstrapping` in the local scope state): another device of the same lineage may not know the deletions the server was filled with, so a stale lease is a conflict for a device holding data and a wait for an empty one. If the commit succeeded but its response was lost, the next handshake finds the pending lineage on the server outside a lease and the device takes it as its own.
 
 The server inherits the client's knowledge with **virtual GC**: if the client has forgotten deletions, the server sets `gcHigh` to a fresh revision ι0 instead of 0. The bootstrap checkpoint K0 (client anchor: its local prefix) and the client's clean checkpoints are stored with anchor ι0, so the bootstrapping device and every device that is clean on those checkpoints can follow, while a device that cannot prove it knows the forgotten deletions is refused.
 
@@ -97,10 +97,14 @@ The server inherits the client's knowledge with **virtual GC**: if the client ha
 
 The engine marks the scope `adopting`, drops the cursors, scope assets, records, `gcHigh` and checkpoints, then calls `POST /api/sync/adopt`. The server mints a checkpoint at its current revision and returns it with its lineage, `gcHigh` and up to 100 clean checkpoints. If the server has forgotten deletions the client sets its own `gcHigh` to a fresh revision ι with those checkpoints anchored at ι, so it can never ingest a stale copy from a peer that cannot prove the deletions. The first session pulls everything and its commit fails if the server collected past the adopted watermark meanwhile. An interrupted adoption restarts from scratch.
 
+### Replacing a local replica
+
+Adoption and bootstrap bump the scope's replica epoch before they touch it. Realtime merges and Push-response merges carry the epoch of the proof that authorized them and are dropped if it changed, and the replacement waits for merges already writing. This holds without atomic storage transactions, so a Realtime event or Push response of the replaced session can never land in the new replica.
+
 ## Known limitations
 
 - **Collection rebuilds drop the ordering triggers.** A PocketBase schema change that rebuilds a sync table removes its triggers. Sync writes and Pull bounds are then refused until the server restarts and reinstalls them.
 - **Tauri transactions are not atomic.** On Tauri, resetting a scope for adoption is a sequence of statements. A crash leaves the scope marked `adopting`, so the next sync restarts the adoption.
 - **Other servers after an overwrite.** Servers still holding the replaced lineage report a conflict to every device, including the one that overwrote; resolve them one by one.
-- **A stale lease of another lineage** blocks empty devices (`wait`) until a device holding data resolves it.
+- **A stale lease** blocks empty devices (`wait`) until the bootstrapping device returns or a device holding data resolves the conflict.
 - **Server restore from backup** rolls back knowledge and `gcHigh` while clients keep cursors and checkpoints for that server URL, so proofs about the restored server can be false.

@@ -366,7 +366,7 @@ it('Push responses merge a local deletion committed before their write', async (
         { scope, key: {}, collection: 'records', ownerField: 'userId' },
         'https://server.example',
         [{ table: 'characters', record: outgoing }],
-        { coverage: 0, lineage: LINEAGE },
+        { coverage: 0, lineage: LINEAGE, epoch: 0 },
         false
     );
 

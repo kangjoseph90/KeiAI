@@ -740,6 +740,11 @@ function syncCommit(auth, body) {
       result = syncRefusal("sync_initializing", "Scope is being initialized.");
       return;
     }
+    // The lease ends only with the whole replica: a partial one is never published.
+    if (bootstrapping && body.pushed !== true) {
+      result = syncRefusal("sync_initializing", "Bootstrap Push is incomplete.");
+      return;
+    }
     if (state.lineage !== lineage) {
       result = syncRefusal("sync_lineage", "Scope lineage changed.");
       return;

@@ -84,24 +84,38 @@ export function mergeCovered(local: ReplicaSafety, remote: ReplicaSafety): boole
  */
 export function planSession(local: LocalReplica, remote: RemoteReplica): SessionPlan {
     if (remote.initializing) {
+        // Only the bootstrapping replica knows what the partial server state lacks; another
+        // replica of the same lineage may not know the deletions it was filled with.
         if (local.pendingLineage !== null && remote.lineage === local.pendingLineage) {
             return 'bootstrap';
         }
-        if (remote.initializing === 'stale') {
-            if (local.lineage !== null && remote.lineage === local.lineage) return 'bootstrap';
-            if (local.hasRecords) return 'conflict';
-        }
-        return 'wait';
+        return remote.initializing === 'stale' && local.hasRecords ? 'conflict' : 'wait';
     }
     if (remote.lineage === null) {
         if (!remote.hasRecords) return 'bootstrap';
         return local.hasRecords ? 'conflict' : 'adopt';
     }
-    if (local.lineage === null) return local.hasRecords ? 'init' : 'adopt';
-    if (local.lineage === remote.lineage && mergeCovered(local.safety, remote.safety)) {
+    const lineage = currentLineage(local, remote);
+    if (lineage === null) return local.hasRecords ? 'init' : 'adopt';
+    if (lineage === remote.lineage && mergeCovered(local.safety, remote.safety)) {
         return 'sync';
     }
     return local.hasRecords ? 'conflict' : 'adopt';
+}
+
+/**
+ * This replica's lineage on the server. A pending bootstrap whose lineage the server holds
+ * outside a lease was committed, even if this client never saw the response.
+ */
+export function currentLineage(
+    local: Pick<LocalReplica, 'lineage' | 'pendingLineage'>,
+    remote: Pick<RemoteReplica, 'lineage' | 'initializing'>
+): string | null {
+    return !remote.initializing &&
+        local.pendingLineage !== null &&
+        remote.lineage === local.pendingLineage
+        ? local.pendingLineage
+        : local.lineage;
 }
 
 /** How a prepared session runs: under a given lineage, or as part of a bootstrap/adoption. */
@@ -175,26 +189,26 @@ export async function openSyncSession(
         localDB.getSyncCheckpoints(scope)
     ]);
     const checkpoints = offeredCheckpoints(held);
-    const lineage = context?.lineage ?? local.lineage;
     const response = await post(serverUrl, '/api/sync/handshake', {
         ...scope,
         pullCursor: cursors.serverPullCursor,
         checkpoints: checkpoints.map(({ id }) => id),
-        lineage,
         bootstrapToken: context?.bootstrapToken
     });
     const serverCoverage = readNumber(response.coverage);
     const known = new Set(readIds(response.known));
     const localCoverage = coverage(cursors.localPushCursor, checkpoints, known);
-    const remoteLineage = readLineage(response.lineage);
+    const remote: RemoteReplica = {
+        lineage: readLineage(response.lineage),
+        initializing: readInitializing(response.initializing),
+        hasRecords: response.hasRecords === true,
+        safety: { gcHigh: readNumber(response.gcHigh), coverage: serverCoverage }
+    };
+    const remoteLineage = remote.lineage;
+    const lineage = context?.lineage ?? currentLineage(local, remote);
     const plan = planSession(
         { ...local, lineage, safety: { gcHigh, coverage: localCoverage } },
-        {
-            lineage: remoteLineage,
-            initializing: readInitializing(response.initializing),
-            hasRecords: response.hasRecords === true,
-            safety: { gcHigh: readNumber(response.gcHigh), coverage: serverCoverage }
-        }
+        remote
     );
     if (context && plan !== 'sync') {
         throw new AppError('SYNC_UNSAFE', `Prepared ${scopeLabel(scope)} did not verify`);
@@ -286,7 +300,8 @@ export async function commitSyncSession(
         checkpoint: issued,
         lineage: session.lineage,
         bootstrapToken: session.bootstrapToken,
-        adoptedGcHigh: session.adoptedGcHigh
+        adoptedGcHigh: session.adoptedGcHigh,
+        pushed
     });
 
     await localDB.addSyncCheckpoints(scope, [

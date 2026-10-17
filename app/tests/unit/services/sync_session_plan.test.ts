@@ -67,7 +67,31 @@ describe('planSession', () => {
             { initializing: 'active' },
             'bootstrap'
         ],
-        ['stale bootstrap of the same lineage', {}, { initializing: 'stale' }, 'bootstrap'],
+        [
+            'stale bootstrap of the same lineage, local data',
+            {},
+            { initializing: 'stale' },
+            'conflict'
+        ],
+        [
+            'stale bootstrap of the same lineage, nothing local',
+            { hasRecords: false },
+            { initializing: 'stale' },
+            'wait'
+        ],
+        ['own stale bootstrap', { pendingLineage: 'L' }, { initializing: 'stale' }, 'bootstrap'],
+        [
+            'own bootstrap committed, response lost',
+            { lineage: null, pendingLineage: 'L' },
+            {},
+            'sync'
+        ],
+        [
+            'own overwrite committed, response lost',
+            { lineage: 'K', pendingLineage: 'L' },
+            {},
+            'sync'
+        ],
         [
             'stale bootstrap of another lineage, local data',
             {},

@@ -15,6 +15,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 import { DataRecordSyncEngineImpl, type SyncConflict } from '$lib/services/sync/data';
+import { normalizeUrl } from '$lib/utils/url';
 import type { DataRecord, DataScope } from '$lib/adapters/db/types';
 import type {
     SyncCursorIdentity,
@@ -284,6 +285,26 @@ function failCommit(device: Device): void {
     });
 }
 
+/** The server applies the commit, but its response never arrives. */
+function loseCommitResponse(device: Device): void {
+    const send = device.pb.send.bind(device.pb);
+    vi.spyOn(device.pb, 'send').mockImplementation(async (path, options) => {
+        const response = await send(path, options);
+        if (path === '/api/sync/commit') throw new Error('connection lost');
+        return response;
+    });
+}
+
+/** The nth Push batch fails; the others go through. */
+function failBatch(device: Device, nth: number): void {
+    const send = device.pb.send.bind(device.pb);
+    let batches = 0;
+    vi.spyOn(device.pb, 'send').mockImplementation(async (path, options) => {
+        if (path === '/api/batch' && ++batches === nth) throw new Error('quota exceeded');
+        return send(path, options);
+    });
+}
+
 /** Make time pass for local retention and checkpoint issuance without moving the clock. */
 async function age(device: Device, table: 'characters' | 'syncCheckpoints', patch: object) {
     const db = (device.db as unknown as { db: Dexie }).db;
@@ -361,6 +382,15 @@ function serverScope(server: number, scope: DataScope): ScopeRow | undefined {
     } finally {
         db.close();
     }
+}
+
+function expireLease(server: number, scope: DataScope): void {
+    const db = serverDb(server);
+    db.prepare('UPDATE sync_scopes SET initAt = 1 WHERE scopeType = ? AND scopeId = ?').run(
+        scope.scopeType,
+        scope.scopeId
+    );
+    db.close();
 }
 
 function serverRow(server: number, id: string): { isDeleted: number; lineage: string } | undefined {
@@ -575,6 +605,127 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(await sync(h2)).toBe('idle');
             expect((await h2.db.getSyncScopeState(userScope(h2))).adopting).toBe(false);
             expect(await names(h2)).toEqual(['one']);
+        });
+
+        it('keeps the lease when a bootstrap Push fails partway', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const g = await createDevice('G', SERVERS[0]!, user);
+            // More than one Push batch; the deletion lands in the batch that fails.
+            for (let i = 0; i < 100; i++) await write(g, `r${i}z`, `n${i}`);
+            await write(g, 'gone', 'gone');
+            await remove(g, 'gone');
+            failBatch(g, 2);
+            expect(await sync(g)).not.toBe('idle');
+            vi.restoreAllMocks();
+            expect(serverScope(0, userScope(g))!.initToken).not.toBe('');
+            expect(serverRow(0, 'gone')).toBeUndefined();
+
+            const h2 = await createDevice('H', SERVERS[0]!, user);
+            expect(await sync(h2)).toBe('server_initializing');
+            expect(await names(h2)).toEqual([]);
+
+            restart(g);
+            expect(await sync(g)).toBe('idle');
+            expect(serverRow(0, 'gone')).toMatchObject({ isDeleted: 1 });
+            expect(await sync(h2)).toBe('idle');
+            expect(await names(h2)).toHaveLength(100);
+        });
+
+        it('lets only the bootstrapping device resume a stale lease', async () => {
+            const user = await createUser(SERVERS[0]!);
+            await createUser(SERVERS[1]!, user);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await sync(a);
+            const b = await createDevice('B', SERVERS[0]!, user);
+            await sync(b);
+            // A deletes x and moves to an empty server; its bootstrap is cut off before commit.
+            await remove(a, 'x');
+            await sync(a);
+            a.pb = await signIn(SERVERS[1]!, user);
+            failCommit(a);
+            expect(await sync(a)).toBe('network_error');
+            vi.restoreAllMocks();
+            expect(serverRow(1, 'x')).toMatchObject({ isDeleted: 1 });
+            expireLease(1, userScope(a));
+
+            // B shares the lineage but never learned of the deletion: it must not take over.
+            b.pb = await signIn(SERVERS[1]!, user);
+            expect(await sync(b)).toBe('unsafe_merge');
+            expect(serverRow(1, 'x')).toMatchObject({ isDeleted: 1 });
+
+            restart(a);
+            expect(await sync(a)).toBe('idle');
+            expect(serverScope(1, userScope(a))!.initToken).toBe('');
+        });
+
+        it('recognizes its own bootstrap when the commit response was lost', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const g = await createDevice('G', SERVERS[0]!, user);
+            await write(g, 'r1', 'one');
+            loseCommitResponse(g);
+            expect(await sync(g)).toBe('network_error');
+            vi.restoreAllMocks();
+            const server = serverScope(0, userScope(g))!;
+            expect(server.initToken).toBe('');
+
+            restart(g);
+            expect(await sync(g)).toBe('idle');
+            expect(conflicts(g)).toEqual([]);
+            expect(await g.db.getSyncScopeState(userScope(g))).toEqual({
+                lineage: server.lineage,
+                adopting: false,
+                bootstrapping: null
+            });
+        });
+
+        it('drops a realtime merge that was in flight when the replica was replaced', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await sync(a);
+            const b = await createDevice('B', SERVERS[0]!, user);
+            await sync(b);
+            await write(b, 'b-only', 'b-only');
+            await sync(b);
+            const stale = await b.pb.collection('records').getOne(rid('b-only'));
+
+            // A new device keeps its own data: the server is replaced without any GC.
+            const c = await createDevice('C', SERVERS[0]!, user);
+            await write(c, 'c-only', 'c-only');
+            expect(await sync(c)).toBe('init_required');
+            await on(c, () => c.engine.resolveConflict(conflicts(c)[0], 'local'));
+            expect(serverScope(0, userScope(c))!.gcHigh).toBe(0);
+
+            // B receives an event of the old lineage and is still decrypting it...
+            const engine = b.engine as unknown as {
+                pbToLocalRecord(...args: unknown[]): Promise<unknown>;
+                handleRealtimeEvent(...args: unknown[]): Promise<void>;
+            };
+            const decode = engine.pbToLocalRecord.bind(engine);
+            let release!: () => void;
+            const held = new Promise<void>((resolve) => (release = resolve));
+            let first = true;
+            vi.spyOn(engine, 'pbToLocalRecord').mockImplementation(async (...args) => {
+                if (first) {
+                    first = false;
+                    await held;
+                }
+                return decode(...args);
+            });
+            await on(b, async () => {
+                const merging = engine.handleRealtimeEvent('records', normalizeUrl(SERVERS[0]!), {
+                    action: 'update',
+                    record: stale
+                });
+                // ...while it adopts the replaced server.
+                expect(await sync(b)).toBe('unsafe_merge');
+                await b.engine.resolveConflict(conflicts(b)[0], 'server');
+                release();
+                await merging;
+            });
+            expect(await names(b)).toEqual(['c-only']);
+            expect(await b.db.getRecord('characters', rid('b-only'))).toBeUndefined();
         });
 
         it('re-adopts a purged room on rejoin while the user scope keeps syncing', async () => {
