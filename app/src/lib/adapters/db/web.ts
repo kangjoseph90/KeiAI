@@ -4,7 +4,7 @@
  * All tables store plaintext JSON in the `data` field.
  * Encryption happens only at the sync boundary (Sync Engine).
  */
-import Dexie, { type Collection, type Table } from 'dexie';
+import Dexie, { type Table } from 'dexie';
 import type {
     IDatabaseAdapter,
     TableName,
@@ -24,43 +24,34 @@ import type {
     ToolCallRecord,
     DatabaseWriteOperation,
     RoomRecord,
-    DataScopeType,
-    SyncCheckpoint,
-    TombstoneCollection
+    DataScopeType
 } from './types';
-import { SYNC_TABLES } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
 import { canonicalJson } from '$lib/utils/defaults';
 
-/**
- * A single persistent revision shared by all writes in this IndexedDB database.
- * With `trackTombstones`, a tombstone records when this replica first held its current
- * version; duplicate receives keep that time.
- */
-export async function putWebRecords<
-    T extends { id: string; localUpdatedAt?: number; isDeleted?: boolean; tombstoneAt?: number }
->(db: Dexie, table: Table<T, string>, records: T[], trackTombstones = false): Promise<void> {
+/** A single persistent revision shared by all writes in this IndexedDB database. */
+export async function putWebRecords<T extends { id: string; localUpdatedAt?: number }>(
+    db: Dexie,
+    table: Table<T, string>,
+    records: T[]
+): Promise<void> {
     records = [...new Map(records.map((record) => [record.id, record])).values()];
     const revisions = db.table<{ id: number; value: number }, number>('localUpdates');
-    const now = Date.now();
     await db.transaction('rw', table, revisions, async () => {
         let value = (await revisions.get(0))?.value ?? 0;
         const existing = await table.bulkGet(records.map((record) => record.id));
         await table.bulkPut(
             records.map((record, i) => {
-                const { localUpdatedAt: _incoming, tombstoneAt: _received, ...state } = record;
-                const {
-                    localUpdatedAt: previous,
-                    tombstoneAt: receivedAt,
-                    ...before
-                } = existing[i] ?? {};
-                const unchanged = !!existing[i] && canonicalJson(state) === canonicalJson(before);
-                const next = { ...state, localUpdatedAt: unchanged ? previous : ++value } as T;
-                if (trackTombstones && record.isDeleted) {
-                    next.tombstoneAt = unchanged && receivedAt !== undefined ? receivedAt : now;
-                }
-                return next;
+                const { localUpdatedAt: _incoming, ...state } = record;
+                const { localUpdatedAt: previous, ...before } = existing[i] ?? {};
+                return {
+                    ...record,
+                    localUpdatedAt:
+                        existing[i] && canonicalJson(state) === canonicalJson(before)
+                            ? previous
+                            : ++value
+                };
             })
         );
         await revisions.put({ id: 0, value });
@@ -73,15 +64,7 @@ export async function getWebLocalUpdatedAt(db: Dexie): Promise<number> {
     );
 }
 
-interface SyncGcRow extends DataScope {
-    gcHigh: number;
-}
-
-type SyncCheckpointRow = DataScope & SyncCheckpoint;
-
 class DexieStore extends Dexie {
-    syncGc!: Table<SyncGcRow, [string, string]>;
-    syncCheckpoints!: Table<SyncCheckpointRow, [string, string, string]>;
     rooms!: Table<RoomRecord, string>;
     characters!: Table<CharacterRecord, string>;
     chats!: Table<ChatRecord, string>;
@@ -98,24 +81,22 @@ class DexieStore extends Dexie {
 
         this.version(1).stores({
             localUpdates: 'id',
-            syncGc: '[scopeType+scopeId]',
-            syncCheckpoints: '[scopeType+scopeId+id], [scopeType+scopeId]',
-            rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+            rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             characters:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
-            chats: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+roomId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], roomId, updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
+            chats: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+roomId], [scopeType+scopeId+localUpdatedAt], roomId, updatedAt, isDeleted',
             presets:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             messages:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], chatId, [chatId+sortOrder], [chatId+sortOrder+activeSwipeId+scopeType+scopeId], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+localUpdatedAt], chatId, [chatId+sortOrder], [chatId+sortOrder+activeSwipeId+scopeType+scopeId], updatedAt, isDeleted',
             settings:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             personas:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             modules:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             plugins:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], [scopeType+scopeId+tombstoneAt], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+localUpdatedAt], updatedAt, isDeleted',
             tool_calls:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], chatId, updatedAt, isDeleted'
         });
@@ -162,7 +143,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         record: T,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await putWebRecords(this.db, this.getTable<T>(tableName), [record], true);
+        await putWebRecords(this.db, this.getTable<T>(tableName), [record]);
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
@@ -171,7 +152,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         records: T[],
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await putWebRecords(this.db, this.getTable<T>(tableName), records, true);
+        await putWebRecords(this.db, this.getTable<T>(tableName), records);
         this.emitWriteEvent(
             tableName,
             'putMany',
@@ -185,7 +166,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         id: string,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await this.deleteRows(tableName, (table) => table.where('id').equals(id));
+        await this.getTable<DataRecord>(tableName).delete(id);
         this.emitWriteEvent(tableName, 'delete', [id], options);
     }
 
@@ -196,9 +177,11 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         await this.flush();
-        const ids = await this.deleteRows(tableName, (table) =>
-            table.where(indexName).equals(indexValue)
-        );
+        const table = this.getTable<DataRecord>(tableName);
+        const ids = (
+            (await table.where(indexName).equals(indexValue).primaryKeys()) as string[]
+        ).filter((id): id is string => typeof id === 'string');
+        await table.where(indexName).equals(indexValue).delete();
         this.emitWriteEvent(tableName, 'deleteByIndex', ids, options);
     }
 
@@ -208,43 +191,21 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<number> {
         await this.flush();
-        const ids = await this.deleteRows(tableName, (table) =>
-            table.where('[scopeType+scopeId]').equals([scope.scopeType, scope.scopeId])
-        );
-        this.emitWriteEvent(tableName, 'purge', ids, options);
-        return ids.length;
-    }
-
-    /** A hard-deleted sync tombstone is forgotten: raise its scope watermark in the same commit. */
-    private async deleteRows(
-        tableName: TableName,
-        select: (table: Table<DataRecord, string>) => Collection<DataRecord, string>
-    ): Promise<string[]> {
         const table = this.getTable<DataRecord>(tableName);
-        return await this.db.transaction('rw', table, this.db.syncGc, async () => {
-            const rows = await select(table).toArray();
-            if (SYNC_TABLES.includes(tableName)) {
-                for (const tombstone of rows.filter((row) => row.isDeleted)) {
-                    await this.raiseGcHigh(tombstone, tombstone.localUpdatedAt ?? 0);
-                }
-            }
-            const ids = rows.map((row) => row.id);
-            await table.bulkDelete(ids);
-            return ids;
-        });
-    }
+        const ids = (
+            (await table
+                .where('[scopeType+scopeId]')
+                .equals([scope.scopeType, scope.scopeId])
+                .primaryKeys()) as string[]
+        ).filter((id): id is string => typeof id === 'string');
 
-    private async raiseGcHigh(scope: DataScope, gcHigh: number): Promise<number> {
-        const key: [string, string] = [scope.scopeType, scope.scopeId];
-        const current = (await this.db.syncGc.get(key))?.gcHigh ?? 0;
-        if (gcHigh > current) {
-            await this.db.syncGc.put({
-                scopeType: scope.scopeType,
-                scopeId: scope.scopeId,
-                gcHigh
-            });
-        }
-        return Math.max(current, gcHigh);
+        const count = await table
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
+            .delete();
+
+        this.emitWriteEvent(tableName, 'purge', ids, options);
+        return count;
     }
 
     async softDeleteRecord(
@@ -279,7 +240,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         for (const record of records) {
             scrubSoftDeletedRecord(record, now);
         }
-        await putWebRecords(this.db, table, records, true);
+        await putWebRecords(this.db, table, records);
         this.emitWriteEvent(
             tableName,
             'softDeleteByIndex',
@@ -307,7 +268,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         for (const record of records) {
             scrubSoftDeletedRecord(record, now);
         }
-        await putWebRecords(this.db, table, records, true);
+        await putWebRecords(this.db, table, records);
         this.emitWriteEvent(
             tableName,
             'softDeleteByCompoundIndex',
@@ -487,7 +448,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         callback: () => Promise<R>
     ): Promise<R> {
         await this.flush();
-        return await this.db.transaction(mode, [...tables, 'localUpdates', 'syncGc'], callback);
+        return await this.db.transaction(mode, [...tables, 'localUpdates'], callback);
     }
 
     async countByIndex(
@@ -501,84 +462,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .equals(indexValue)
             .filter((record) => !record.isDeleted)
             .count();
-    }
-
-    async getSyncGcHigh(scope: DataScope): Promise<number> {
-        return (await this.db.syncGc.get([scope.scopeType, scope.scopeId]))?.gcHigh ?? 0;
-    }
-
-    async collectTombstones(scope: DataScope, options: TombstoneCollection): Promise<number> {
-        await this.flush();
-        const tables = SYNC_TABLES.map((tableName) => this.getTable<DataRecord>(tableName));
-        return await this.db.transaction('rw', [...tables, this.db.syncGc], async () => {
-            const expired = await Promise.all(
-                tables.map((table) =>
-                    table
-                        .where('[scopeType+scopeId+tombstoneAt]')
-                        .between(
-                            [scope.scopeType, scope.scopeId, Dexie.minKey],
-                            [scope.scopeType, scope.scopeId, options.receivedThrough],
-                            true,
-                            true
-                        )
-                        .filter(
-                            (record) =>
-                                record.isDeleted &&
-                                (record.localUpdatedAt ?? 0) <= options.throughLocalUpdatedAt
-                        )
-                        .toArray()
-                )
-            );
-            const gcHigh = await this.raiseGcHigh(
-                scope,
-                Math.max(0, ...expired.flat().map((record) => record.localUpdatedAt ?? 0))
-            );
-            await Promise.all(
-                tables.map((table, i) => table.bulkDelete(expired[i].map((record) => record.id)))
-            );
-            return gcHigh;
-        });
-    }
-
-    async getSyncCheckpoints(scope: DataScope): Promise<SyncCheckpoint[]> {
-        const rows = await this.db.syncCheckpoints
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .toArray();
-        return rows.map(({ id, anchor, heldAt, createdAt }) => ({ id, anchor, heldAt, createdAt }));
-    }
-
-    async addSyncCheckpoints(
-        scope: DataScope,
-        checkpoints: Array<Pick<SyncCheckpoint, 'id' | 'anchor'>>
-    ): Promise<void> {
-        if (checkpoints.length === 0) return;
-        const revisions = this.db.table<{ id: number; value: number }, number>('localUpdates');
-        await this.db.transaction('rw', this.db.syncCheckpoints, revisions, async () => {
-            const keys = checkpoints.map(({ id }): [string, string, string] => [
-                scope.scopeType,
-                scope.scopeId,
-                id
-            ]);
-            const existing = await this.db.syncCheckpoints.bulkGet(keys);
-            const added = checkpoints.filter((_, i) => !existing[i]);
-            if (added.length === 0) return;
-            // A fresh revision orders the inheritance after every Push bound read before it.
-            const heldAt = ((await revisions.get(0))?.value ?? 0) + 1;
-            const createdAt = Date.now();
-            await this.db.syncCheckpoints.bulkPut(
-                added.map(({ id, anchor }) => ({ ...scope, id, anchor, heldAt, createdAt }))
-            );
-            await revisions.put({ id: 0, value: heldAt });
-        });
-    }
-
-    async pruneSyncCheckpoints(scope: DataScope, createdBefore: number): Promise<void> {
-        await this.db.syncCheckpoints
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .filter((checkpoint) => checkpoint.createdAt < createdBefore)
-            .delete();
     }
 
     private emitWriteEvent(

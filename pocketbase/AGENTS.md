@@ -23,8 +23,6 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 | `asset_catalog`      | Content-addressed encrypted asset bytes stored locally or in R2                    |
 | `asset_usage`        | Per-owner asset reference counts                                                   |
 | `asset_accounts`     | Per-user asset usage and quota                                                     |
-| `sync_scopes`        | Per-scope tombstone GC watermark (server-only)                                     |
-| `sync_checkpoints`   | History–Clean checkpoints held per scope (server-only)                             |
 
 `records` and `multi_room_records` expose only routing, sync, deletion, and asset-reference metadata. Their domain payload remains encrypted in `encryptedData`.
 
@@ -34,8 +32,7 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 - Keep plaintext fields limited to data required for authentication, access control, synchronization, discovery, and storage accounting.
 - Personal records are accessible only when `userId` matches the authenticated user. Room records require accepted membership in a live room.
 - Soft-deleted records cannot be resurrected. The owner-only room deletion endpoint tombstones the room and removes its records.
-- Record tombstones are garbage-collected after retention. GC raises `sync_scopes.gcHigh` and deletes in one transaction, and a live create must prove coverage of that watermark. See [`../docs/sync-gc.md`](../docs/sync-gc.md).
-- `updatedAt` is the client replica's logical LWW version. `serverUpdatedAt` is server-owned pull metadata and changes only when the canonical record actually changes; rejected stale or no-op writes preserve it. It is a commit-ordered revision assigned by SQLite triggers from `sync_revision`, never by hooks; `/api/now` returns the highest committed revision. See [`../docs/sync-gc.md`](../docs/sync-gc.md).
+- `updatedAt` is the client replica's logical LWW version. `serverUpdatedAt` is server-owned pull metadata and changes only when the canonical record actually changes; rejected stale or no-op writes preserve it.
 - Assets are globally deduplicated by the SHA-256 hash of their ciphertext. Record `assetEntries` drive reference counts; room assets count against the room owner.
 - Asset bytes use PocketBase file storage unless R2 is configured. Unreferenced assets are garbage-collected after the grace period.
 - Keep AI providers, prompts, and other application behavior out of this project.
@@ -49,7 +46,6 @@ PocketBase provides accounts, encrypted sync, multi-room access control, and enc
 | Pairing    | `POST /api/pairing`, `GET /api/pairing/{lookupId}`                                                                      |
 | Multi-room | `GET /api/multi-rooms/search`, `GET /api/users/{userId}/public-key`, join, leave, and owner deletion endpoints          |
 | Assets     | Personal and room upload endpoints, authenticated download, and the superuser R2 migration endpoint                     |
-| Sync       | `POST /api/sync/handshake`, `POST /api/sync/commit`                                                                     |
 
 PocketBase's collection and realtime APIs provide record synchronization. Custom endpoints handle operations that require server-controlled validation or lifecycle changes.
 

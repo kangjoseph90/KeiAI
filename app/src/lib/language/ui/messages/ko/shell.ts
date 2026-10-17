@@ -16,8 +16,6 @@ export const shellMessages = {
     'shell.sidebar.sync.statusNetworkError': '네트워크 오류',
     'shell.sidebar.sync.statusQuotaError': '할당량 오류',
     'shell.sidebar.sync.statusAuthError': '인증 오류',
-    'shell.sidebar.sync.statusUnsafeMerge': '병합 차단됨',
-    'shell.sidebar.sync.statusInitRequired': '초기화 필요',
     'shell.sidebar.sync.user': '사용자',
     'shell.sidebar.sync.records': '레코드',
     'shell.sidebar.sync.assets': '에셋',
@@ -33,10 +31,6 @@ export const shellMessages = {
         '동기화 일시 중지: 원격 저장소 할당량이 가득 찼습니다. 활성화하여 다시 시도하세요.',
     'shell.sidebar.sync.indicatorAuth':
         '동기화 일시 중지: 로그인 확인이 필요합니다. 활성화하여 다시 시도하세요.',
-    'shell.sidebar.sync.indicatorUnsafeMerge':
-        '동기화 중단: 병합하면 삭제된 데이터가 다시 나타날 수 있습니다. 변경된 내용은 없습니다.',
-    'shell.sidebar.sync.indicatorInitRequired':
-        '동기화 중단: 병합하려면 먼저 서버로부터 이 사본을 초기화해야 합니다.',
     'shell.sidebar.sync.indicatorServerTransition': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionTitle': '서버 변경 진행 중',
     'shell.sidebar.sync.serverTransitionBody':
