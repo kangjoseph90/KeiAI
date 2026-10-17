@@ -105,6 +105,8 @@ export interface SyncConflict {
     serverLineage: string | null;
     /** Another device's unfinished initialization holds the server: it cannot be adopted. */
     serverInitializing: boolean;
+    /** This user may overwrite the server's copy (a room's owner, or the user's own scope). */
+    canOverwrite: boolean;
 }
 
 export type SyncConflictChoice = 'local' | 'server';
@@ -388,13 +390,15 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                             state.lineage ?? crypto.randomUUID()
                         );
                     } else {
-                        // This client holds the lease: redo its own interrupted bootstrap.
+                        // This client holds the lease: redo its own interrupted bootstrap,
+                        // presenting the lease so a room member may redo it too.
                         await this.bootstrapServer(
                             syncScope,
                             serverUrl,
                             'overwrite',
                             opened.remoteLineage,
-                            opened.remoteLineage
+                            opened.remoteLineage,
+                            pending?.token
                         );
                     }
                     return;
@@ -407,7 +411,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         scope,
                         kind: opened.plan === 'init' ? 'init' : 'unsafe',
                         serverLineage: opened.remoteLineage,
-                        serverInitializing: opened.remoteInitializing
+                        serverInitializing: opened.remoteInitializing,
+                        canOverwrite: opened.canOverwrite
                     });
                     throw new AppError(
                         opened.plan === 'init' ? 'SYNC_NEEDS_INIT' : 'SYNC_UNSAFE',
@@ -530,7 +535,8 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         serverUrl: string,
         mode: 'init' | 'overwrite',
         expectedLineage: string | null,
-        lineage: string
+        lineage: string,
+        resumeToken?: string
     ): Promise<void> {
         const { scope } = syncScope;
         const key = this.sessionKey(syncScope, serverUrl);
@@ -559,6 +565,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             expectedLineage,
             lineage,
             token,
+            resumeToken,
             checkpoint,
             forgotten: gcHigh > 0,
             clean

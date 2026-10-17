@@ -516,6 +516,16 @@ function canAccessSyncScope(app, auth, scopeType, scopeId) {
 }
 
 /**
+ * Whether the caller may replace the scope's replica for everyone: its user,
+ * or the room's owner, as for deleting the room.
+ */
+function canOverwriteSyncScope(app, auth, scopeType, scopeId) {
+  if (scopeType === "user") return scopeId === auth.id;
+  var room = findMultiRoomIndex(app, scopeId);
+  return !!room && room.getString("ownerUserId") === auth.id;
+}
+
+/**
  * A scope's replica state on this server. `lineage` names the history the
  * scope's records descend from; replicas of different lineages never merge.
  * `initToken` marks a bootstrap or overwrite in progress: until its commit,
@@ -685,10 +695,14 @@ function syncHandshake(app, auth, body) {
       coverage: syncCoverage(request.pullCursor, anchorsOf(held)),
       known: known,
       lineage: state.lineage,
-      initializing: ownsBootstrap
-        ? "own"
-        : syncInitializing(state, Date.now()),
+      initializing: ownsBootstrap ? "own" : syncInitializing(state, Date.now()),
       hasRecords: syncScopeHasRecords(app, request.scopeType, request.scopeId),
+      canOverwrite: canOverwriteSyncScope(
+        app,
+        auth,
+        request.scopeType,
+        request.scopeId,
+      ),
     },
   };
 }
@@ -744,7 +758,10 @@ function syncCommit(auth, body) {
     }
     // The lease ends only with the whole replica: a partial one is never published.
     if (bootstrapping && body.pushed !== true) {
-      result = syncRefusal("sync_initializing", "Bootstrap Push is incomplete.");
+      result = syncRefusal(
+        "sync_initializing",
+        "Bootstrap Push is incomplete.",
+      );
       return;
     }
     if (state.lineage !== lineage) {
@@ -768,15 +785,6 @@ function syncCommit(auth, body) {
       result = syncRefusal("sync_unsafe", "Collected during adoption.");
       return;
     }
-    if (bootstrapping) {
-      writeSyncScopeState(txApp, scopeType, scopeId, {
-        gcHigh: gcHigh,
-        lineage: lineage,
-        initToken: null,
-        initAt: 0,
-      });
-    }
-
     // A fresh revision orders after every committed Push of the session and
     // after every Pull bound a client could have read before this commit.
     var heldAt = nextSyncRevision(txApp);
@@ -808,6 +816,16 @@ function syncCommit(auth, body) {
       if (heldIds[inherit[j]]) continue;
       addSyncCheckpoint(txApp, scopeType, scopeId, inherit[j], 0, heldAt);
       heldIds[inherit[j]] = true;
+    }
+    // Refusals return without rolling back, so the lease ends only after the
+    // last check: a refused commit never publishes a partial replica.
+    if (bootstrapping) {
+      writeSyncScopeState(txApp, scopeType, scopeId, {
+        gcHigh: gcHigh,
+        lineage: lineage,
+        initToken: null,
+        initAt: 0,
+      });
     }
 
     var rows = arrayOf(new DynamicModel({ checkpointId: "" }));
@@ -910,6 +928,26 @@ function syncBootstrap(auth, body) {
       return;
     }
     var state = getSyncScopeState(txApp, scope.scopeType, scope.scopeId);
+    // An overwrite discards the scope for every member. Only its owner may do
+    // that, except to redo a bootstrap whose lease the caller still holds.
+    var resuming =
+      !!state.initToken &&
+      typeof body.resumeToken === "string" &&
+      body.resumeToken === state.initToken;
+    if (
+      mode === "overwrite" &&
+      !resuming &&
+      !canOverwriteSyncScope(txApp, auth, scope.scopeType, scope.scopeId)
+    ) {
+      result = {
+        status: 403,
+        body: {
+          code: "sync_forbidden",
+          error: "Only the owner can replace this scope.",
+        },
+      };
+      return;
+    }
     var allowed =
       mode === "init"
         ? !state.lineage &&

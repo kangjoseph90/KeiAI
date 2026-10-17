@@ -66,6 +66,7 @@ export const shellMessages = {
     'shell.sync.conflict.confirmAction': '바꾸기',
     'shell.sync.conflict.resolved': '동기화 충돌을 해결했습니다',
     'shell.sync.conflict.failed': '충돌을 해결하지 못했습니다: {:error}',
+    'shell.sync.conflict.keepLocalUnavailable': '방장만 서버의 룸 데이터를 바꿀 수 있습니다.',
     'shell.sync.conflict.keepServerUnavailable':
         '다른 기기가 서버를 준비하다 멈춰 있어 지금은 서버의 사본을 받을 수 없습니다.',
     'shell.sync.conflict.errorStale':

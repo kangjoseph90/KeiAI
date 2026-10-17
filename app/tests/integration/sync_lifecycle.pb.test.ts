@@ -1085,6 +1085,98 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
             expect(serverRow(0, 'x')).toBeUndefined();
         });
 
+        it('keeps the lease when a bootstrap commit is refused after its token check', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const g = await createDevice('G', SERVERS[0]!, user);
+            await write(g, 'r1', 'one');
+            const send = g.pb.send.bind(g.pb);
+            vi.spyOn(g.pb, 'send').mockImplementation(async (path, options) => {
+                if (path === '/api/sync/commit') {
+                    // A bound the server has not reached: refused by its range check.
+                    const body = options?.body as Record<string, unknown>;
+                    return send(path, { ...options, body: { ...body, serverUpper: 1e15 } });
+                }
+                return send(path, options);
+            });
+            expect(await sync(g)).not.toBe('idle');
+            vi.restoreAllMocks();
+            expect(serverScope(0, userScope(g))!.initToken).not.toBe('');
+
+            restart(g);
+            expect(await sync(g)).toBe('idle');
+            expect(serverScope(0, userScope(g))!.initToken).toBe('');
+        });
+
+        it('lets only the room owner overwrite the room', async () => {
+            const owner = await createUser(SERVERS[0]!);
+            const member = await createUser(SERVERS[0]!);
+            const a = await createDevice('A', SERVERS[0]!, owner);
+            const roomId = unique('room');
+            const now = Date.now();
+            await a.pb.collection('multi_room_index').create({
+                id: roomId,
+                ownerUserId: owner.id,
+                visibility: 'private',
+                createdAt: now,
+                updatedAt: now
+            });
+            const admin = new PocketBase(SERVERS[0]);
+            await admin.collection('_superusers').authWithPassword(ADMIN.email!, ADMIN.password!);
+            for (const userId of [owner.id, member.id]) {
+                await admin.collection('multi_room_members').create({
+                    roomId,
+                    userId,
+                    status: 'accepted',
+                    createdAt: now,
+                    updatedAt: now
+                });
+            }
+            const roomKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 },
+                true,
+                ['encrypt', 'decrypt']
+            );
+            const room: DataScope = { scopeType: 'room', scopeId: roomId };
+            a.session = { ...a.session, roomId, roomKey };
+            await write(a, 'x', 'owner-x', room);
+            expect(await sync(a)).toBe('idle');
+            const lineage = serverScope(0, room)!.lineage;
+
+            const memberPb = await signIn(SERVERS[0]!, member);
+            const handshake = await memberPb.send('/api/sync/handshake', {
+                method: 'POST',
+                body: { ...room, pullCursor: 0, checkpoints: [] }
+            });
+            expect(handshake).toMatchObject({ lineage, canOverwrite: false });
+            await expect(
+                memberPb.send('/api/sync/bootstrap', {
+                    method: 'POST',
+                    body: {
+                        ...room,
+                        mode: 'overwrite',
+                        expectedLineage: lineage,
+                        lineage: 'replaced',
+                        token: 'a'.repeat(64),
+                        checkpoint: 'member-k0',
+                        forgotten: false,
+                        clean: []
+                    }
+                })
+            ).rejects.toMatchObject({ status: 403 });
+            expect(serverScope(0, room)).toMatchObject({ lineage, initToken: '' });
+            const db = serverDb(0);
+            const kept = db
+                .prepare('SELECT isDeleted FROM multi_room_records WHERE id = ?')
+                .get(rid('x'));
+            db.close();
+            expect(kept).toMatchObject({ isDeleted: 0 });
+            const ownerHandshake = await a.pb.send('/api/sync/handshake', {
+                method: 'POST',
+                body: { ...room, pullCursor: 0, checkpoints: [] }
+            });
+            expect(ownerHandshake).toMatchObject({ canOverwrite: true });
+        });
+
         it('re-adopts a purged room on rejoin while the user scope keeps syncing', async () => {
             const user = await createUser(SERVERS[0]!);
             const a = await createDevice('A', SERVERS[0]!, user);

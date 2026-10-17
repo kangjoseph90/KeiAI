@@ -134,6 +134,8 @@ export interface OpenedSession {
     remoteLineage: string | null;
     /** Another client holds the server scope's initialization lease. */
     remoteInitializing: boolean;
+    /** This user may overwrite the server scope (its owner, for a room). */
+    canOverwrite: boolean;
 }
 
 export interface SessionBounds {
@@ -209,6 +211,7 @@ export async function openSyncSession(
         plan,
         remoteLineage,
         remoteInitializing: initializing === 'active' || initializing === 'stale',
+        canOverwrite: response.canOverwrite === true,
         session: {
             localCoverage,
             serverCoverage,
@@ -233,6 +236,8 @@ export async function beginBootstrap(
         lineage: string;
         /** Chosen and recorded by this client before the request. */
         token: string;
+        /** The lease this client holds, when redoing its own bootstrap. */
+        resumeToken?: string;
         checkpoint: string;
         forgotten: boolean;
         /** Checkpoints this replica is clean on; the server takes them over at the anchor. */
@@ -331,6 +336,9 @@ export function toSyncSafetyError(error: unknown): unknown {
               (error as { data?: unknown }).data)
             : undefined;
     const text = response === undefined ? '' : JSON.stringify(response);
+    if (/sync_forbidden/i.test(text)) {
+        return new AppError('OWNERSHIP_VIOLATION', 'Only the owner can replace this scope', error);
+    }
     if (/sync_initializing/i.test(text)) {
         return new AppError('SYNC_INITIALIZING', 'Sync server scope is being initialized', error);
     }

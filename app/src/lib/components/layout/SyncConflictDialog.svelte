@@ -28,6 +28,9 @@
     /** Why a resolution failed, in the user's terms; engine messages are not user-facing. */
     function failureReason(error: unknown): string {
         if (isErrorCode(error, 'INVALID_INPUT')) return $t('shell.sync.conflict.errorStale');
+        if (isErrorCode(error, 'OWNERSHIP_VIOLATION')) {
+            return $t('shell.sync.conflict.keepLocalUnavailable');
+        }
         if (isErrorCode(error, 'SYNC_INITIALIZING')) {
             return $t('shell.sync.conflict.errorInitializing');
         }
@@ -95,12 +98,16 @@
                 <Button
                     variant="outline"
                     class="h-auto flex-col items-start gap-0.5 whitespace-normal py-2 text-left"
-                    disabled={working}
+                    disabled={working || !conflict.canOverwrite}
                     onclick={() => void choose('local')}
                 >
                     <span class="font-medium">{$t('shell.sync.conflict.keepLocal')}</span>
                     <span class="text-xs font-normal text-muted-foreground">
-                        {$t('shell.sync.conflict.keepLocalHint')}
+                        {$t(
+                            conflict.canOverwrite
+                                ? 'shell.sync.conflict.keepLocalHint'
+                                : 'shell.sync.conflict.keepLocalUnavailable'
+                        )}
                     </span>
                 </Button>
                 <Button

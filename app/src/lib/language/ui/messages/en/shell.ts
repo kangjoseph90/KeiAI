@@ -63,6 +63,8 @@ export const shellMessages = {
     'shell.sync.conflict.confirmAction': 'Replace',
     'shell.sync.conflict.resolved': 'Sync conflict resolved',
     'shell.sync.conflict.failed': 'Could not resolve the conflict: {:error}',
+    'shell.sync.conflict.keepLocalUnavailable':
+        "Only the room's owner can replace the server's copy.",
     'shell.sync.conflict.keepServerUnavailable':
         "Another device's unfinished setup holds the server, so its copy cannot be taken now.",
     'shell.sync.conflict.errorStale':
