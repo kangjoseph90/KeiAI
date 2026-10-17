@@ -392,4 +392,27 @@ describe('AssetService', () => {
         await expect(pendingLease).resolves.toBeNull();
         expect(appAsset.revokeRenderUrl).toHaveBeenCalledWith('blob:late');
     });
+
+    it('fetches every remote asset of a scope, then queues them all for upload', async () => {
+        const cached = { ...mockRegistry, id: 'cached', hash: 'hash-cached' };
+        vi.mocked(appAsset.getAllRemoteAssets).mockResolvedValue([mockRegistry, cached]);
+        vi.mocked(appAsset.hasAsset).mockImplementation(async (locator) => locator === cached);
+
+        await AssetService.localizeScope({ scopeType: 'user', scopeId: mockUserId });
+
+        expect(fetchAssetCiphertext).toHaveBeenCalledWith('hash-123');
+        expect(fetchAssetCiphertext).toHaveBeenCalledTimes(1);
+        expect(appAsset.putRemoteAsset).toHaveBeenCalled();
+        expect(appAsset.markAssetsLocal).toHaveBeenCalledWith([mockRegistry, cached]);
+    });
+
+    it('marks nothing for upload when an asset of the scope cannot be fetched', async () => {
+        vi.mocked(appAsset.getAllRemoteAssets).mockResolvedValue([mockRegistry]);
+        vi.mocked(fetchAssetCiphertext).mockResolvedValue(null);
+
+        await expect(
+            AssetService.localizeScope({ scopeType: 'user', scopeId: mockUserId })
+        ).rejects.toMatchObject({ code: 'ASSET_ERROR' });
+        expect(appAsset.markAssetsLocal).not.toHaveBeenCalled();
+    });
 });

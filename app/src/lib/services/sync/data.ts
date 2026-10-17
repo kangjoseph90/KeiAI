@@ -541,6 +541,9 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const { scope } = syncScope;
         const key = this.sessionKey(syncScope, serverUrl);
         const { userId } = getActiveSession();
+        // The server drops its references when it is replaced, and its GC may then drop the
+        // bytes: every asset this replica keeps must be uploadable from here first.
+        await AssetService.localizeScope(scope);
         this.sessions.delete(key);
         await this.replaceReplica(scope);
         const token =

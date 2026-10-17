@@ -73,6 +73,8 @@ export const shellMessages = {
         "The server's data changed meanwhile, so it could not proceed safely. Choose again.",
     'shell.sync.conflict.errorInitializing':
         'Another device is preparing the server. Try again later.',
+    'shell.sync.conflict.errorAssets':
+        "Some attachments could not be fetched, so the server's copy was not replaced. Check the connection and try again.",
     'shell.sync.conflict.errorNetwork':
         'Could not reach the server. Check the connection and try again.',
     'shell.sidebar.sync.indicatorServerTransition': 'Server change in progress',

@@ -25,6 +25,7 @@ import {
 } from './types';
 import { decryptConvergentAsset, encryptConvergentAsset, fileToPlaintext } from './util';
 import { fetchAssetCiphertext } from './remote';
+import { Semaphore } from '$lib/utils/semaphore';
 import { sha256 } from '$lib/crypto';
 import {
     getAssetMediaType,
@@ -71,8 +72,11 @@ async function updateOwnerEntryStatus(locator: AssetLocator, status: AssetStatus
     });
 }
 
+const LOCALIZE_CONCURRENCY = 3;
+
 export class AssetService {
-    private static isEvictionPaused = false;
+    /** Pauses held by callers that need cached bytes to stay; eviction runs at zero. */
+    private static evictionPauses = 0;
     private static pendingLoads = new Map<string, Promise<boolean>>();
     private static evictionTimer: ReturnType<typeof setTimeout> | null = null;
     private static readonly EVICTION_DEBOUNCE_MS = 5_000;
@@ -347,6 +351,37 @@ export class AssetService {
         return appAsset.getAllRemoteAssets(scope);
     }
 
+    /**
+     * Make every asset of the scope available on this device and pending upload, before this
+     * replica replaces a server's copy: once the server drops the references, its GC may drop
+     * the bytes, and an asset marked `remote` is never uploaded again. Fails, marking nothing,
+     * if any asset cannot be fetched.
+     */
+    static async localizeScope(scope: DataScope): Promise<void> {
+        AssetService.stopEviction();
+        try {
+            const remote = await AssetService.getRemoteAssets(scope);
+            const semaphore = new Semaphore(LOCALIZE_CONCURRENCY);
+            const results = await Promise.allSettled(
+                remote.map((asset) =>
+                    semaphore.runExclusive(async () => {
+                        if (!(await AssetService.load(asset))) {
+                            throw new AppError(
+                                'ASSET_ERROR',
+                                `Asset ${asset.id} could not be fetched`
+                            );
+                        }
+                    })
+                )
+            );
+            const failed = results.find((result) => result.status === 'rejected');
+            if (failed?.status === 'rejected') throw failed.reason;
+            await AssetService.markLocalBatch(remote);
+        } finally {
+            AssetService.resumeEviction();
+        }
+    }
+
     static clear(): void {
         for (const entry of AssetService.urlCache.values()) {
             if (entry.url) void appAsset.revokeRenderUrl(entry.url);
@@ -356,7 +391,7 @@ export class AssetService {
     }
 
     static async evictCache(): Promise<void> {
-        if (AssetService.isEvictionPaused) return;
+        if (AssetService.evictionPauses > 0) return;
 
         const remoteAssets = await appAsset.getAllRemoteAssets();
         const totalSize = remoteAssets.reduce((sum, record) => sum + record.size, 0);
@@ -375,7 +410,7 @@ export class AssetService {
     }
 
     static stopEviction(): void {
-        AssetService.isEvictionPaused = true;
+        AssetService.evictionPauses++;
         if (AssetService.evictionTimer) {
             clearTimeout(AssetService.evictionTimer);
             AssetService.evictionTimer = null;
@@ -383,12 +418,12 @@ export class AssetService {
     }
 
     static resumeEviction(): void {
-        AssetService.isEvictionPaused = false;
+        AssetService.evictionPauses = Math.max(0, AssetService.evictionPauses - 1);
         AssetService.scheduleEviction();
     }
 
     private static scheduleEviction(): void {
-        if (AssetService.isEvictionPaused) return;
+        if (AssetService.evictionPauses > 0) return;
         if (AssetService.evictionTimer) return;
         AssetService.evictionTimer = setTimeout(() => {
             AssetService.evictionTimer = null;

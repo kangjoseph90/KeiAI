@@ -44,6 +44,7 @@ The registry, usage rows, and account totals are not alternate sources of truth.
 4. A missing local asset is fetched by hash, verified, decrypted with `encKey`, and cached under the requesting parent.
 5. Removing the last reference from a parent removes its manifest entry and local registry row.
 6. Server hooks derive usage from manifest changes; unreferenced ciphertext is garbage-collected after the grace period.
+7. Before a device replaces a server's copy of a scope (sync bootstrap or overwrite) or changes servers, it fetches the scope's `remote` assets and marks them `local`, so they are uploaded again whatever the server kept.
 
 The same plaintext produces the same key, IV, ciphertext, and ciphertext hash. This enables server-wide deduplication without exposing plaintext. Multi-room asset usage is charged to the room owner.
 

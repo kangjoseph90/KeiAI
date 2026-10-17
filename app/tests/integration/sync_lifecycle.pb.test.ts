@@ -157,7 +157,8 @@ vi.mock('$lib/services/asset', () => ({
         delete: async () => {},
         markLocal: async () => {},
         markRemote: async () => {},
-        deleteScopeAssets: async () => {}
+        deleteScopeAssets: async () => {},
+        localizeScope: async () => {}
     }
 }));
 
@@ -1175,6 +1176,39 @@ describe.skipIf(!SERVERS[0] || !SERVERS[1] || !DATA_DIRS[0] || !ADMIN.email)(
                 body: { ...room, pullCursor: 0, checkpoints: [] }
             });
             expect(ownerHandshake).toMatchObject({ canOverwrite: true });
+        });
+
+        it('does not overwrite the server unless every kept asset can be uploaded', async () => {
+            const user = await createUser(SERVERS[0]!);
+            const a = await createDevice('A', SERVERS[0]!, user);
+            await write(a, 'x', 'x');
+            await sync(a);
+            const lineage = serverScope(0, userScope(a))!.lineage;
+            const c = await createDevice('C', SERVERS[0]!, user);
+            await write(c, 'c-only', 'c-only');
+            expect(await sync(c)).toBe('init_required');
+            const { AssetService } = await import('$lib/services/asset');
+            const localize = vi
+                .spyOn(AssetService, 'localizeScope')
+                .mockRejectedValueOnce(
+                    Object.assign(new Error('offline'), { code: 'ASSET_ERROR' })
+                );
+
+            await expect(
+                on(c, () => c.engine.resolveConflict(conflicts(c)[0], 'local'))
+            ).rejects.toMatchObject({ code: 'ASSET_ERROR' });
+            expect(serverScope(0, userScope(c))).toMatchObject({ lineage, initToken: '' });
+            expect(serverRow(0, 'x')).toMatchObject({ isDeleted: 0 });
+            expect(await c.db.getSyncScopeState(userScope(c))).toMatchObject({
+                lineage: null,
+                bootstrapping: null
+            });
+
+            // Once the assets are secured, the overwrite goes through.
+            await on(c, () => c.engine.resolveConflict(conflicts(c)[0], 'local'));
+            expect(localize).toHaveBeenCalledTimes(2);
+            expect(serverScope(0, userScope(c))!.lineage).not.toBe(lineage);
+            expect(serverRow(0, 'c-only')).toMatchObject({ isDeleted: 0 });
         });
 
         it('re-adopts a purged room on rejoin while the user scope keeps syncing', async () => {

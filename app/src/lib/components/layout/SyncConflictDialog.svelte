@@ -28,6 +28,7 @@
     /** Why a resolution failed, in the user's terms; engine messages are not user-facing. */
     function failureReason(error: unknown): string {
         if (isErrorCode(error, 'INVALID_INPUT')) return $t('shell.sync.conflict.errorStale');
+        if (isErrorCode(error, 'ASSET_ERROR')) return $t('shell.sync.conflict.errorAssets');
         if (isErrorCode(error, 'OWNERSHIP_VIOLATION')) {
             return $t('shell.sync.conflict.keepLocalUnavailable');
         }

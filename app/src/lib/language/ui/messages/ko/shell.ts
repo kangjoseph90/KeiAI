@@ -75,6 +75,8 @@ export const shellMessages = {
         '그사이 서버의 데이터가 바뀌어 안전하게 진행하지 못했습니다. 다시 선택하세요.',
     'shell.sync.conflict.errorInitializing':
         '다른 기기가 서버를 준비하고 있습니다. 잠시 후 다시 시도하세요.',
+    'shell.sync.conflict.errorAssets':
+        '일부 첨부 파일을 받지 못해 서버의 사본을 바꾸지 않았습니다. 연결을 확인하고 다시 시도하세요.',
     'shell.sync.conflict.errorNetwork':
         '서버에 연결하지 못했습니다. 연결을 확인하고 다시 시도하세요.',
     'shell.sidebar.sync.indicatorServerTransition': '서버 변경 진행 중',
