@@ -434,7 +434,13 @@ export class AuthService {
                 recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
             });
 
-            await this.authenticateExisting(username, newPassword, newSalt, currentConnections);
+            try {
+                await this.authenticateExisting(username, newPassword, newSalt, currentConnections);
+            } catch (error) {
+                // The password and recovery code already changed on the server.
+                this.clearActivePbAuth();
+                logger.warn('Password changed; sign in again to reconnect.', error);
+            }
             return newRecovery.recoveryCode.fullCode;
         } finally {
             oldKeys.encryptionKey.fill(0);
