@@ -78,6 +78,7 @@ vi.mock('$lib/services/asset/remote', () => ({
 
 import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
+import { localDB } from '$lib/adapters/db';
 import { sha256 } from '$lib/crypto';
 import {
     decryptConvergentAsset,
@@ -134,6 +135,33 @@ describe('AssetService', () => {
         vi.mocked(sha256).mockResolvedValue('hash-123');
         vi.mocked(decryptConvergentAsset).mockResolvedValue(mockBytes);
     });
+
+    it.each(['single', 'batch'] as const)(
+        'keeps %s uploads retryable when publishing the parent manifest fails',
+        async (mode) => {
+            const markRemote = () =>
+                mode === 'single'
+                    ? AssetService.markRemote(mockRegistry)
+                    : AssetService.markRemoteBatch([mockRegistry]);
+            vi.mocked(localDB.putRecord).mockRejectedValueOnce(new Error('storage full'));
+
+            await expect(markRemote()).rejects.toThrow('storage full');
+            expect(appAsset.markAssetRemote).not.toHaveBeenCalled();
+            expect(appAsset.markAssetsRemote).not.toHaveBeenCalled();
+
+            await markRemote();
+            expect(localDB.putRecord).toHaveBeenLastCalledWith(
+                'characters',
+                expect.objectContaining({
+                    assetEntries: { [mockRegistry.hash]: 'remote' }
+                })
+            );
+            expect(
+                mode === 'single' ? appAsset.markAssetRemote : appAsset.markAssetsRemote
+            ).toHaveBeenCalledOnce();
+            AssetService.stopEviction();
+        }
+    );
 
     it('creates local asset metadata, plaintext storage, and registry cache index', async () => {
         const file = new File([mockBytes], 'avatar.png', { type: 'image/png' });

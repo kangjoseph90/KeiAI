@@ -21,7 +21,8 @@ vi.mock('$lib/adapters/pb', () => ({
 
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+    hasActiveSession: vi.fn(),
+    canAccessScope: vi.fn(() => true)
 }));
 
 vi.mock('$lib/services/user', () => ({

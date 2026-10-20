@@ -318,8 +318,8 @@ export class AssetService {
     }
 
     static async markRemote(locator: AssetLocator): Promise<void> {
-        await appAsset.markAssetRemote(locator);
         await updateOwnerEntryStatus(locator, 'remote');
+        await appAsset.markAssetRemote(locator);
         AssetService.scheduleEviction();
     }
 
@@ -329,8 +329,8 @@ export class AssetService {
     }
 
     static async markRemoteBatch(locators: AssetLocator[]): Promise<void> {
-        await appAsset.markAssetsRemote(locators);
         await Promise.all(locators.map((locator) => updateOwnerEntryStatus(locator, 'remote')));
+        await appAsset.markAssetsRemote(locators);
         AssetService.scheduleEviction();
     }
 
