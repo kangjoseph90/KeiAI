@@ -318,6 +318,24 @@ function findAssetCatalogWith(app, hash) {
   }
 }
 
+function renewAssetCatalogGrace(app, hash) {
+  var record = findAssetCatalogWith(app, hash);
+  if (!record) return false;
+
+  // createdAt is the catalog's orphan-GC grace anchor; successful PUTs renew it.
+  record.set("createdAt", Date.now());
+  app.save(record);
+  return true;
+}
+
+function renewExistingAssetCatalogGrace(app, hash) {
+  var renewed = false;
+  app.runInTransaction(function (txApp) {
+    renewed = renewAssetCatalogGrace(txApp, hash);
+  });
+  return renewed;
+}
+
 function findAssetUsageWith(app, userId, hash) {
   try {
     return app.findFirstRecordByFilter(
@@ -1377,6 +1395,8 @@ module.exports = {
   leaveMultiRoom: leaveMultiRoom,
   migrateR2AssetsToLocal: migrateR2AssetsToLocal,
   maxAssetCiphertextBytes: maxAssetCiphertextBytes,
+  renewAssetCatalogGrace: renewAssetCatalogGrace,
+  renewExistingAssetCatalogGrace: renewExistingAssetCatalogGrace,
   normalizeUsername: normalizeUsername,
   rejectDisallowedAuth: rejectDisallowedAuth,
   rejectDisallowedUsername: rejectDisallowedUsername,

@@ -37,10 +37,18 @@ describe('asset garbage collection', () => {
             },
             arrayOf: () => [],
             $app: {
+                runInTransaction: (callback: (txApp: unknown) => void): void => {
+                    callback(context.$app);
+                },
                 db: () => ({
                     newQuery: () => ({
-                        bind: (bindings: { afterId: string; limit: number }) => ({
+                        bind: (bindings: { afterId: string; limit: number; id?: string }) => ({
                             all: (target: { push: (row: unknown) => void }) => {
+                                if (bindings.id !== undefined) {
+                                    const row = rows.find((row) => row.id === bindings.id);
+                                    if (row && !deleted.has(row.id)) target.push(row);
+                                    return;
+                                }
                                 queryCount++;
                                 if (queryCount > maxQueries) {
                                     throw new Error('GC did not advance through failed rows');

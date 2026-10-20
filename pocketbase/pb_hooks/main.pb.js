@@ -490,6 +490,8 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
     var existing = h.findAssetCatalogWith($app, hash);
     if (existing) {
       var storedExisting = h.storeAssetBytes(hash, body, existing);
+      if (!h.renewExistingAssetCatalogGrace($app, hash))
+        throw new Error("Asset catalog entry disappeared during upload.");
       return e.json(storedExisting.status === "stored" ? 201 : 200, {
         status: storedExisting.status,
         hash: hash,
@@ -498,7 +500,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
 
     var created = false;
     $app.runInTransaction(function (txApp) {
-      if (h.findAssetCatalogWith(txApp, hash)) return;
+      if (h.renewAssetCatalogGrace(txApp, hash)) return;
 
       var account = h.getOrCreateAssetAccount(txApp, auth.id);
       var maxBytes = h.getAssetMaxBytes(account);
@@ -520,7 +522,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
         txApp.save(record);
         created = true;
       } catch (err) {
-        if (!h.findAssetCatalogWith(txApp, hash)) throw err;
+        if (!h.renewAssetCatalogGrace(txApp, hash)) throw err;
       }
     });
 
@@ -582,6 +584,8 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
     var existing = h.findAssetCatalogWith($app, hash);
     if (existing) {
       var storedExisting = h.storeAssetBytes(hash, body, existing);
+      if (!h.renewExistingAssetCatalogGrace($app, hash))
+        throw new Error("Asset catalog entry disappeared during upload.");
       return e.json(storedExisting.status === "stored" ? 201 : 200, {
         status: storedExisting.status,
         hash: hash,
@@ -590,7 +594,7 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
 
     var created = false;
     $app.runInTransaction(function (txApp) {
-      if (h.findAssetCatalogWith(txApp, hash)) return;
+      if (h.renewAssetCatalogGrace(txApp, hash)) return;
 
       var account = h.getOrCreateAssetAccount(txApp, owner.ownerUserId);
       var maxBytes = h.getAssetMaxBytes(account);
@@ -612,7 +616,7 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
         txApp.save(record);
         created = true;
       } catch (err) {
-        if (!h.findAssetCatalogWith(txApp, hash)) throw err;
+        if (!h.renewAssetCatalogGrace(txApp, hash)) throw err;
       }
     });
 
@@ -760,14 +764,28 @@ cronAdd("asset-gc", "0 * * * *", () => {
         var h = require(`${__hooks}/keiai.js`);
         var hash = String(orphans[i].hash || "").toLowerCase();
         if (!hash) continue;
-        if (h.hasAssetUsage(hash)) {
-          continue;
-        }
-        var record = $app.findRecordById("asset_catalog", orphans[i].id);
-        if (!h.deleteAssetBytes(hash)) {
-          continue;
-        }
-        $app.delete(record);
+        var id = String(orphans[i].id || "");
+        if (!id) continue;
+        $app.runInTransaction(function (txApp) {
+          var stillExpiredOrphan = arrayOf(new DynamicModel({ id: "" }));
+          txApp
+            .db()
+            .newQuery(
+              "SELECT c.id FROM asset_catalog c " +
+                "WHERE c.id = {:id} AND c.hash = {:hash} " +
+                "AND c.recoveryProtected = false " +
+                "AND c.createdAt < (unixepoch() - 3600) * 1000 " +
+                "AND NOT EXISTS (SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
+                "LIMIT 1",
+            )
+            .bind({ id: id, hash: hash })
+            .all(stillExpiredOrphan);
+          if (stillExpiredOrphan.length === 0) return;
+
+          var record = txApp.findRecordById("asset_catalog", id);
+          if (!h.deleteAssetBytes(hash)) return;
+          txApp.delete(record);
+        });
       } catch (_) {}
     }
 
