@@ -58,15 +58,16 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
         try {
             await pb.collection('multi_room_index').subscribe('*', (event) => {
-                void this.handleRealtimeEvent(
-                    'multi_room_index',
-                    event as unknown as RealtimeEvent
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent('multi_room_index', event as unknown as RealtimeEvent)
                 );
             });
             await pb.collection('multi_room_members').subscribe('*', (event) => {
-                void this.handleRealtimeEvent(
-                    'multi_room_members',
-                    event as unknown as RealtimeEvent
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent(
+                        'multi_room_members',
+                        event as unknown as RealtimeEvent
+                    )
                 );
             });
         } catch (err) {
@@ -149,16 +150,23 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         afterServerUpdatedAt: number,
         throughServerUpdatedAt: number
     ): Promise<void> {
-        let page = 1;
+        let afterId: string | null = null;
 
         while (true) {
-            const result = await pb.collection('multi_room_index').getList(page, PAGE_SIZE, {
-                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+            const afterFilter =
+                afterId === null
+                    ? 'serverUpdatedAt > {:after}'
+                    : '(serverUpdatedAt > {:after} || (serverUpdatedAt = {:after} && id > {:afterId}))';
+            const result = await pb.collection('multi_room_index').getList(1, PAGE_SIZE, {
+                filter: pb.filter(`${afterFilter} && serverUpdatedAt <= {:through}`, {
                     after: afterServerUpdatedAt,
+                    ...(afterId === null ? {} : { afterId }),
                     through: throughServerUpdatedAt
                 }),
                 sort: 'serverUpdatedAt,id'
             });
+
+            if (result.items.length === 0) break;
 
             for (const item of result.items) {
                 const raw = item as unknown as Record<string, unknown>;
@@ -174,8 +182,8 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                     const local = await appMulti.getRoomIndex(remote.id);
                     if (!local) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
-                    } else if (remote.updatedAt > local.updatedAt) {
-                        // Both live — LWW remote wins
+                    } else if (remote.updatedAt >= local.updatedAt) {
+                        // Server wins equal-version conflicts and supplies canonical contents.
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                     } else if (local.updatedAt > remote.updatedAt) {
                         // Both live — LWW local wins
@@ -184,8 +192,13 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 }
             }
 
-            if (result.page >= result.totalPages) break;
-            page++;
+            if (result.items.length < PAGE_SIZE) break;
+            const lastItem = result.items[result.items.length - 1];
+            afterServerUpdatedAt = normalizeTimestamp(
+                lastItem.serverUpdatedAt,
+                lastItem.serverUpdatedAt
+            );
+            afterId = lastItem.id as string;
         }
     }
 
@@ -193,25 +206,29 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         afterServerUpdatedAt: number,
         throughServerUpdatedAt: number
     ): Promise<void> {
-        let page = 1;
+        let afterId: string | null = null;
 
         while (true) {
-            const result = await pb.collection('multi_room_members').getList(page, PAGE_SIZE, {
-                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+            const afterFilter =
+                afterId === null
+                    ? 'serverUpdatedAt > {:after}'
+                    : '(serverUpdatedAt > {:after} || (serverUpdatedAt = {:after} && id > {:afterId}))';
+            const result = await pb.collection('multi_room_members').getList(1, PAGE_SIZE, {
+                filter: pb.filter(`${afterFilter} && serverUpdatedAt <= {:through}`, {
                     after: afterServerUpdatedAt,
+                    ...(afterId === null ? {} : { afterId }),
                     through: throughServerUpdatedAt
                 }),
                 sort: 'serverUpdatedAt,id'
             });
 
+            if (result.items.length === 0) break;
+
             for (const item of result.items) {
                 const remote = this.pbToMember(item as unknown as Record<string, unknown>);
                 clock.observe(remote.updatedAt);
                 const local = await appMulti.getMember(remote.id);
-                const shouldSave =
-                    !local ||
-                    remote.updatedAt > local.updatedAt ||
-                    (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+                const shouldSave = !local || remote.updatedAt >= local.updatedAt;
                 if (shouldSave) {
                     await appMulti.saveMember(remote, { origin: 'sync' });
                     await this.ensureRoomIndexForMember(remote);
@@ -220,8 +237,13 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 }
             }
 
-            if (result.page >= result.totalPages) break;
-            page++;
+            if (result.items.length < PAGE_SIZE) break;
+            const lastItem = result.items[result.items.length - 1];
+            afterServerUpdatedAt = normalizeTimestamp(
+                lastItem.serverUpdatedAt,
+                lastItem.serverUpdatedAt
+            );
+            afterId = lastItem.id as string;
         }
     }
 
@@ -295,7 +317,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
                         const remote = this.pbToRoomIndex(raw);
                         const local = await appMulti.getRoomIndex(remote.id);
-                        if (!local || remote.updatedAt > local.updatedAt) {
+                        if (!local || remote.updatedAt >= local.updatedAt) {
                             await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                         }
                         continue;
@@ -303,11 +325,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
                     const remote = this.pbToMember(raw);
                     const local = await appMulti.getMember(remote.id);
-                    const serverIsCanonical =
-                        !local ||
-                        remote.updatedAt > local.updatedAt ||
-                        (this.isOwnInactiveMembership(remote) &&
-                            remote.updatedAt >= local.updatedAt);
+                    const serverIsCanonical = !local || remote.updatedAt >= local.updatedAt;
                     if (serverIsCanonical) {
                         await appMulti.saveMember(remote, { origin: 'sync' });
                         await this.ensureRoomIndexForMember(remote);
@@ -406,10 +424,10 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                     const local = await appMulti.getRoomIndex(remote.id);
                     if (!local) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
-                    } else if (remote.updatedAt > local.updatedAt) {
+                    } else if (remote.updatedAt >= local.updatedAt) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                     } else if (local.updatedAt > remote.updatedAt) {
-                        void this.pushWritableRoomIndexes([local]);
+                        await this.pushWritableRoomIndexes([local]);
                     }
                 }
                 return;
@@ -418,15 +436,12 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             const remote = this.pbToMember(event.record);
             clock.observe(remote.updatedAt);
             const local = await appMulti.getMember(remote.id);
-            const shouldSave =
-                !local ||
-                remote.updatedAt > local.updatedAt ||
-                (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+            const shouldSave = !local || remote.updatedAt >= local.updatedAt;
             if (shouldSave) {
                 await appMulti.saveMember(remote, { origin: 'sync' });
                 await this.ensureRoomIndexForMember(remote);
             } else if (local.updatedAt > remote.updatedAt) {
-                void this.pushWritableMembers([local]);
+                await this.pushWritableMembers([local]);
             }
         } catch (error) {
             logger.error(`Realtime event error for ${collection}`, error);
@@ -477,11 +492,6 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             createdAt: record.createdAt,
             updatedAt: record.updatedAt
         };
-    }
-
-    private isOwnInactiveMembership(record: MultiRoomMemberRecord): boolean {
-        const { userId } = getActiveSession();
-        return record.userId === userId && record.status !== 'accepted';
     }
 
     private async ensureRoomIndexForMember(record: MultiRoomMemberRecord): Promise<void> {

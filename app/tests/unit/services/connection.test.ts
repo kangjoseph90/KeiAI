@@ -138,6 +138,43 @@ describe('ConnectionService', () => {
         expect(authServiceMock.startAutoRefresh).toHaveBeenCalledOnce();
     });
 
+    it('keeps localized user assets and local identity when the destination has no saved auth session', async () => {
+        const remoteAsset = { id: 'asset-1' };
+        assetServiceMock.getRemoteAssets.mockResolvedValue([remoteAsset]);
+        assetServiceMock.load.mockResolvedValue(true);
+        authServiceMock.restorePbAuth.mockResolvedValue(false);
+        appHttpMock.fetch.mockResolvedValue(
+            new Response(JSON.stringify({ app: 'keiai', protocol: 1 }), { status: 200 })
+        );
+
+        const updated = await ConnectionService.changeServerConnection({
+            mode: 'custom',
+            customUrl: 'https://destination.example.test'
+        });
+
+        expect(updated.id).toBe('user-1');
+        expect(userServiceMock.updateConnections).toHaveBeenCalledOnce();
+        expect(userServiceMock.updateConnections).toHaveBeenCalledWith(
+            'user-1',
+            expect.objectContaining({
+                server: {
+                    mode: 'custom',
+                    customUrl: 'https://destination.example.test'
+                }
+            })
+        );
+        expect(assetServiceMock.markLocalBatch).toHaveBeenCalledWith([remoteAsset]);
+        expect(assetServiceMock.markRemoteBatch).not.toHaveBeenCalled();
+        expect(authServiceMock.persistPbAuth).toHaveBeenCalledWith(
+            'user-1',
+            'https://default.example.test'
+        );
+        expect(authServiceMock.restorePbAuth).toHaveBeenCalledWith(
+            'user-1',
+            'https://destination.example.test'
+        );
+    });
+
     it('restores remote asset state when the server commit fails', async () => {
         const remoteAsset = { id: 'asset-1' };
         assetServiceMock.getRemoteAssets.mockResolvedValue([remoteAsset]);

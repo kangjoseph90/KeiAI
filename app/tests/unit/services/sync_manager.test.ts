@@ -34,6 +34,7 @@ vi.mock('$lib/services/sync/data', () => {
         trigger: vi.fn(async () => {}),
         handleLocalWrite: vi.fn(),
         stop: vi.fn(),
+        resume: vi.fn(),
         get isSubscribed() {
             return subscribed;
         },
@@ -93,6 +94,7 @@ vi.mock('$lib/services/sync/user', () => {
         trigger: vi.fn(async () => {}),
         handleLocalWrite: vi.fn(),
         stop: vi.fn(),
+        resume: vi.fn(),
         get isSubscribed() {
             return subscribed;
         },
@@ -109,6 +111,7 @@ vi.mock('$lib/services/sync/asset', () => {
     const engine = {
         start: vi.fn(async () => {}),
         stop: vi.fn(),
+        resume: vi.fn(),
         getState: vi.fn(() => ({ state: 'idle' })),
         subscribeStatus: vi.fn(() => () => {})
     };
@@ -129,6 +132,7 @@ vi.mock('$lib/services/sync/multi', () => {
         }),
         handleLocalWrite: vi.fn(),
         stop: vi.fn(),
+        resume: vi.fn(),
         get isSubscribed() {
             return subscribed;
         },
@@ -142,7 +146,7 @@ vi.mock('$lib/services/sync/multi', () => {
 });
 
 describe('SyncManager', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
         vi.useFakeTimers();
 
@@ -157,7 +161,7 @@ describe('SyncManager', () => {
         });
 
         // Reset internal static state
-        SyncManager.stopAutoSync();
+        await SyncManager.stopAutoSync();
         vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockClear();
         vi.mocked(UserRecordSyncEngine.subscribeRealtime).mockClear();
         vi.mocked(UserRecordSyncEngine.unsubscribeRealtime).mockClear();
@@ -250,9 +254,47 @@ describe('SyncManager', () => {
     });
 
     describe('stopAutoSync', () => {
-        it('should clear subscriptions and poll timer', () => {
+        it('waits for late subscription setup and removes it before restart', async () => {
+            let finishSetup!: () => void;
+            const setup = new Promise<void>((resolve) => {
+                finishSetup = resolve;
+            });
+            vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockImplementationOnce(async () => {
+                await setup;
+                (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
+            });
+            await SyncManager.startAutoSync();
+            const stopped = vi.fn();
+            const stopping = SyncManager.stopAutoSync().then(stopped);
+            await SyncManager.syncAll();
+            expect(DataRecordSyncEngine.trigger).not.toHaveBeenCalled();
+            expect(stopped).not.toHaveBeenCalled();
+            finishSetup();
+            await stopping;
+            expect(DataRecordSyncEngine.isSubscribed).toBe(false);
+            expect(AssetSyncEngine.start).toHaveBeenCalledOnce();
+            await SyncManager.startAutoSync();
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not restart uploads when a syncAll finishes during stop', async () => {
+            let finishSync!: () => void;
+            const sync = new Promise<void>((resolve) => {
+                finishSync = resolve;
+            });
+            vi.mocked(DataRecordSyncEngine.trigger).mockImplementationOnce(() => sync);
+            vi.mocked(DataRecordSyncEngine.stop).mockImplementationOnce(() => sync);
+            await SyncManager.startAutoSync();
+            const running = SyncManager.syncAll();
+            const stopping = SyncManager.stopAutoSync();
+            finishSync();
+            await Promise.all([running, stopping]);
+            expect(AssetSyncEngine.start).toHaveBeenCalledOnce();
+        });
+
+        it('should clear subscriptions and poll timer', async () => {
             SyncManager.startAutoSync();
-            SyncManager.stopAutoSync();
+            await SyncManager.stopAutoSync();
 
             expect(DataRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
             expect(MultiRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();

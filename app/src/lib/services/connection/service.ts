@@ -8,7 +8,7 @@ import type {
 import { AppError } from '$lib/types/errors';
 import { buildUrl, normalizeUrl } from '$lib/utils/url';
 import { Semaphore } from '$lib/utils/semaphore';
-import { AssetService, type AssetRegistryRecord } from '../asset';
+import { AssetService, type AssetReadLocator } from '../asset';
 import { getActiveSession } from '../session';
 import { SyncManager } from '../sync';
 import { UserService, type User } from '../user';
@@ -120,10 +120,11 @@ export class ConnectionService {
 
         this.lockServerTransition();
         let transitionRecovered = true;
-        let remoteAssets: AssetRegistryRecord[] = [];
+        let remoteAssets: AssetReadLocator[] = [];
         let assetCommitStarted = false;
         let settingsCommitted = false;
         try {
+            await SyncManager.stopAutoSync();
             await AuthService.persistPbAuth(userId, previousUrl);
             remoteAssets = await this.localizeAssets(userId, options);
             this.emitProgress(options, {
@@ -177,7 +178,7 @@ export class ConnectionService {
             }
             throw error;
         } finally {
-            if (transitionRecovered) this.unlockServerTransition();
+            if (transitionRecovered) await this.unlockServerTransition();
         }
     }
 
@@ -246,7 +247,7 @@ export class ConnectionService {
     private static async localizeAssets(
         userId: string,
         options: ConnectionChangeOptions
-    ): Promise<AssetRegistryRecord[]> {
+    ): Promise<AssetReadLocator[]> {
         const remoteAssets = await AssetService.getRemoteAssets({
             scopeType: 'user',
             scopeId: userId
@@ -267,7 +268,7 @@ export class ConnectionService {
                     if (!loaded) {
                         throw new AppError(
                             'NOT_FOUND',
-                            `Asset ${asset.id} could not be localized.`
+                            `Asset ${asset.hash} could not be localized.`
                         );
                     }
                     completed++;
@@ -275,7 +276,7 @@ export class ConnectionService {
                         phase: 'localizing',
                         completed,
                         total: remoteAssets.length,
-                        currentItemId: asset.id
+                        currentItemId: asset.hash
                     });
                 })
             )
@@ -287,14 +288,13 @@ export class ConnectionService {
 
     private static lockServerTransition(): void {
         this.serverTransitionLocked = true;
-        SyncManager.stopAutoSync();
         AuthService.stopAutoRefresh();
         AssetService.stopEviction();
         this.emitLockChange();
     }
 
-    private static unlockServerTransition(): void {
-        SyncManager.startAutoSync();
+    private static async unlockServerTransition(): Promise<void> {
+        await SyncManager.startAutoSync();
         AuthService.startAutoRefresh();
         AssetService.resumeEviction();
         this.serverTransitionLocked = false;

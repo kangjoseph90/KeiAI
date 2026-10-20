@@ -471,6 +471,20 @@ describe('AuthService', () => {
             expect(mockCollection.authWithPassword).not.toHaveBeenCalled();
         });
 
+        it('returns the replacement recovery code when post-update authentication fails', async () => {
+            const reauthError = new Error('network lost after password update');
+            mockCollection.authWithPassword.mockRejectedValueOnce(reauthError);
+
+            await expect(AuthService.changePassword('old-pass', 'new-pass')).resolves.toBe(
+                'NEWRECOVERYCODE1234567890'
+            );
+            expect(pb.authStore.isValid).toBe(false);
+            expect(mockCollection.update).toHaveBeenCalledOnce();
+            expect(mockCollection.update.mock.invocationCallOrder[0]).toBeLessThan(
+                mockCollection.authWithPassword.mock.invocationCallOrder[0]
+            );
+        });
+
         it('refuses without a matching authenticated session', async () => {
             sessionMocks.authStore.save('active-token', { ...storedRecord, id: 'someone-else' });
 

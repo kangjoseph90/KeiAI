@@ -70,7 +70,7 @@ async function selectUserAndReload(
     selectNextUser: () => Promise<void>
 ): Promise<void> {
     stopSyncStoreBindings();
-    SyncManager.stopAutoSync();
+    await SyncManager.stopAutoSync();
     AuthService.stopAutoRefresh();
     try {
         await AuthService.persistPbAuth(currentUserId);
@@ -81,7 +81,7 @@ async function selectUserAndReload(
         await UserService.selectUser(currentUserId);
         startSyncStoreBindings();
         AuthService.startAutoRefresh();
-        SyncManager.startAutoSync();
+        await SyncManager.startAutoSync();
         throw error;
     }
 }
@@ -105,7 +105,7 @@ export async function deleteActiveLocalUser(): Promise<void> {
     const localUsers = await UserService.getAllUsers();
     const fallback = localUsers.find((user) => user.id !== userId);
     stopSyncStoreBindings();
-    SyncManager.stopAutoSync();
+    await SyncManager.stopAutoSync();
     AuthService.stopAutoRefresh();
     try {
         await AuthService.clearAllPbAuthForUser(userId);

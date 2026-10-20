@@ -160,6 +160,13 @@ export interface IDatabaseAdapter {
         record: T,
         options?: DatabaseWriteOptions
     ): Promise<void>;
+    /** null expects absence; false means the revision mismatched or the state was unchanged. */
+    compareAndPutRecord<T extends DataRecord>(
+        tableName: TableName,
+        record: T,
+        expectedLocalUpdatedAt: number | null,
+        options?: DatabaseWriteOptions
+    ): Promise<boolean>;
     putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],
