@@ -730,6 +730,7 @@ onRecordAfterDeleteSuccess((e) => {
 
 cronAdd("asset-gc", "0 * * * *", () => {
   var pageSize = 200;
+  var lastId = "";
 
   while (true) {
     var orphans = arrayOf(
@@ -744,12 +745,15 @@ cronAdd("asset-gc", "0 * * * *", () => {
         "SELECT c.id, c.hash FROM asset_catalog c WHERE NOT EXISTS " +
           "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
           "AND c.recoveryProtected = false " +
-          "AND c.createdAt < (unixepoch() - 3600) * 1000 LIMIT {:limit}",
+          "AND c.createdAt < (unixepoch() - 3600) * 1000 " +
+          "AND c.id > {:afterId} ORDER BY c.id LIMIT {:limit}",
       )
-      .bind({ limit: pageSize })
+      .bind({ afterId: lastId, limit: pageSize })
       .all(orphans);
 
     if (!orphans || orphans.length === 0) break;
+
+    lastId = String(orphans[orphans.length - 1].id || "");
 
     for (var i = 0; i < orphans.length; i++) {
       try {
