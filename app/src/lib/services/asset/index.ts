@@ -13,7 +13,7 @@ import {
     type AssetOwner,
     type AssetRegistryRecord
 } from '$lib/adapters/asset';
-import { localDB, type DataRecord, type DataScope } from '$lib/adapters/db';
+import { localDB, SYNC_TABLES, type DataRecord, type DataScope } from '$lib/adapters/db';
 import { clock } from '$lib/utils/clock';
 import { AppError } from '$lib/types/errors';
 import { canAccessScope } from '../session';
@@ -69,6 +69,15 @@ async function updateOwnerEntryStatus(locator: AssetLocator, status: AssetStatus
         assetEntries,
         updatedAt: clock.now()
     });
+}
+
+function collectAssetKeys(value: unknown, keys: Map<string, string>): void {
+    if (!value || typeof value !== 'object') return;
+    const fields = value as Record<string, unknown>;
+    if (typeof fields.hash === 'string' && typeof fields.encKey === 'string') {
+        keys.set(fields.hash, fields.encKey);
+    }
+    for (const nested of Object.values(fields)) collectAssetKeys(nested, keys);
 }
 
 export class AssetService {
@@ -343,8 +352,36 @@ export class AssetService {
         return appAsset.getAllLocalAssets(scope);
     }
 
-    static async getRemoteAssets(scope: DataScope): Promise<AssetRegistryRecord[]> {
-        return appAsset.getAllRemoteAssets(scope);
+    static async getRemoteAssets(scope: DataScope): Promise<AssetReadLocator[]> {
+        const assets: AssetReadLocator[] = [];
+        for (const table of SYNC_TABLES) {
+            const records = await localDB.getAll<DataRecord>(table, scope);
+            for (const record of records) {
+                const remoteHashes = Object.entries(record.assetEntries ?? {})
+                    .filter(([, status]) => status === 'remote')
+                    .map(([hash]) => hash);
+                if (remoteHashes.length === 0) continue;
+                const keys = new Map<string, string>();
+                collectAssetKeys(record.data, keys);
+                for (const hash of remoteHashes) {
+                    const encKey = keys.get(hash);
+                    if (!encKey) {
+                        throw new AppError(
+                            'ASSET_ERROR',
+                            `Missing encryption key for asset ${hash}.`
+                        );
+                    }
+                    assets.push({
+                        ...scope,
+                        ownerTable: table,
+                        ownerId: record.id,
+                        hash,
+                        encKey
+                    });
+                }
+            }
+        }
+        return assets;
     }
 
     static clear(): void {
