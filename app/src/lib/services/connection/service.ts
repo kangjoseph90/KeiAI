@@ -124,6 +124,7 @@ export class ConnectionService {
         let assetCommitStarted = false;
         let settingsCommitted = false;
         try {
+            await SyncManager.stopAutoSync();
             await AuthService.persistPbAuth(userId, previousUrl);
             remoteAssets = await this.localizeAssets(userId, options);
             this.emitProgress(options, {
@@ -177,7 +178,7 @@ export class ConnectionService {
             }
             throw error;
         } finally {
-            if (transitionRecovered) this.unlockServerTransition();
+            if (transitionRecovered) await this.unlockServerTransition();
         }
     }
 
@@ -287,14 +288,13 @@ export class ConnectionService {
 
     private static lockServerTransition(): void {
         this.serverTransitionLocked = true;
-        SyncManager.stopAutoSync();
         AuthService.stopAutoRefresh();
         AssetService.stopEviction();
         this.emitLockChange();
     }
 
-    private static unlockServerTransition(): void {
-        SyncManager.startAutoSync();
+    private static async unlockServerTransition(): Promise<void> {
+        await SyncManager.startAutoSync();
         AuthService.startAutoRefresh();
         AssetService.resumeEviction();
         this.serverTransitionLocked = false;

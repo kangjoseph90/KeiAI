@@ -93,18 +93,19 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
         try {
             await pb.collection(USER_RECORDS_COLLECTION).subscribe('*', (e) => {
-                void this.handleRealtimeEvent(
-                    USER_RECORDS_COLLECTION,
-                    e as unknown as RealtimeEvent
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent(USER_RECORDS_COLLECTION, e as unknown as RealtimeEvent)
                 );
             });
 
             const { roomId, roomKey } = getActiveSession();
             if (roomId && roomKey) {
                 await pb.collection(ROOM_RECORDS_COLLECTION).subscribe('*', (e) => {
-                    void this.handleRealtimeEvent(
-                        ROOM_RECORDS_COLLECTION,
-                        e as unknown as RealtimeEvent
+                    void this.runBackground(() =>
+                        this.handleRealtimeEvent(
+                            ROOM_RECORDS_COLLECTION,
+                            e as unknown as RealtimeEvent
+                        )
                     );
                 });
             }
@@ -545,9 +546,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         };
                     } else if (local.isDeleted && !remote.record.isDeleted) {
                         // Delete-wins: local deleted beats remote live — repair push
-                        void this.pushChangesForActiveScopes([
-                            { table: remote.table, record: local }
-                        ]);
+                        void this.runBackground(() =>
+                            this.pushChangesForActiveScopes([
+                                { table: remote.table, record: local }
+                            ])
+                        );
                     } else if (remoteAt > localAt) {
                         // Same delete status — LWW remote wins
                         await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
@@ -561,9 +564,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         };
                     } else if (remoteAt < localAt) {
                         // Same delete status — LWW local wins
-                        void this.pushChangesForActiveScopes([
-                            { table: remote.table, record: local }
-                        ]);
+                        void this.runBackground(() =>
+                            this.pushChangesForActiveScopes([
+                                { table: remote.table, record: local }
+                            ])
+                        );
                     }
 
                     return { assetReconciliation: null, cascadeTarget: null };

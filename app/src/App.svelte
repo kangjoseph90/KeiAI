@@ -329,7 +329,7 @@
             await loadUser();
             await loadGlobalState();
             startSyncStoreBindings();
-            SyncManager.startAutoSync();
+            await SyncManager.startAutoSync();
             void SyncManager.syncAll();
             const initialRoute = getCurrentHashRoute();
             await restoreRoute(initialRoute);

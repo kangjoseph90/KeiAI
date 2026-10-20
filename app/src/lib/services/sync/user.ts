@@ -127,7 +127,9 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
 
         try {
             await pb.collection('users').subscribe(userId, (e) => {
-                void this.handleRealtimeEvent(e.record as Record<string, unknown>);
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent(e.record as Record<string, unknown>)
+                );
             });
         } catch (err) {
             await this.unsubscribeRealtime();
@@ -171,8 +173,8 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
             const localUpdatedAt = localUser?.updatedAt ?? 0;
 
             if (localUpdatedAt > remoteUpdatedAt) {
-                // Local is newer: push back to server (background fire-and-forget)
-                void this.pushCurrentUser().catch(() => undefined);
+                // Keep the repair within the Realtime operation's lifetime.
+                await this.pushCurrentUser();
                 return;
             }
 

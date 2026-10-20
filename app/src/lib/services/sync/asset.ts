@@ -43,7 +43,7 @@ export class AssetSyncEngineImpl {
     }
 
     async start(): Promise<void> {
-        this.stopped = false;
+        if (this.stopped) return;
         this.rerunRequested = true;
         if (this.runPromise) return this.runPromise;
 
@@ -53,9 +53,14 @@ export class AssetSyncEngineImpl {
         return this.runPromise;
     }
 
-    stop(): void {
+    resume(): void {
+        this.stopped = false;
+    }
+
+    async stop(): Promise<void> {
         this.stopped = true;
         this.rerunRequested = false;
+        await this.runPromise;
         this.updateStatus({
             state: 'idle',
             progress: undefined

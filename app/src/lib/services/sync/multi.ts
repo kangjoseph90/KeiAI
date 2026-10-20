@@ -58,15 +58,16 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
         try {
             await pb.collection('multi_room_index').subscribe('*', (event) => {
-                void this.handleRealtimeEvent(
-                    'multi_room_index',
-                    event as unknown as RealtimeEvent
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent('multi_room_index', event as unknown as RealtimeEvent)
                 );
             });
             await pb.collection('multi_room_members').subscribe('*', (event) => {
-                void this.handleRealtimeEvent(
-                    'multi_room_members',
-                    event as unknown as RealtimeEvent
+                void this.runBackground(() =>
+                    this.handleRealtimeEvent(
+                        'multi_room_members',
+                        event as unknown as RealtimeEvent
+                    )
                 );
             });
         } catch (err) {
@@ -433,7 +434,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                     } else if (remote.updatedAt > local.updatedAt) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                     } else if (local.updatedAt > remote.updatedAt) {
-                        void this.pushWritableRoomIndexes([local]);
+                        await this.pushWritableRoomIndexes([local]);
                     }
                 }
                 return;
@@ -450,7 +451,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 await appMulti.saveMember(remote, { origin: 'sync' });
                 await this.ensureRoomIndexForMember(remote);
             } else if (local.updatedAt > remote.updatedAt) {
-                void this.pushWritableMembers([local]);
+                await this.pushWritableMembers([local]);
             }
         } catch (error) {
             logger.error(`Realtime event error for ${collection}`, error);

@@ -44,6 +44,8 @@ export abstract class BaseRecordSyncEngine<
     private flushTimer: ReturnType<typeof setTimeout> | null = null;
     private flushingWrites = false;
     private fullSyncRunning = false;
+    private stopped = false;
+    private readonly pendingOperations = new Set<Promise<void>>();
 
     protected constructor(
         initialStatus?: DeepPartial<TStatus>,
@@ -71,6 +73,7 @@ export abstract class BaseRecordSyncEngine<
     }
 
     async trigger(): Promise<void> {
+        if (this.stopped) return;
         this.rerunRequested = true;
 
         if (this.runPromise) {
@@ -85,6 +88,7 @@ export abstract class BaseRecordSyncEngine<
     }
 
     handleLocalWrite(event: TWriteEvent): void {
+        if (this.stopped) return;
         const writes = this.getBufferedWrites(event);
         if (writes.length === 0) return;
 
@@ -95,14 +99,28 @@ export abstract class BaseRecordSyncEngine<
         this.scheduleWriteFlush();
     }
 
-    stop(): void {
+    resume(): void {
+        this.stopped = false;
+    }
+
+    async stop(): Promise<void> {
+        this.stopped = true;
         this.rerunRequested = false;
         this.clearFlushTimer();
         this.bufferedWrites.clear();
+        await Promise.all([this.runPromise, ...this.pendingOperations]);
         this.updateStatus({
             state: 'idle',
             progress: undefined
         } as DeepPartial<TStatus>);
+    }
+
+    /** Include detached Realtime and write-flush work in the stop barrier. */
+    protected runBackground(operation: () => Promise<void>): Promise<void> {
+        if (this.stopped) return Promise.resolve();
+        const pending = operation().finally(() => this.pendingOperations.delete(pending));
+        this.pendingOperations.add(pending);
+        return pending;
     }
 
     protected updateStatus(patch: DeepPartial<TStatus>): void {
@@ -122,7 +140,7 @@ export abstract class BaseRecordSyncEngine<
             await this.syncRecords();
         } finally {
             this.fullSyncRunning = false;
-            void this.flushBufferedWrites();
+            void this.runBackground(() => this.flushBufferedWrites());
         }
     }
 
@@ -172,11 +190,11 @@ export abstract class BaseRecordSyncEngine<
     }
 
     private scheduleWriteFlush(): void {
-        if (this.flushTimer || this.fullSyncRunning || this.flushingWrites) return;
+        if (this.stopped || this.flushTimer || this.fullSyncRunning || this.flushingWrites) return;
 
         this.flushTimer = setTimeout(() => {
             this.flushTimer = null;
-            void this.flushBufferedWrites();
+            void this.runBackground(() => this.flushBufferedWrites());
         }, this.writeFlushIntervalMs);
     }
 

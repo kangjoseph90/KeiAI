@@ -132,6 +132,29 @@ describe('Asset sync', () => {
         vi.mocked(appAsset.deleteAsset).mockResolvedValue(undefined);
     });
 
+    it('waits for an upload and manifest publication before stopping', async () => {
+        let finishUpload!: () => void;
+        const upload = new Promise<void>((resolve) => {
+            finishUpload = resolve;
+        });
+        vi.mocked(appAsset.getAllLocalAssets).mockResolvedValue([createRegistryRecord()]);
+        vi.mocked(uploadAsset).mockImplementationOnce(async () => {
+            await upload;
+            return { status: 'stored', hash: 'old-hash' };
+        });
+        const running = engine.start();
+        await vi.waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+        const stopped = vi.fn();
+        const stopping = engine.stop().then(stopped);
+        await engine.start();
+        expect(stopped).not.toHaveBeenCalled();
+        finishUpload();
+        await Promise.all([running, stopping]);
+        expect(appAsset.markAssetRemote).toHaveBeenCalledOnce();
+        expect(stopped).toHaveBeenCalledOnce();
+        expect(uploadAsset).toHaveBeenCalledOnce();
+    });
+
     it('uploads local registry entries and marks the asset remote after upload succeeds', async () => {
         await engine.start();
 

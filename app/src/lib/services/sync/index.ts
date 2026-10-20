@@ -35,15 +35,26 @@ export class SyncManager {
     private static started = false;
     private static cleanups: Array<() => void> = [];
     private static realtimeSetup: Promise<void> | null = null;
+    private static stopping: Promise<void> | null = null;
+    private static stopped = false;
+    private static lifecycle = 0;
 
     private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
 
     /**
      * Start all sync subscriptions and the fallback poll timer.
      */
-    static startAutoSync(): void {
+    static async startAutoSync(): Promise<void> {
         if (typeof window === 'undefined' || this.started) return;
+        const lifecycle = ++this.lifecycle;
+        if (this.stopping) await this.stopping;
+        if (lifecycle !== this.lifecycle) return;
+        this.stopped = false;
         this.started = true;
+        DataRecordSyncEngine.resume();
+        MultiRecordSyncEngine.resume();
+        UserRecordSyncEngine.resume();
+        AssetSyncEngine.resume();
 
         void this.ensureRealtimeSubscriptions();
         void AssetSyncEngine.start();
@@ -52,9 +63,7 @@ export class SyncManager {
             void this.syncAll();
         }, this.FALLBACK_POLL_INTERVAL_MS);
 
-        const onlineListener = () => {
-            void this.resubscribeAndPull();
-        };
+        const onlineListener = () => this.resubscribeAndPull();
         window.addEventListener('online', onlineListener);
 
         const visibilityListener = () => {
@@ -100,22 +109,35 @@ export class SyncManager {
         ];
     }
 
-    static stopAutoSync(): void {
+    static stopAutoSync(): Promise<void> {
+        this.lifecycle++;
+        this.stopped = true;
+        this.started = false;
+        if (this.stopping) return this.stopping;
         for (const cleanup of this.cleanups) {
             cleanup();
         }
         this.cleanups = [];
 
-        void DataRecordSyncEngine.unsubscribeRealtime();
-        void MultiRecordSyncEngine.unsubscribeRealtime();
-        void UserRecordSyncEngine.unsubscribeRealtime();
-
-        DataRecordSyncEngine.stop();
-        MultiRecordSyncEngine.stop();
-        UserRecordSyncEngine.stop();
-        AssetSyncEngine.stop();
-
-        this.started = false;
+        this.stopping = Promise.all([
+            DataRecordSyncEngine.stop(),
+            MultiRecordSyncEngine.stop(),
+            UserRecordSyncEngine.stop(),
+            AssetSyncEngine.stop(),
+            this.realtimeSetup
+        ])
+            .then(async () => {
+                // Setup can finish after stop was requested; unsubscribe after it settles.
+                await Promise.all([
+                    DataRecordSyncEngine.unsubscribeRealtime(),
+                    MultiRecordSyncEngine.unsubscribeRealtime(),
+                    UserRecordSyncEngine.unsubscribeRealtime()
+                ]);
+            })
+            .finally(() => {
+                this.stopping = null;
+            });
+        return this.stopping;
     }
 
     /**
@@ -123,13 +145,14 @@ export class SyncManager {
      * status stores. Called on boot and after login.
      */
     static async syncAll(): Promise<void> {
+        if (this.stopped) return;
         await Promise.all([
             this.ensureRealtimeSubscriptions(),
             DataRecordSyncEngine.trigger(),
             MultiRecordSyncEngine.trigger(),
             UserRecordSyncEngine.trigger()
         ]);
-        void AssetSyncEngine.start();
+        if (!this.stopped) void AssetSyncEngine.start();
     }
 
     /** Reset the active user's cursors for the current server and perform a full pull. */
@@ -145,10 +168,10 @@ export class SyncManager {
     static async refreshRoomSync(): Promise<void> {
         if (!this.started) return;
 
-        await DataRecordSyncEngine.unsubscribeRealtime();
-        await DataRecordSyncEngine.subscribeRealtime();
+        await this.ensureRealtimeSubscriptions(true);
+        if (this.stopped) return;
         await DataRecordSyncEngine.trigger();
-        void AssetSyncEngine.start();
+        if (!this.stopped) void AssetSyncEngine.start();
     }
 
     /** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
@@ -156,16 +179,22 @@ export class SyncManager {
         await this.syncAll();
     }
 
-    private static async ensureRealtimeSubscriptions(): Promise<void> {
+    private static async ensureRealtimeSubscriptions(refreshData = false): Promise<void> {
         if (this.realtimeSetup) {
             // Wait for the in-flight batch, then fall through so a repair
             // request (online/visibility) still fixes engines that failed.
             await this.realtimeSetup;
         }
+        if (this.stopped) return;
 
         const subscriptions: Promise<void>[] = [];
-        if (!DataRecordSyncEngine.isSubscribed) {
-            subscriptions.push(DataRecordSyncEngine.subscribeRealtime());
+        if (refreshData || !DataRecordSyncEngine.isSubscribed) {
+            subscriptions.push(
+                (async () => {
+                    if (refreshData) await DataRecordSyncEngine.unsubscribeRealtime();
+                    await DataRecordSyncEngine.subscribeRealtime();
+                })()
+            );
         }
         if (!MultiRecordSyncEngine.isSubscribed) {
             subscriptions.push(MultiRecordSyncEngine.subscribeRealtime());

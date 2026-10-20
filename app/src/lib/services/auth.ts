@@ -537,7 +537,7 @@ export class AuthService {
     static async logout(): Promise<void> {
         const { userId } = getActiveSession();
         this.stopAutoRefresh();
-        SyncManager.stopAutoSync();
+        await SyncManager.stopAutoSync();
         await this.clearPbAuth(userId);
     }
 

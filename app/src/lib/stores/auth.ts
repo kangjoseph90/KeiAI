@@ -23,7 +23,7 @@ AuthService.onPbAuthChange((isValid) => {
 
 async function refreshAuthenticatedUser(): Promise<void> {
     await loadUser();
-    SyncManager.startAutoSync();
+    await SyncManager.startAutoSync();
     await SyncManager.syncAll();
     clearActiveCharacter();
     clearActivePersona();
@@ -33,7 +33,7 @@ async function refreshAuthenticatedUser(): Promise<void> {
 async function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
     const { userId } = getActiveSession();
     stopSyncStoreBindings();
-    SyncManager.stopAutoSync();
+    await SyncManager.stopAutoSync();
     AuthService.stopAutoRefresh();
     let result: T;
     try {
@@ -49,7 +49,7 @@ async function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
         await AuthService.restorePbAuth(userId);
         startSyncStoreBindings();
         AuthService.startAutoRefresh();
-        SyncManager.startAutoSync();
+        await SyncManager.startAutoSync();
         throw error;
     }
     startSyncStoreBindings();
