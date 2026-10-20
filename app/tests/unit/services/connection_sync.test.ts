@@ -106,6 +106,9 @@ describe('connection transition with in-flight data sync', () => {
         vi.spyOn(localDB, 'getRecord').mockImplementation(db.getRecord.bind(db));
         vi.spyOn(localDB, 'putRecord').mockImplementation(db.putRecord.bind(db));
         vi.spyOn(localDB, 'putRecords').mockImplementation(db.putRecords.bind(db));
+        vi.spyOn(localDB, 'compareAndPutRecord').mockImplementation(
+            db.compareAndPutRecord.bind(db)
+        );
         vi.spyOn(localDB, 'getLocalUpdatedAt').mockImplementation(db.getLocalUpdatedAt.bind(db));
         vi.spyOn(localDB, 'getUnsyncedChanges').mockImplementation(db.getUnsyncedChanges.bind(db));
         vi.spyOn(localDB, 'transaction').mockImplementation(db.transaction.bind(db));

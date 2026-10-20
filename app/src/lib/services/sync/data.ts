@@ -66,7 +66,8 @@ interface AssetReconciliation {
     after: DataRecord;
 }
 
-interface RealtimeMergeResult {
+interface RemoteMergeResult {
+    correction: LocalChange | null;
     assetReconciliation: AssetReconciliation | null;
     cascadeTarget: { table: TableName; id: string } | null;
 }
@@ -211,8 +212,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                 if (result.items.length === 0) break;
 
                 if (result.items.length > 0) {
-                    const grouped = new Map<TableName, DataRecord[]>();
-
                     const remotes = await Promise.all(
                         result.items.map((serverRecord) =>
                             this.pbToLocalRecord(
@@ -222,80 +221,25 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         )
                     );
 
-                    const pairedRecords = await Promise.all(
-                        remotes.map(async (remote) => ({
-                            remote,
-                            local: await localDB.getRecord<DataRecord>(
-                                remote.table,
-                                remote.record.id
-                            )
-                        }))
+                    const merges = await Promise.allSettled(
+                        remotes.map(async (remote) => {
+                            const merged = await this.mergeRemoteRecord(remote, true);
+                            if (merged.correction) {
+                                offlineWrites.set(
+                                    this.changeKey(remote.table, remote.record.id),
+                                    merged.correction
+                                );
+                            }
+                            if (merged.cascadeTarget) cascadeTargets.push(merged.cascadeTarget);
+                            if (merged.assetReconciliation) {
+                                const { table, before, after } = merged.assetReconciliation;
+                                await this.reconcileAssetRegistry(table, before, after);
+                            }
+                        })
                     );
-
-                    const assetReconciliations: Array<{
-                        table: TableName;
-                        before: DataRecord | undefined;
-                        after: DataRecord;
-                    }> = [];
-
-                    for (const { remote, local } of pairedRecords) {
-                        const remoteAt = remote.record.updatedAt ?? 0;
-                        const localAt = local?.updatedAt ?? 0;
-                        clock.observe(remoteAt);
-
-                        if (!local) {
-                            const records = grouped.get(remote.table) ?? [];
-                            records.push(remote.record);
-                            grouped.set(remote.table, records);
-                            assetReconciliations.push({
-                                table: remote.table,
-                                before: undefined,
-                                after: remote.record
-                            });
-                        } else if (remote.record.isDeleted && !local.isDeleted) {
-                            // Delete-wins: remote deleted beats local live
-                            const records = grouped.get(remote.table) ?? [];
-                            records.push(remote.record);
-                            grouped.set(remote.table, records);
-                            assetReconciliations.push({
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            });
-                            cascadeTargets.push({ table: remote.table, id: remote.record.id });
-                        } else if (local.isDeleted && !remote.record.isDeleted) {
-                            // Delete-wins: local deleted beats remote live — repair push
-                            offlineWrites.set(this.changeKey(remote.table, local.id), {
-                                table: remote.table,
-                                record: local
-                            });
-                        } else if (remoteAt > localAt) {
-                            // Same delete status — LWW remote wins
-                            const records = grouped.get(remote.table) ?? [];
-                            records.push(remote.record);
-                            grouped.set(remote.table, records);
-                            assetReconciliations.push({
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            });
-                        } else if (remoteAt < localAt) {
-                            // Same delete status — LWW local wins
-                            offlineWrites.set(this.changeKey(remote.table, local.id), {
-                                table: remote.table,
-                                record: local
-                            });
-                        }
+                    for (const merge of merges) {
+                        if (merge.status === 'rejected') throw merge.reason;
                     }
-
-                    for (const [table, records] of grouped) {
-                        await localDB.putRecords(table, records, { origin: 'sync' });
-                    }
-                    await Promise.all(
-                        assetReconciliations.map(({ table, before, after }) =>
-                            this.reconcileAssetRegistry(table, before, after)
-                        )
-                    );
                 }
 
                 if (result.items.length < PAGE_SIZE) break;
@@ -404,30 +348,10 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         result.body as Record<string, unknown>,
                         syncScope
                     );
-                    const local = await localDB.getRecord<DataRecord>(
-                        remote.table,
-                        remote.record.id
-                    );
-                    if (!local) continue;
-
-                    const remoteAt = remote.record.updatedAt ?? 0;
-                    const localAt = local.updatedAt ?? 0;
-                    const serverIsCanonical =
-                        (remote.record.isDeleted && !local.isDeleted) ||
-                        (remote.record.isDeleted === local.isDeleted && remoteAt > localAt);
-                    if (serverIsCanonical) {
-                        await localDB.putRecord(remote.table, remote.record, {
-                            origin: 'sync'
-                        });
-                        reconciliations.push({
-                            table: remote.table,
-                            before: local,
-                            after: remote.record
-                        });
-                        if (remote.record.isDeleted && !local.isDeleted) {
-                            cascadeTargets.push({ table: remote.table, id: remote.record.id });
-                        }
-                    }
+                    const merged = await this.mergeRemoteRecord(remote, false);
+                    if (merged.assetReconciliation)
+                        reconciliations.push(merged.assetReconciliation);
+                    if (merged.cascadeTarget) cascadeTargets.push(merged.cascadeTarget);
                 }
                 for (const { table, before, after } of reconciliations) {
                     await this.reconcileAssetRegistry(table, before, after);
@@ -506,74 +430,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             if (!syncScope) return;
 
             const remote = await this.pbToLocalRecord(e.record, syncScope);
-            const remoteAt = remote.record.updatedAt ?? 0;
-            clock.observe(remoteAt);
-
-            const mergeResult = await localDB.transaction(
-                [remote.table],
-                'rw',
-                async (): Promise<RealtimeMergeResult> => {
-                    const local = await localDB.getRecord<DataRecord>(
-                        remote.table,
-                        remote.record.id
-                    );
-                    const localAt = local?.updatedAt ?? 0;
-
-                    if (!local) {
-                        if (!remote.record.isDeleted) {
-                            await localDB.putRecord(remote.table, remote.record, {
-                                origin: 'sync'
-                            });
-                            return {
-                                assetReconciliation: {
-                                    table: remote.table,
-                                    before: undefined,
-                                    after: remote.record
-                                },
-                                cascadeTarget: null
-                            };
-                        }
-                    } else if (remote.record.isDeleted && !local.isDeleted) {
-                        // Delete-wins: remote deleted beats local live
-                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
-                        return {
-                            assetReconciliation: {
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            },
-                            cascadeTarget: { table: remote.table, id: remote.record.id }
-                        };
-                    } else if (local.isDeleted && !remote.record.isDeleted) {
-                        // Delete-wins: local deleted beats remote live — repair push
-                        void this.runBackground(() =>
-                            this.pushChangesForActiveScopes([
-                                { table: remote.table, record: local }
-                            ])
-                        );
-                    } else if (remoteAt > localAt) {
-                        // Same delete status — LWW remote wins
-                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
-                        return {
-                            assetReconciliation: {
-                                table: remote.table,
-                                before: local,
-                                after: remote.record
-                            },
-                            cascadeTarget: null
-                        };
-                    } else if (remoteAt < localAt) {
-                        // Same delete status — LWW local wins
-                        void this.runBackground(() =>
-                            this.pushChangesForActiveScopes([
-                                { table: remote.table, record: local }
-                            ])
-                        );
-                    }
-
-                    return { assetReconciliation: null, cascadeTarget: null };
-                }
-            );
+            const mergeResult = await this.mergeRemoteRecord(remote, !remote.record.isDeleted);
+            const correction = mergeResult.correction;
+            if (correction) {
+                void this.runBackground(() => this.pushChangesForActiveScopes([correction]));
+            }
 
             if (mergeResult.cascadeTarget) {
                 const cascadeResult = await cascadeDeleteChildren(
@@ -593,6 +454,49 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             }
         } catch (err) {
             logger.error(`Realtime event error for ${collection}`, err);
+        }
+    }
+
+    /** Re-read after a competing write; the revision check and write are atomic in storage. */
+    private async mergeRemoteRecord(
+        remote: DecodedRemoteRecord,
+        insertMissing: boolean
+    ): Promise<RemoteMergeResult> {
+        const remoteAt = remote.record.updatedAt ?? 0;
+        clock.observe(remoteAt);
+        while (true) {
+            const local = await localDB.getRecord<DataRecord>(remote.table, remote.record.id);
+            const localAt = local?.updatedAt ?? 0;
+            const localDeleted = Boolean(local?.isDeleted);
+            const remoteDeleted = remote.record.isDeleted;
+            const shouldApply = !local
+                ? insertMissing
+                : (remoteDeleted && !localDeleted) ||
+                  (remoteDeleted === localDeleted && remoteAt > localAt);
+            if (!shouldApply) {
+                const correction =
+                    local &&
+                    ((localDeleted && !remoteDeleted) ||
+                        (localDeleted === remoteDeleted && localAt > remoteAt))
+                        ? { table: remote.table, record: local }
+                        : null;
+                return { correction, assetReconciliation: null, cascadeTarget: null };
+            }
+            const applied = await localDB.compareAndPutRecord(
+                remote.table,
+                remote.record,
+                local ? (local.localUpdatedAt ?? 0) : null,
+                { origin: 'sync' }
+            );
+            if (!applied) continue;
+            return {
+                correction: null,
+                assetReconciliation: { table: remote.table, before: local, after: remote.record },
+                cascadeTarget:
+                    local && remote.record.isDeleted && !local.isDeleted
+                        ? { table: remote.table, id: remote.record.id }
+                        : null
+            };
         }
     }
 

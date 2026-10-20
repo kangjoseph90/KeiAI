@@ -147,6 +147,35 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
+    async compareAndPutRecord<T extends DataRecord>(
+        tableName: TableName,
+        record: T,
+        expectedLocalUpdatedAt: number | null,
+        options?: DatabaseWriteOptions
+    ): Promise<boolean> {
+        const table = this.getTable<T>(tableName);
+        const revisions = this.db.table<{ id: number; value: number }, number>('localUpdates');
+        const changed = await this.db.transaction('rw', table, revisions, async () => {
+            const existing = await table.get(record.id);
+            if (
+                expectedLocalUpdatedAt === null
+                    ? existing !== undefined
+                    : existing?.localUpdatedAt !== expectedLocalUpdatedAt
+            ) {
+                return false;
+            }
+
+            const { localUpdatedAt: _incoming, ...state } = record;
+            const { localUpdatedAt: _previous, ...before } = existing ?? {};
+            if (existing && canonicalJson(state) === canonicalJson(before)) return false;
+
+            await putWebRecords(this.db, table, [record]);
+            return true;
+        });
+        if (changed) this.emitWriteEvent(tableName, 'put', [record.id], options);
+        return changed;
+    }
+
     async putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],

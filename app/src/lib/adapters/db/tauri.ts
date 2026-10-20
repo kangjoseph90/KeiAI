@@ -276,6 +276,46 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
+    async compareAndPutRecord<T extends DataRecord>(
+        tableName: TableName,
+        record: T,
+        expectedLocalUpdatedAt: number | null,
+        options?: DatabaseWriteOptions
+    ): Promise<boolean> {
+        const db = await this.getDb();
+        const b = recordToBindings(record);
+        const revisionMatch =
+            expectedLocalUpdatedAt === null
+                ? `NOT EXISTS (SELECT 1 FROM ${tableName} WHERE id = $1)`
+                : `EXISTS (SELECT 1 FROM ${tableName} WHERE id = $1 AND localUpdatedAt = $14)`;
+        const values: unknown[] = [
+            b.id,
+            b.scopeType,
+            b.scopeId,
+            b.roomId,
+            b.chatId,
+            b.sortOrder,
+            b.activeSwipeId,
+            b.createdAt,
+            b.updatedAt,
+            b.localUpdatedAt,
+            b.isDeleted,
+            b.assetEntries,
+            b.data
+        ];
+        if (expectedLocalUpdatedAt !== null) values.push(expectedLocalUpdatedAt);
+        const result = await db.execute(
+            `INSERT OR REPLACE INTO ${tableName}
+                (id, scopeType, scopeId, roomId, chatId, sortOrder, activeSwipeId, createdAt, updatedAt, localUpdatedAt, isDeleted, assetEntries, data)
+                SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+                WHERE ${revisionMatch}`,
+            values
+        );
+        const changed = result.rowsAffected > 0;
+        if (changed) this.emitWriteEvent(tableName, 'put', [record.id], options);
+        return changed;
+    }
+
     async putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],

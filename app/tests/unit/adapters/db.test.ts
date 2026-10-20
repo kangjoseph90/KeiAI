@@ -666,6 +666,65 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             localDB = new Adapter();
         });
 
+        it('compare-and-puts only against the expected durable revision', async () => {
+            const events: unknown[] = [];
+            localDB.subscribeWriteEvents((batch) => events.push(...batch));
+            const original = createTestRecord({ id: 'compare-and-put', updatedAt: 10 });
+
+            expect(await localDB.compareAndPutRecord('settings', original, null)).toBe(true);
+            const inserted = await localDB.getRecord('settings', original.id);
+            expect(inserted?.localUpdatedAt).toBe(1);
+            await vi.waitFor(() => expect(events).toHaveLength(1));
+
+            expect(
+                await localDB.compareAndPutRecord(
+                    'settings',
+                    { ...original, data: { name: 'refused' } },
+                    null
+                )
+            ).toBe(false);
+            expect(await localDB.getLocalUpdatedAt()).toBe(1);
+            expect(events).toHaveLength(1);
+
+            const replacement = { ...original, updatedAt: 20, data: { name: 'Updated' } };
+            expect(
+                await localDB.compareAndPutRecord(
+                    'settings',
+                    replacement,
+                    inserted!.localUpdatedAt!
+                )
+            ).toBe(true);
+            const updated = await localDB.getRecord('settings', original.id);
+            expect(updated?.data).toEqual({ name: 'Updated' });
+            expect(updated?.localUpdatedAt).toBe(2);
+            await vi.waitFor(() => expect(events).toHaveLength(2));
+
+            expect(
+                await localDB.compareAndPutRecord(
+                    'settings',
+                    { ...replacement, data: { name: 'Stale' } },
+                    inserted!.localUpdatedAt!
+                )
+            ).toBe(false);
+            expect(
+                await localDB.compareAndPutRecord('settings', updated!, updated!.localUpdatedAt!)
+            ).toBe(false);
+            expect(await localDB.getLocalUpdatedAt()).toBe(2);
+            expect(events).toHaveLength(2);
+
+            await localDB.deleteRecord('settings', original.id);
+            await vi.waitFor(() => expect(events).toHaveLength(3));
+            expect(
+                await localDB.compareAndPutRecord(
+                    'settings',
+                    { ...replacement, data: { name: 'After deletion' } },
+                    updated!.localUpdatedAt!
+                )
+            ).toBe(false);
+            expect(await localDB.getLocalUpdatedAt()).toBe(2);
+            expect(events).toHaveLength(3);
+        });
+
         it('selects canonical changes by local time even when updatedAt is below the cursor', async () => {
             const old = createTestRecord({ id: 'old', updatedAt: 9000 });
             await localDB.putRecord('settings', old);

@@ -50,6 +50,7 @@ vi.mock('$lib/adapters/db', () => ({
     localDB: {
         getRecord: vi.fn(),
         putRecord: vi.fn(),
+        compareAndPutRecord: vi.fn().mockResolvedValue(true),
         putRecords: vi.fn(),
         getLocalUpdatedAt: vi.fn().mockResolvedValue(2500),
         getUnsyncedChanges: vi.fn(),
@@ -109,6 +110,8 @@ describe('DataRecordSyncEngine', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        DataRecordSyncEngine.resume();
+        vi.mocked(localDB.compareAndPutRecord).mockResolvedValue(true);
         vi.mocked(clock.now).mockReturnValue(2500);
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -155,6 +158,41 @@ describe('DataRecordSyncEngine', () => {
     });
 
     describe('Pull Logic (trigger)', () => {
+        it('waits for all page writes even when one conditional write fails', async () => {
+            let finishWrite!: () => void;
+            const pendingWrite = new Promise<void>((resolve) => {
+                finishWrite = resolve;
+            });
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: ['failed', 'pending'].map((id) => ({
+                    id,
+                    kind: 'characters',
+                    userId: mockUserId,
+                    updatedAt: 2000,
+                    encryptedData: 'data',
+                    encryptedDataIV: 'iv'
+                }))
+            });
+            vi.mocked(localDB.compareAndPutRecord).mockImplementation(async (_table, record) => {
+                if (record.id === 'failed') throw new Error('write failed');
+                await pendingWrite;
+                return true;
+            });
+            const running = DataRecordSyncEngine.trigger();
+            await vi.waitFor(() => expect(localDB.compareAndPutRecord).toHaveBeenCalledTimes(2));
+            const stopped = vi.fn();
+            const stopping = DataRecordSyncEngine.stop().then(stopped);
+            await Promise.resolve();
+            expect(stopped).not.toHaveBeenCalled();
+            finishWrite();
+            await Promise.all([running, stopping]);
+            expect(syncCursorDB.advance).toHaveBeenCalledWith(expect.anything(), {
+                serverPullCursor: undefined,
+                localPushCursor: 2500
+            });
+        });
+
         it('continues by timestamp and id when a full page shifts during a pull', async () => {
             vi.mocked(syncCursorDB.get).mockResolvedValue({
                 serverPullCursor: 1000,
@@ -202,10 +240,11 @@ describe('DataRecordSyncEngine', () => {
                 expect.stringContaining('serverUpdatedAt = {:after} && id > {:afterId}'),
                 { scopeId: mockUserId, after: 2000, afterId: 'record-199', through: 3000 }
             );
-            expect(localDB.putRecords).toHaveBeenCalledTimes(2);
-            expect(localDB.putRecords).toHaveBeenLastCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledTimes(201);
+            expect(localDB.compareAndPutRecord).toHaveBeenLastCalledWith(
                 'characters',
-                [expect.objectContaining({ id: 'record-200' })],
+                expect.objectContaining({ id: 'record-200' }),
+                null,
                 { origin: 'sync' }
             );
         });
@@ -240,14 +279,13 @@ describe('DataRecordSyncEngine', () => {
 
             await DataRecordSyncEngine.trigger();
 
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 tableName,
-                [
-                    expect.objectContaining({
-                        id: 'rec-1',
-                        updatedAt: 2000
-                    })
-                ],
+                expect.objectContaining({
+                    id: 'rec-1',
+                    updatedAt: 2000
+                }),
+                0,
                 expect.objectContaining({ origin: 'sync' })
             );
         });
@@ -348,9 +386,10 @@ describe('DataRecordSyncEngine', () => {
                 'userId = {:scopeId} && serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}',
                 { scopeId: mockUserId, after: 2000, through: 3000 }
             );
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 'characters',
-                [expect.objectContaining({ id: 'late-record', updatedAt: 1500 })],
+                expect.objectContaining({ id: 'late-record', updatedAt: 1500 }),
+                null,
                 { origin: 'sync' }
             );
         });
@@ -394,15 +433,14 @@ describe('DataRecordSyncEngine', () => {
 
             expect(pb.collection).toHaveBeenCalledWith('records');
             expect(pb.collection).toHaveBeenCalledWith('multi_room_records');
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 'chats',
-                [
-                    expect.objectContaining({
-                        id: 'room-rec-1',
-                        scopeType: 'room',
-                        scopeId: mockRoomId
-                    })
-                ],
+                expect.objectContaining({
+                    id: 'room-rec-1',
+                    scopeType: 'room',
+                    scopeId: mockRoomId
+                }),
+                null,
                 expect.objectContaining({ origin: 'sync' })
             );
         });
@@ -498,9 +536,10 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
 
             // Remote deleted wins ??local should be soft-deleted
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 tableName,
-                [expect.objectContaining({ id: 'rec-1', isDeleted: true })],
+                expect.objectContaining({ id: 'rec-1', isDeleted: true }),
+                0,
                 expect.objectContaining({ origin: 'sync' })
             );
             // No repair push for this record
@@ -539,7 +578,7 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
 
             // Local deleted wins ??should NOT overwrite local with remote
-            expect(localDB.putRecords).not.toHaveBeenCalled();
+            expect(localDB.compareAndPutRecord).not.toHaveBeenCalled();
             // Should queue repair push
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'rec-1', isDeleted: true })
@@ -575,17 +614,16 @@ describe('DataRecordSyncEngine', () => {
 
             await DataRecordSyncEngine.trigger();
 
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 tableName,
-                [
-                    expect.objectContaining({
-                        id: 'rec-1',
-                        scopeType: 'user',
-                        scopeId: mockUserId,
-                        isDeleted: true,
-                        updatedAt: 1000
-                    })
-                ],
+                expect.objectContaining({
+                    id: 'rec-1',
+                    scopeType: 'user',
+                    scopeId: mockUserId,
+                    isDeleted: true,
+                    updatedAt: 1000
+                }),
+                null,
                 { origin: 'sync' }
             );
         });
@@ -620,9 +658,10 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
 
             // Both deleted, remote newer ??LWW applies
-            expect(localDB.putRecords).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 tableName,
-                [expect.objectContaining({ id: 'rec-1', isDeleted: true, updatedAt: 2000 })],
+                expect.objectContaining({ id: 'rec-1', isDeleted: true, updatedAt: 2000 }),
+                0,
                 expect.objectContaining({ origin: 'sync' })
             );
         });
@@ -664,9 +703,10 @@ describe('DataRecordSyncEngine', () => {
             await DataRecordSyncEngine.trigger();
 
             // Should apply server-enforced delete locally
-            expect(localDB.putRecord).toHaveBeenCalledWith(
+            expect(localDB.compareAndPutRecord).toHaveBeenCalledWith(
                 tableName,
                 expect.objectContaining({ id: 'rec-1', isDeleted: true }),
+                0,
                 expect.objectContaining({ origin: 'sync' })
             );
         });
@@ -695,6 +735,9 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(localDB.getRecord).mockImplementation(db.getRecord.bind(db));
             vi.mocked(localDB.putRecord).mockImplementation(db.putRecord.bind(db));
             vi.mocked(localDB.putRecords).mockImplementation(db.putRecords.bind(db));
+            vi.mocked(localDB.compareAndPutRecord).mockImplementation(
+                db.compareAndPutRecord.bind(db)
+            );
             vi.mocked(localDB.getUnsyncedChanges).mockImplementation(
                 db.getUnsyncedChanges.bind(db)
             );
@@ -717,17 +760,62 @@ describe('DataRecordSyncEngine', () => {
         });
 
         afterEach(async () => {
+            await DataRecordSyncEngine.stop();
+            DataRecordSyncEngine.resume();
             await Dexie.delete('KeiLocalDB');
             pb.baseUrl = 'https://sync.example.test';
             vi.mocked(localDB.getLocalUpdatedAt).mockResolvedValue(2500);
             vi.mocked(localDB.getRecord).mockReset();
             vi.mocked(localDB.putRecord).mockReset();
             vi.mocked(localDB.putRecords).mockReset();
+            vi.mocked(localDB.compareAndPutRecord).mockReset();
             vi.mocked(localDB.getUnsyncedChanges).mockReset();
             vi.mocked(syncCursorDB.get).mockReset();
             vi.mocked(syncCursorDB.advance).mockReset();
             vi.mocked(decryptBytes).mockResolvedValue(deflateSync(strToU8('{}')));
         });
+
+        it.each(['Pull', 'Realtime', 'Push'] as const)(
+            'preserves a deletion committed after the %s comparison',
+            async (path) => {
+                await db.putRecord('characters', { ...makeRecord(remote.id, 5), createdAt: 1 });
+                const before = await db.getLocalUpdatedAt();
+                vi.mocked(localDB.compareAndPutRecord).mockImplementationOnce(
+                    async (table, record, revision, options) => {
+                        await db.softDeleteRecord(table, record.id);
+                        return db.compareAndPutRecord(table, record, revision, options);
+                    }
+                );
+                if (path === 'Pull') {
+                    vi.mocked(mockCollection.getList).mockResolvedValue({ items: [remote] });
+                } else if (path === 'Push') {
+                    vi.mocked(mockBatch.send).mockResolvedValue([{ status: 200, body: remote }]);
+                } else {
+                    await DataRecordSyncEngine.subscribeRealtime();
+                    const callback = mockCollection.subscribe.mock.calls.at(-1)![1] as (
+                        event: unknown
+                    ) => void;
+                    callback({ action: 'update', record: remote });
+                    await vi.waitFor(() => expect(localDB.compareAndPutRecord).toHaveBeenCalled());
+                    await DataRecordSyncEngine.stop();
+                    DataRecordSyncEngine.resume();
+                    await DataRecordSyncEngine.unsubscribeRealtime();
+                }
+                if (path !== 'Realtime') await DataRecordSyncEngine.trigger();
+
+                const after = await db.getRecord('characters', remote.id);
+                expect(after?.isDeleted).toBe(true);
+                expect(after!.updatedAt).toBeGreaterThan(remote.updatedAt);
+                expect(
+                    await db.getUnsyncedChanges(
+                        'characters',
+                        { scopeType: 'user', scopeId: mockUserId },
+                        before,
+                        await db.getLocalUpdatedAt()
+                    )
+                ).toEqual([after]);
+            }
+        );
 
         it('pushes a low updatedAt change received from another server back to the original server', async () => {
             const cursors = new Map<
@@ -798,8 +886,11 @@ describe('DataRecordSyncEngine', () => {
                         event: unknown
                     ) => void;
                     callback({ action: 'update', record: remote });
-                    await vi.waitFor(() => expect(localDB.transaction).toHaveBeenCalled());
-                    await vi.mocked(localDB.transaction).mock.results.at(-1)!.value;
+                    await vi.waitFor(async () =>
+                        expect((await db.getRecord('characters', remote.id))?.updatedAt).toBe(10)
+                    );
+                    await DataRecordSyncEngine.stop();
+                    DataRecordSyncEngine.resume();
                     await DataRecordSyncEngine.unsubscribeRealtime();
                 }
                 if (path !== 'Realtime') await DataRecordSyncEngine.trigger();
@@ -828,8 +919,9 @@ describe('DataRecordSyncEngine', () => {
                 event: unknown
             ) => void;
             callback({ action: 'update', record: remote });
-            await vi.waitFor(() => expect(localDB.transaction).toHaveBeenCalled());
-            await vi.mocked(localDB.transaction).mock.results.at(-1)!.value;
+            await vi.waitFor(() => expect(decryptBytes).toHaveBeenCalled());
+            await DataRecordSyncEngine.stop();
+            DataRecordSyncEngine.resume();
             expect((await db.getRecord('characters', remote.id))?.localUpdatedAt).toBe(
                 first?.localUpdatedAt
             );
