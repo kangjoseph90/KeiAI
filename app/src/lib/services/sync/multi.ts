@@ -182,8 +182,8 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                     const local = await appMulti.getRoomIndex(remote.id);
                     if (!local) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
-                    } else if (remote.updatedAt > local.updatedAt) {
-                        // Both live — LWW remote wins
+                    } else if (remote.updatedAt >= local.updatedAt) {
+                        // Server wins equal-version conflicts and supplies canonical contents.
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                     } else if (local.updatedAt > remote.updatedAt) {
                         // Both live — LWW local wins
@@ -228,10 +228,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 const remote = this.pbToMember(item as unknown as Record<string, unknown>);
                 clock.observe(remote.updatedAt);
                 const local = await appMulti.getMember(remote.id);
-                const shouldSave =
-                    !local ||
-                    remote.updatedAt > local.updatedAt ||
-                    (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+                const shouldSave = !local || remote.updatedAt >= local.updatedAt;
                 if (shouldSave) {
                     await appMulti.saveMember(remote, { origin: 'sync' });
                     await this.ensureRoomIndexForMember(remote);
@@ -320,7 +317,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
                         const remote = this.pbToRoomIndex(raw);
                         const local = await appMulti.getRoomIndex(remote.id);
-                        if (!local || remote.updatedAt > local.updatedAt) {
+                        if (!local || remote.updatedAt >= local.updatedAt) {
                             await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                         }
                         continue;
@@ -328,11 +325,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
                     const remote = this.pbToMember(raw);
                     const local = await appMulti.getMember(remote.id);
-                    const serverIsCanonical =
-                        !local ||
-                        remote.updatedAt > local.updatedAt ||
-                        (this.isOwnInactiveMembership(remote) &&
-                            remote.updatedAt >= local.updatedAt);
+                    const serverIsCanonical = !local || remote.updatedAt >= local.updatedAt;
                     if (serverIsCanonical) {
                         await appMulti.saveMember(remote, { origin: 'sync' });
                         await this.ensureRoomIndexForMember(remote);
@@ -431,7 +424,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                     const local = await appMulti.getRoomIndex(remote.id);
                     if (!local) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
-                    } else if (remote.updatedAt > local.updatedAt) {
+                    } else if (remote.updatedAt >= local.updatedAt) {
                         await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                     } else if (local.updatedAt > remote.updatedAt) {
                         await this.pushWritableRoomIndexes([local]);
@@ -443,10 +436,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             const remote = this.pbToMember(event.record);
             clock.observe(remote.updatedAt);
             const local = await appMulti.getMember(remote.id);
-            const shouldSave =
-                !local ||
-                remote.updatedAt > local.updatedAt ||
-                (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+            const shouldSave = !local || remote.updatedAt >= local.updatedAt;
             if (shouldSave) {
                 await appMulti.saveMember(remote, { origin: 'sync' });
                 await this.ensureRoomIndexForMember(remote);
@@ -502,11 +492,6 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             createdAt: record.createdAt,
             updatedAt: record.updatedAt
         };
-    }
-
-    private isOwnInactiveMembership(record: MultiRoomMemberRecord): boolean {
-        const { userId } = getActiveSession();
-        return record.userId === userId && record.status !== 'accepted';
     }
 
     private async ensureRoomIndexForMember(record: MultiRoomMemberRecord): Promise<void> {

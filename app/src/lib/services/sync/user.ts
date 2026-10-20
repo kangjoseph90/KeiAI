@@ -227,7 +227,14 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
     ): Promise<void> {
         const user = await appUser.getUser(userId);
         if (!user) return;
-        if (remoteUpdatedAt <= user.updatedAt) return;
+        if (remoteUpdatedAt < user.updatedAt) return;
+        if (
+            remoteUpdatedAt === user.updatedAt &&
+            user.name === remoteProfile.name &&
+            user.avatar === remoteProfile.avatar
+        ) {
+            return;
+        }
 
         const updated = {
             ...user,

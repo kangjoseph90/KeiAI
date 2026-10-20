@@ -173,6 +173,84 @@ describe('MultiRecordSyncEngine', () => {
         );
     });
 
+    it.each([
+        ['Pull', 2000],
+        ['Push', 2000],
+        ['Realtime', 2000],
+        ['Pull', 1999],
+        ['Push', 1999],
+        ['Realtime', 1999]
+    ] as const)(
+        'merges %s metadata at version %i with server-wins ties',
+        async (path, remoteAt) => {
+            const localIndex = roomIndex({
+                publicName: 'Local room',
+                updatedAt: 2000,
+                localUpdatedAt: 2100
+            });
+            const localMember = member({
+                status: 'accepted',
+                encryptedRoomKey: 'local-key',
+                updatedAt: 2000,
+                localUpdatedAt: 2200
+            });
+            const serverIndex = { ...localIndex, publicName: 'Server room', updatedAt: remoteAt };
+            const serverMember = {
+                ...localMember,
+                status: 'accepted',
+                encryptedRoomKey: 'server-key',
+                updatedAt: remoteAt
+            };
+            vi.mocked(appMulti.getRoomIndex).mockResolvedValue(localIndex);
+            vi.mocked(appMulti.getMember).mockResolvedValue(localMember);
+            if (path === 'Pull') {
+                vi.mocked(mockCollection.getList)
+                    .mockResolvedValueOnce({ items: [serverIndex] })
+                    .mockResolvedValueOnce({ items: [serverMember] });
+            } else if (path === 'Push') {
+                vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([localIndex]);
+                vi.mocked(appMulti.getRoomIndexesBetween).mockResolvedValue([localIndex]);
+                vi.mocked(appMulti.getMembersByRoomsBetween).mockResolvedValue([localMember]);
+                vi.mocked(mockBatch.send)
+                    .mockResolvedValueOnce([{ status: 200, body: serverIndex }] as unknown as never)
+                    .mockResolvedValueOnce([
+                        { status: 200, body: serverMember }
+                    ] as unknown as never);
+            }
+            if (path === 'Realtime') {
+                await service.subscribeRealtime();
+                const callbacks = mockCollection.subscribe.mock.calls
+                    .slice(-2)
+                    .map(
+                        ([_, callback]) =>
+                            callback as (event: { record: Record<string, unknown> }) => void
+                    );
+                callbacks[0]({ record: serverIndex });
+                callbacks[1]({ record: serverMember });
+                await service.stop();
+            } else {
+                await service.trigger();
+            }
+            if (remoteAt === 2000) {
+                expect(appMulti.saveRoomIndex).toHaveBeenCalledWith(
+                    expect.objectContaining({ publicName: 'Server room', updatedAt: 2000 }),
+                    { origin: 'sync' }
+                );
+                expect(appMulti.saveMember).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        status: 'accepted',
+                        encryptedRoomKey: 'server-key',
+                        updatedAt: 2000
+                    }),
+                    { origin: 'sync' }
+                );
+            } else {
+                expect(appMulti.saveRoomIndex).not.toHaveBeenCalled();
+                expect(appMulti.saveMember).not.toHaveBeenCalled();
+            }
+        }
+    );
+
     it('continues a shifted metadata page by timestamp and id', async () => {
         const page = Array.from({ length: 200 }, (_, index) => ({
             id: `room-${String(index).padStart(3, '0')}`,

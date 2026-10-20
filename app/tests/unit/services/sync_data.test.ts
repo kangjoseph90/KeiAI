@@ -775,6 +775,59 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(decryptBytes).mockResolvedValue(deflateSync(strToU8('{}')));
         });
 
+        it('keeps a local tombstone against an equal-version live server record', async () => {
+            await db.putRecord('characters', {
+                ...makeRecord(remote.id, remote.updatedAt),
+                createdAt: remote.createdAt,
+                isDeleted: true
+            });
+            const before = await db.getRecord('characters', remote.id);
+            vi.mocked(mockCollection.getList).mockResolvedValue({ items: [remote] });
+            await DataRecordSyncEngine.trigger();
+            expect(await db.getRecord('characters', remote.id)).toEqual(before);
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: remote.id, isDeleted: true })
+            );
+        });
+
+        it.each(['Pull', 'Realtime', 'Push'] as const)(
+            'adopts server contents on an equal-version %s conflict',
+            async (path) => {
+                await db.putRecord('characters', {
+                    ...makeRecord(remote.id, remote.updatedAt),
+                    createdAt: remote.createdAt,
+                    data: { name: 'Local' }
+                });
+                const before = await db.getLocalUpdatedAt();
+                if (path === 'Pull') {
+                    vi.mocked(mockCollection.getList).mockResolvedValue({ items: [remote] });
+                } else if (path === 'Push') {
+                    vi.mocked(mockBatch.send).mockResolvedValue([{ status: 200, body: remote }]);
+                } else {
+                    await DataRecordSyncEngine.subscribeRealtime();
+                    const callback = mockCollection.subscribe.mock.calls.at(-1)![1] as (
+                        event: unknown
+                    ) => void;
+                    callback({ action: 'update', record: remote });
+                    await vi.waitFor(async () => {
+                        expect((await db.getRecord('characters', remote.id))?.data).toEqual({
+                            name: 'Remote'
+                        });
+                    });
+                    await DataRecordSyncEngine.stop();
+                    DataRecordSyncEngine.resume();
+                    await DataRecordSyncEngine.unsubscribeRealtime();
+                }
+                if (path !== 'Realtime') await DataRecordSyncEngine.trigger();
+                const after = await db.getRecord('characters', remote.id);
+                expect(after?.data).toEqual({ name: 'Remote' });
+                expect(after?.updatedAt).toBe(remote.updatedAt);
+                expect(after!.localUpdatedAt).toBeGreaterThan(before);
+                await DataRecordSyncEngine.trigger();
+                expect(await db.getRecord('characters', remote.id)).toEqual(after);
+            }
+        );
+
         it.each(['Pull', 'Realtime', 'Push'] as const)(
             'preserves a deletion committed after the %s comparison',
             async (path) => {

@@ -186,6 +186,76 @@ describe('UserRecordSyncEngine', () => {
                 { origin: 'sync' }
             );
         });
+
+        it('applies differing remote profile fields when timestamps are equal', async () => {
+            vi.mocked(mockCollection.getOne).mockResolvedValue({
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'iv',
+                updatedAt: 1000
+            } as unknown as RecordModel);
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Local Name',
+                avatar: 'local-avatar',
+                connections: { server: { mode: 'custom' }, proxy: { mode: 'default' } },
+                updatedAt: 1000
+            } as unknown as UserRecord);
+
+            await service.trigger();
+
+            expect(appUser.saveUser).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: mockUserId,
+                    name: 'Remote Name',
+                    avatar: 'remote-avatar',
+                    connections: { server: { mode: 'custom' }, proxy: { mode: 'default' } },
+                    updatedAt: 1000
+                }),
+                { origin: 'sync' }
+            );
+        });
+
+        it('skips saving an identical profile at an equal timestamp', async () => {
+            vi.mocked(mockCollection.getOne).mockResolvedValue({
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'iv',
+                updatedAt: 1000
+            } as unknown as RecordModel);
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Remote Name',
+                avatar: 'remote-avatar',
+                connections: { server: { mode: 'custom' }, proxy: { mode: 'default' } },
+                updatedAt: 1000
+            } as unknown as UserRecord);
+
+            await service.trigger();
+
+            expect(appUser.saveUser).not.toHaveBeenCalled();
+        });
+
+        it('keeps local profile fields when the remote timestamp is older', async () => {
+            vi.mocked(mockCollection.getOne).mockResolvedValue({
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'iv',
+                updatedAt: 999
+            } as unknown as RecordModel);
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Local Name',
+                avatar: 'local-avatar',
+                connections: { server: { mode: 'custom' }, proxy: { mode: 'default' } },
+                updatedAt: 1000
+            } as unknown as UserRecord);
+
+            await service.trigger();
+
+            expect(appUser.saveUser).not.toHaveBeenCalled();
+            expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, {
+                encryptedProfile: 'b64:1,2,3',
+                encryptedProfileIV: 'b64:4,5,6'
+            });
+        });
     });
 
     describe('Realtime Subscription', () => {

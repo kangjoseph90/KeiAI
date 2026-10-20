@@ -27,6 +27,7 @@ import { createLogger } from '$lib/adapters/logger';
 import { clock } from '$lib/utils/clock';
 import { AssetService } from '$lib/services/asset';
 import { normalizeUrl } from '$lib/utils/url';
+import { canonicalJson } from '$lib/utils/defaults';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -472,7 +473,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             const shouldApply = !local
                 ? insertMissing
                 : (remoteDeleted && !localDeleted) ||
-                  (remoteDeleted === localDeleted && remoteAt > localAt);
+                  (remoteDeleted === localDeleted && remoteAt >= localAt);
             if (!shouldApply) {
                 const correction =
                     local &&
@@ -481,6 +482,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         ? { table: remote.table, record: local }
                         : null;
                 return { correction, assetReconciliation: null, cascadeTarget: null };
+            }
+            // The active server wins version ties; identical replies remain no-ops.
+            if (local && remoteAt === localAt) {
+                const { localUpdatedAt: _localRevision, ...state } = local;
+                if (canonicalJson(state) === canonicalJson(remote.record)) {
+                    return { correction: null, assetReconciliation: null, cascadeTarget: null };
+                }
             }
             const applied = await localDB.compareAndPutRecord(
                 remote.table,
