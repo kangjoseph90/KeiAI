@@ -13,6 +13,7 @@ import {
     type MultiRoomMemberStatus,
     type MultiRoomVisibility
 } from '$lib/adapters/multi';
+import { appUser } from '$lib/adapters/user';
 import { localDB, TABLES, type RoomRecord } from '$lib/adapters/db';
 import {
     fromBase64,
@@ -591,18 +592,27 @@ export class MultiRoomService {
     static async purgeLocalRoomContent(roomId: string): Promise<void> {
         const { userId } = getActiveSession();
         const roomScope = { scopeType: 'room' as const, scopeId: roomId };
-        await AssetService.deleteScopeAssets(roomScope);
-
-        await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
-        await Promise.all([
-            ...TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)),
-            syncCursorDB.delete(getSyncCursorIdentity('records', userId, roomScope))
-        ]);
-
+        await syncCursorDB.delete(getSyncCursorIdentity('records', userId, roomScope));
         if (getActiveSession().roomId === roomId) {
             clearMultiRoomSession();
             void SyncManager.refreshRoomSync();
         }
+
+        await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
+        const localUsers = await appUser.getAllUsers();
+        const otherMemberships = await Promise.all(
+            localUsers
+                .filter((user) => user.id !== userId)
+                .map((user) => appMulti.getMembership(roomId, user.id))
+        );
+        const hasOtherLocalMember = otherMemberships.some(
+            (membership) => membership?.status === 'accepted'
+        );
+        const [roomIndex] = await appMulti.getRoomIndexes([roomId]);
+        if (hasOtherLocalMember && roomIndex) return;
+
+        await AssetService.deleteScopeAssets(roomScope);
+        await Promise.all(TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)));
     }
 
     static async leaveRoom(roomId: string): Promise<void> {

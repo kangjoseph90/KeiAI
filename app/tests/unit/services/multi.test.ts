@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearSession, getActiveSession, setUserSession } from '$lib/services/session';
+import {
+    clearSession,
+    getActiveSession,
+    setMultiRoomSession,
+    setUserSession
+} from '$lib/services/session';
 import { MultiRoomService } from '$lib/services/multi';
 import type { MultiRoomIndexRecord, MultiRoomMemberRecord } from '$lib/adapters/multi';
 import type { RoomRecord } from '$lib/adapters/db';
@@ -17,6 +22,12 @@ vi.mock('$lib/adapters/multi', () => ({
         getMembersByUser: vi.fn(),
         getMembersByRoom: vi.fn(),
         getMembership: vi.fn()
+    }
+}));
+
+vi.mock('$lib/adapters/user', () => ({
+    appUser: {
+        getAllUsers: vi.fn()
     }
 }));
 
@@ -100,6 +111,7 @@ vi.mock('$lib/utils/clock', () => ({
 }));
 
 import { appMulti } from '$lib/adapters/multi';
+import { appUser } from '$lib/adapters/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 import { generateId } from '$lib/utils/id';
@@ -112,6 +124,9 @@ describe('MultiRoomService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         clearSession();
+        vi.mocked(appUser.getAllUsers).mockResolvedValue([{ id: 'user-1' } as never]);
+        vi.mocked(appMulti.getMembership).mockResolvedValue(null);
+        vi.mocked(appMulti.getRoomIndexes).mockResolvedValue([]);
         setUserSession({
             userId: 'user-1',
             masterKey: mockMasterKey,
@@ -327,9 +342,18 @@ describe('MultiRoomService', () => {
         expect(getActiveSession().roomId).toBeUndefined();
     });
 
-    it('leaves the current room through the server and purges local room content', async () => {
+    it('leaves the current room but preserves its shared replica for another local member', async () => {
         await MultiRoomService.createRoom({ visibility: 'private' });
         vi.clearAllMocks();
+        vi.mocked(appUser.getAllUsers).mockResolvedValue([
+            { id: 'user-1' } as never,
+            { id: 'user-2' } as never
+        ]);
+        vi.mocked(appMulti.getMembership).mockResolvedValue(
+            member({ userId: 'user-2', status: 'accepted' })
+        );
+        vi.mocked(appMulti.getRoomIndexes).mockResolvedValue([roomIndex({ id: 'room-1' })]);
+        setMultiRoomSession({ roomId: 'room-1', roomKey: mockRoomKey });
         vi.mocked(appHttp.fetch).mockResolvedValue({
             ok: true,
             status: 200,
@@ -348,6 +372,38 @@ describe('MultiRoomService', () => {
             { origin: 'sync' }
         );
         expect(getActiveSession().roomId).toBeUndefined();
+        expect(appAsset.deleteScopeAssets).not.toHaveBeenCalled();
+        expect(localDB.deleteByIndex).not.toHaveBeenCalled();
+        expect(syncCursorDB.delete).toHaveBeenCalledWith({
+            serverUrl: 'http://pb.test',
+            userId: 'user-1',
+            stream: 'records',
+            scopeType: 'room',
+            scopeId: 'room-1'
+        });
+    });
+
+    it('purges room data and assets when the departing user is the last local member', async () => {
+        await MultiRoomService.createRoom({ visibility: 'private' });
+        vi.clearAllMocks();
+        vi.mocked(appUser.getAllUsers).mockResolvedValue([{ id: 'user-1' } as never]);
+        vi.mocked(appMulti.getRoomIndexes).mockResolvedValue([roomIndex({ id: 'room-1' })]);
+        setMultiRoomSession({ roomId: 'room-1', roomKey: mockRoomKey });
+        vi.mocked(appHttp.fetch).mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({ member: member({ status: 'left', encryptedRoomKey: undefined }) })
+        } as Response);
+
+        await MultiRoomService.leaveRoom('room-1');
+
+        expect(appAsset.deleteScopeAssets).toHaveBeenCalledWith({
+            scopeType: 'room',
+            scopeId: 'room-1'
+        });
+        expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-1');
+        expect(getActiveSession().roomId).toBeUndefined();
     });
 
     it('purges content for locally inaccessible rooms', async () => {
@@ -363,6 +419,34 @@ describe('MultiRoomService', () => {
         expect(localDB.deleteByIndex).not.toHaveBeenCalledWith('rooms', 'scopeId', 'room-1');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-2');
         expect(localDB.deleteByIndex).toHaveBeenCalledWith('rooms', 'scopeId', 'room-3');
+    });
+
+    it('preserves a shared replica after the active local membership is revoked', async () => {
+        vi.mocked(appUser.getAllUsers).mockResolvedValue([
+            { id: 'user-1' } as never,
+            { id: 'user-2' } as never
+        ]);
+        vi.mocked(appMulti.getMembersByUser).mockResolvedValue([
+            member({ roomId: 'room-1', status: 'revoked' })
+        ]);
+        vi.mocked(appMulti.getMembership).mockImplementation(async (_roomId, userId) =>
+            userId === 'user-2' ? member({ userId: 'user-2', status: 'accepted' }) : null
+        );
+        vi.mocked(appMulti.getRoomIndexes).mockResolvedValue([roomIndex({ id: 'room-1' })]);
+        setMultiRoomSession({ roomId: 'room-1', roomKey: mockRoomKey });
+
+        await MultiRoomService.purgeInaccessibleRoomContent();
+
+        expect(localDB.deleteByIndex).not.toHaveBeenCalled();
+        expect(appAsset.deleteScopeAssets).not.toHaveBeenCalled();
+        expect(syncCursorDB.delete).toHaveBeenCalledWith({
+            serverUrl: 'http://pb.test',
+            userId: 'user-1',
+            stream: 'records',
+            scopeType: 'room',
+            scopeId: 'room-1'
+        });
+        expect(getActiveSession().roomId).toBeUndefined();
     });
 
     it('approves a pending member by wrapping the owner room key for their public key', async () => {
