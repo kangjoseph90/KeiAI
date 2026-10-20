@@ -173,6 +173,59 @@ describe('MultiRecordSyncEngine', () => {
         );
     });
 
+    it('continues a shifted metadata page by timestamp and id', async () => {
+        const page = Array.from({ length: 200 }, (_, index) => ({
+            id: `room-${String(index).padStart(3, '0')}`,
+            ownerUserId: userId,
+            visibility: 'private',
+            publicName: 'Room',
+            createdAt: 1,
+            updatedAt: 2000,
+            serverUpdatedAt: 2000,
+            isDeleted: false
+        }));
+        vi.mocked(mockCollection.getList)
+            .mockResolvedValueOnce({ items: page } as unknown as {
+                items: unknown[];
+                page: number;
+                totalPages: number;
+            })
+            // Simulate the row after page one shifting into the first page after a
+            // previously fetched row moves past the fixed server upper bound.
+            .mockResolvedValueOnce({
+                items: [
+                    {
+                        id: 'room-200',
+                        ownerUserId: userId,
+                        visibility: 'private',
+                        publicName: 'Room',
+                        createdAt: 1,
+                        updatedAt: 2000,
+                        serverUpdatedAt: 2000,
+                        isDeleted: false
+                    }
+                ]
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+        vi.mocked(appMulti.getRoomIndex).mockResolvedValue(null);
+
+        await service.trigger();
+
+        expect(mockCollection.getList).toHaveBeenCalledTimes(3);
+        expect(
+            mockCollection.getList.mock.calls.slice(0, 2).map(([pageNumber]) => pageNumber)
+        ).toEqual([1, 1]);
+        expect(pb.filter).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('serverUpdatedAt = {:after} && id > {:afterId}'),
+            { after: 2000, afterId: 'room-199', through: 3000 }
+        );
+        expect(appMulti.saveRoomIndex).toHaveBeenCalledTimes(201);
+        expect(appMulti.saveRoomIndex).toHaveBeenLastCalledWith(
+            expect.objectContaining({ id: 'room-200' }),
+            { origin: 'sync' }
+        );
+    });
+
     it('pushes owned room indexes and writable members', async () => {
         const ownedIndex = roomIndex({ updatedAt: 20, localUpdatedAt: 2000 });
         const ownMember = member({ updatedAt: 21, localUpdatedAt: 2100 });

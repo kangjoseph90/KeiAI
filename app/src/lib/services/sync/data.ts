@@ -183,23 +183,31 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const pushCursor = cursors.localPushCursor;
         let syncError: unknown = null;
         let pushError: unknown = null;
-        let page = 1;
+        let afterServerUpdatedAt = pullCursor;
+        let afterId: string | null = null;
         const offlineWrites = new Map<string, LocalChange>();
         const cascadeTargets: Array<{ table: TableName; id: string }> = [];
 
         try {
             while (true) {
-                const result = await pb.collection(syncScope.collection).getList(page, PAGE_SIZE, {
+                const afterFilter =
+                    afterId === null
+                        ? 'serverUpdatedAt > {:after}'
+                        : '(serverUpdatedAt > {:after} || (serverUpdatedAt = {:after} && id > {:afterId}))';
+                const result = await pb.collection(syncScope.collection).getList(1, PAGE_SIZE, {
                     filter: pb.filter(
-                        `${syncScope.ownerField} = {:scopeId} && serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}`,
+                        `${syncScope.ownerField} = {:scopeId} && ${afterFilter} && serverUpdatedAt <= {:through}`,
                         {
                             scopeId: syncScope.scope.scopeId,
-                            after: pullCursor,
+                            after: afterServerUpdatedAt,
+                            ...(afterId === null ? {} : { afterId }),
                             through: serverUpper
                         }
                     ),
                     sort: 'serverUpdatedAt,id'
                 });
+
+                if (result.items.length === 0) break;
 
                 if (result.items.length > 0) {
                     const grouped = new Map<TableName, DataRecord[]>();
@@ -289,8 +297,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     );
                 }
 
-                if (result.page >= result.totalPages) break;
-                page++;
+                if (result.items.length < PAGE_SIZE) break;
+                const lastItem = result.items[result.items.length - 1] as unknown as {
+                    serverUpdatedAt: number;
+                    id: string;
+                };
+                afterServerUpdatedAt = lastItem.serverUpdatedAt;
+                afterId = lastItem.id;
             }
 
             for (const { table, id } of cascadeTargets) {

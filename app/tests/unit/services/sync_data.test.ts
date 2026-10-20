@@ -155,6 +155,61 @@ describe('DataRecordSyncEngine', () => {
     });
 
     describe('Pull Logic (trigger)', () => {
+        it('continues by timestamp and id when a full page shifts during a pull', async () => {
+            vi.mocked(syncCursorDB.get).mockResolvedValue({
+                serverPullCursor: 1000,
+                localPushCursor: 2500
+            });
+            const page = Array.from({ length: 200 }, (_, index) => ({
+                id: `record-${String(index).padStart(3, '0')}`,
+                kind: 'characters',
+                userId: mockUserId,
+                updatedAt: 1500,
+                serverUpdatedAt: 2000,
+                encryptedData: 'base64-data',
+                encryptedDataIV: 'base64-iv'
+            }));
+            vi.mocked(mockCollection.getList)
+                .mockResolvedValueOnce({ items: page } as unknown as {
+                    items: unknown[];
+                    page: number;
+                    totalPages: number;
+                })
+                // A row that was just beyond page one moved into its range while an earlier
+                // row moved beyond the bounded server revision.
+                .mockResolvedValueOnce({
+                    items: [
+                        {
+                            id: 'record-200',
+                            kind: 'characters',
+                            userId: mockUserId,
+                            updatedAt: 1500,
+                            serverUpdatedAt: 2000,
+                            encryptedData: 'base64-data',
+                            encryptedDataIV: 'base64-iv'
+                        }
+                    ]
+                } as unknown as { items: unknown[]; page: number; totalPages: number });
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            await DataRecordSyncEngine.trigger();
+
+            expect(mockCollection.getList).toHaveBeenCalledTimes(2);
+            expect(
+                mockCollection.getList.mock.calls.map(([requestedPage]) => requestedPage)
+            ).toEqual([1, 1]);
+            expect(pb.filter).toHaveBeenLastCalledWith(
+                expect.stringContaining('serverUpdatedAt = {:after} && id > {:afterId}'),
+                { scopeId: mockUserId, after: 2000, afterId: 'record-199', through: 3000 }
+            );
+            expect(localDB.putRecords).toHaveBeenCalledTimes(2);
+            expect(localDB.putRecords).toHaveBeenLastCalledWith(
+                'characters',
+                [expect.objectContaining({ id: 'record-200' })],
+                { origin: 'sync' }
+            );
+        });
+
         it('should pull changes and handle LWW conflict', async () => {
             const tableName = 'characters';
             vi.mocked(syncCursorDB.get).mockResolvedValue({

@@ -149,16 +149,23 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         afterServerUpdatedAt: number,
         throughServerUpdatedAt: number
     ): Promise<void> {
-        let page = 1;
+        let afterId: string | null = null;
 
         while (true) {
-            const result = await pb.collection('multi_room_index').getList(page, PAGE_SIZE, {
-                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+            const afterFilter =
+                afterId === null
+                    ? 'serverUpdatedAt > {:after}'
+                    : '(serverUpdatedAt > {:after} || (serverUpdatedAt = {:after} && id > {:afterId}))';
+            const result = await pb.collection('multi_room_index').getList(1, PAGE_SIZE, {
+                filter: pb.filter(`${afterFilter} && serverUpdatedAt <= {:through}`, {
                     after: afterServerUpdatedAt,
+                    ...(afterId === null ? {} : { afterId }),
                     through: throughServerUpdatedAt
                 }),
                 sort: 'serverUpdatedAt,id'
             });
+
+            if (result.items.length === 0) break;
 
             for (const item of result.items) {
                 const raw = item as unknown as Record<string, unknown>;
@@ -184,8 +191,13 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 }
             }
 
-            if (result.page >= result.totalPages) break;
-            page++;
+            if (result.items.length < PAGE_SIZE) break;
+            const lastItem = result.items[result.items.length - 1];
+            afterServerUpdatedAt = normalizeTimestamp(
+                lastItem.serverUpdatedAt,
+                lastItem.serverUpdatedAt
+            );
+            afterId = lastItem.id as string;
         }
     }
 
@@ -193,16 +205,23 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         afterServerUpdatedAt: number,
         throughServerUpdatedAt: number
     ): Promise<void> {
-        let page = 1;
+        let afterId: string | null = null;
 
         while (true) {
-            const result = await pb.collection('multi_room_members').getList(page, PAGE_SIZE, {
-                filter: pb.filter('serverUpdatedAt > {:after} && serverUpdatedAt <= {:through}', {
+            const afterFilter =
+                afterId === null
+                    ? 'serverUpdatedAt > {:after}'
+                    : '(serverUpdatedAt > {:after} || (serverUpdatedAt = {:after} && id > {:afterId}))';
+            const result = await pb.collection('multi_room_members').getList(1, PAGE_SIZE, {
+                filter: pb.filter(`${afterFilter} && serverUpdatedAt <= {:through}`, {
                     after: afterServerUpdatedAt,
+                    ...(afterId === null ? {} : { afterId }),
                     through: throughServerUpdatedAt
                 }),
                 sort: 'serverUpdatedAt,id'
             });
+
+            if (result.items.length === 0) break;
 
             for (const item of result.items) {
                 const remote = this.pbToMember(item as unknown as Record<string, unknown>);
@@ -220,8 +239,13 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
                 }
             }
 
-            if (result.page >= result.totalPages) break;
-            page++;
+            if (result.items.length < PAGE_SIZE) break;
+            const lastItem = result.items[result.items.length - 1];
+            afterServerUpdatedAt = normalizeTimestamp(
+                lastItem.serverUpdatedAt,
+                lastItem.serverUpdatedAt
+            );
+            afterId = lastItem.id as string;
         }
     }
 
